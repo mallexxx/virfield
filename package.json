@@ -1,0 +1,43 @@
+{
+  "name": "virfield",
+  "version": "0.1.0",
+  "description": "macOS VM lifecycle console and MCP server for AI-driven test automation",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch server/index.ts",
+    "dev:ui": "vite ui",
+    "build": "tsc -p tsconfig.server.json && vite build ui",
+    "start": "node dist/server/index.js",
+    "mcp": "tsx server/mcp-server.ts",
+    "db:init": "tsx server/db.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.10.2",
+    "better-sqlite3": "^11.9.1",
+    "express": "^4.21.2",
+    "express-ws": "^5.0.2",
+    "node-fetch": "^3.3.2",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "ssh2": "^1.16.0",
+    "ws": "^8.18.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/express": "^4.17.25",
+    "@types/express-ws": "^3.0.5",
+    "@types/node": "^22.15.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@types/ssh2": "^1.15.4",
+    "@types/ws": "^8.5.14",
+    "@vitejs/plugin-react": "^4.4.1",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^3.4.17",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.2"
+  }
+}

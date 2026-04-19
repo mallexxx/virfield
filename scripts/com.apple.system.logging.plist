@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.apple.system.logging.plist
+  Installed to /Library/Preferences/Logging/ on the UI-test VM by the 'logging' tool.
+  Enables debug- and info-level Apple Unified Log messages and exposes private data
+  in log output — critical for diagnosing UI test failures from system-level events.
+-->
+<plist version="1.0">
+<dict>
+    <key>Enable-Persist-Debug</key>
+    <true/>
+    <key>Enable-Persist-Info</key>
+    <true/>
+    <key>Enable-Private-Data</key>
+    <true/>
+</dict>
+</plist>

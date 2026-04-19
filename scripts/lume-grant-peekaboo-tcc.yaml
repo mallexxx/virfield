@@ -1,0 +1,25 @@
+# lume-grant-peekaboo-tcc.yaml
+# Clicks Allow on TCC permission dialog triggered by peekaboo running as a LaunchAgent.
+#
+# Pre-condition: Load LaunchAgent via SSH BEFORE this automation starts sending events.
+# The boot_wait gives enough time for the SSH setup to complete.
+
+boot_wait: 60
+boot_commands:
+  # Click Allow on sshd-keygen-wrapper → Terminal automation alert
+  - "<wait 'Allow', timeout=40>"
+  - "<click 'Allow'>"
+  - "<delay 3>"
+
+  # Click Allow on peekaboo screen recording alert
+  - "<wait 'Allow', timeout=30>"
+  - "<click 'Allow'>"
+  - "<delay 2>"
+
+health_check:
+  type: ssh
+  user: lume
+  password: lume
+  timeout: 30
+  retries: 5
+  retry_delay: 5

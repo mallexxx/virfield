@@ -1,0 +1,246 @@
+# Unattended macOS Sequoia 15.6.1 Setup Assistant Configuration
+#
+# Differs from the built-in 'sequoia' preset in exactly one way:
+#   - Apple Account sign-in: waits for 'Apple Account' instead of 'Email or Phone Number'
+#     (Apple rebranded the sign-in field placeholder in later Sequoia releases)
+#
+# Use with: lume setup <vm> --unattended /path/to/sequoia-15.6.1.yaml
+
+boot_wait: 30
+
+boot_commands:
+  - "<delay 5>"
+
+  # Press spacebar to dismiss the greeting screen
+  - "<space>"
+  - "<delay 2>"
+
+  # Language selection
+  - "<wait 'English', timeout=120>"
+  - "<delay 1>"
+  - "<type 'English'>"
+  - "<delay 1>"
+  - "<click 'English'>"
+  - "<delay 1>"
+  - "<enter>"
+  - "<delay 2>"
+
+  # Country/Region selection
+  - "<wait 'Country or Region', timeout=120>"
+  - "<delay 1>"
+  - "<click_at 960,900>"
+  - "<delay 1>"
+  - "<type 'United States'>"
+  - "<delay 1>"
+  - "<enter>"
+  - "<delay 1>"
+  - "<click 'Continue'>"
+  - "<delay 2>"
+
+  # Transfer Your Data to This Mac (Migration Assistant)
+  - "<wait 'Transfer Your Data', timeout=120>"
+  - "<delay 30>"
+  - "<click 'Set up as new'>"
+  - "<delay 2>"
+  - "<click 'Continue'>"
+  - "<delay 2>"
+
+  # Written and Spoken Languages
+  - "<wait 'Written and Spoken Languages', timeout=120>"
+  - "<delay 1>"
+  - "<click 'Continue'>"
+  - "<delay 2>"
+
+  # Accessibility — skip
+  - "<wait 'Accessibility', timeout=120>"
+  - "<delay 1>"
+  - "<click 'Not Now'>"
+  - "<delay 2>"
+
+  # Data & Privacy
+  - "<wait 'Data & Privacy', timeout=120>"
+  - "<delay 1>"
+  - "<click 'Continue'>"
+  - "<delay 2>"
+
+  # Create a Mac Account
+  - "<wait 'Create a Mac Account', timeout=120>"
+  - "<delay 10>"
+  - "<click 'Full Name'>"
+  - "<delay 1>"
+  - "<type 'lume'>"
+  - "<delay 1>"
+  - "<tab>"
+  - "<delay 1>"
+  - "<tab>"
+  - "<delay 1>"
+  - "<type 'lume'>"
+  - "<delay 1>"
+  - "<tab>"
+  - "<delay 1>"
+  - "<type 'lume'>"
+  - "<delay 1>"
+  - "<tab>"
+  - "<delay 1>"
+  - "<tab>"
+  - "<delay 1>"
+  - "<space>"
+  - "<delay 1>"
+  - "<click 'Continue'>"
+  # Wait 20s for account creation to finish before checking for Apple Account sign-in page.
+  # ROOT CAUSE: 'Create a Mac Account' page contains 'Apple Account' in a checkbox label
+  # ("Allow computer account password to be reset with your Apple Account"), so
+  # wait 'Apple Account' fires immediately on the WRONG page without this delay.
+  - "<delay 20>"
+
+  # Sign In to Your Apple Account — skip it.
+  # FIX for 15.6.1:
+  #   1. Delay 20s above ensures we're past the Mac Account page before this wait fires
+  #   2. Capture a debug screenshot of the Apple Account sign-in page via click_at
+  #   3. Click 'Set Up Later' (button text used in macOS 15.x Setup Assistant)
+  #   4. Press Enter to confirm the skip popup
+  - "<wait 'Apple Account', timeout=120>"
+  - "<delay 3>"
+  # Capture a debug screenshot of the Apple Account sign-in page layout (safe click on title area)
+  - "<click_at 960,300>"
+  - "<delay 2>"
+  # Click 'Set Up Later' to skip Apple Account sign-in
+  - "<click 'Set Up Later'>"
+  - "<delay 2>"
+  # Confirmation popup — press Enter to confirm skip (works regardless of button text)
+  - "<enter>"
+  - "<delay 2>"
+
+  # Terms and Conditions
+  - "<wait 'Terms and Conditions', timeout=120>"
+  - "<delay 1>"
+  - "<click 'Agree', index=-1>"
+  - "<delay 1>"
+  # Confirmation popup
+  - "<wait 'I have read and agree', timeout=30>"
+  - "<delay 1>"
+  - "<click 'Agree', index=0>"
+  - "<delay 2>"
+
+  # Enable Location Services — skip
+  - "<wait 'Enable Location Services', timeout=120>"
+  - "<delay 1>"
+  - "<click 'Continue'>"
+  - "<delay 1>"
+  - '<wait "Don''t Use", timeout=30>'
+  - "<delay 1>"
+  - "<enter>"
+  - "<delay 2>"
+
+  # Select Your Time Zone
+  - "<wait 'Select Your Time Zone', timeout=120>"
+  - "<delay 1>"
+  - "<click 'Continue'>"
+  - "<delay 2>"
+
+  # Analytics
+  - "<wait 'Analytics', timeout=120>"
+  - "<delay 1>"
+  - "<click 'Continue'>"
+  - "<delay 2>"
+
+  # Screen Time
+  - "<wait 'Screen Time', timeout=120>"
+  - "<delay 1>"
+  - "<click 'Set Up Later'>"
+  - "<delay 2>"
+
+  # Siri
+  - "<wait 'Siri', timeout=300>"
+  - "<delay 2>"
+  - "<click 'Enable Ask Siri'>"
+  - "<delay 2>"
+  - "<click 'Continue'>"
+  - "<delay 2>"
+
+  # Choose Your Look
+  - "<wait 'Choose Your Look', timeout=120>"
+  - "<delay 1>"
+  - "<click 'Continue'>"
+  - "<delay 2>"
+
+  # Update Mac Automatically
+  - "<wait 'Update Mac Automatically', timeout=120>"
+  - "<delay 1>"
+  - "<click 'Continue'>"
+  - "<delay 2>"
+
+  # Welcome screen
+  - "<wait 'Welcome to Mac', timeout=120>"
+  - "<delay 2>"
+  - "<space>"
+  - "<delay 5>"
+
+  # Desktop fully loaded
+  - "<delay 30>"
+  - "<click_at 960,540>"
+  - "<delay 1>"
+
+  # Enable full keyboard navigation
+  - "<cmd+space>"
+  - "<delay 5>"
+  - "<type 'Termina', delay=350>"
+  - "<delay 5>"
+  - "<enter>"
+  - "<delay 5>"
+  - "<type 'defaults write NSGlobalDomain AppleKeyboardUIMode -int 3', delay=350>"
+  - "<enter>"
+  - "<delay 3>"
+  - "<cmd+q>"
+  - "<delay 4>"
+
+  - "<click_at 960,540>"
+  - "<delay 1>"
+
+  # Enable SSH via System Settings
+  - "<cmd+space>"
+  - "<delay 2>"
+  - "<type 'System Settings'>"
+  - "<delay 2>"
+  - "<enter>"
+  - "<delay 5>"
+  - "<wait 'General', timeout=30>"
+  - "<delay 2>"
+  - "<cmd+f>"
+  - "<delay 1>"
+  - "<type 'login'>"
+  - "<delay 2>"
+  - "<click 'Remote Login'>"
+  - "<delay 30>"
+  - "<space>"
+  - "<delay 5>"
+  - "<tab>"
+  - "<delay 5>"
+  - "<space>"
+  - "<delay 5>"
+  - "<click 'Done'>"
+  - "<delay 5>"
+  - "<cmd+q>"
+  - "<delay 1>"
+
+health_check:
+  type: ssh
+  user: lume
+  password: lume
+  timeout: 30
+  retries: 5
+  retry_delay: 10
+
+post_ssh_commands:
+  - "sudo sysadminctl -autologin set -userName lume -password lume"
+  - "perl -e 'my @k=(125,137,82,35,210,188,221,234,163,185,31);my @p=unpack(q{C*},q{lume});my @e;for my $i(0..$#p){$e[$i]=$p[$i]^$k[$i%scalar@k]}my $r=scalar@e%12;push@e,(0)x(12-$r) if $r;open my $f,q{>},q{/tmp/kcp};binmode $f;print $f pack(q{C*},@e);close $f'"
+  - "sudo cp /tmp/kcp /etc/kcpassword"
+  - "sudo chmod 600 /etc/kcpassword"
+  - "rm /tmp/kcp"
+  - "defaults -currentHost write com.apple.screensaver idleTime -int 0"
+  - "defaults write com.apple.screensaver askForPassword -int 0"
+  - "defaults write com.apple.screensaver askForPasswordDelay -int 0"
+  - "sudo pmset -a displaysleep 0"
+  - "sudo pmset -a sleep 0"
+  - "sudo defaults write /Library/Preferences/.GlobalPreferences com.apple.autologout.AutoLogOutDelay -int 0"
+  - "sudo defaults write /Library/Preferences/com.apple.SetupAssistant.managed SkipFirstRunUI -bool true"

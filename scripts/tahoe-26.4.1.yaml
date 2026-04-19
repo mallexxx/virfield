@@ -1,0 +1,259 @@
+# Unattended macOS Tahoe 26.4.1+ Setup Assistant Configuration
+#
+# Differs from the built-in 'tahoe' preset in exactly two ways:
+#   1. Country/Region wait uses timeout=300 (26.4.1 is slow to transition from language)
+#   2. Apple ID skip uses Tab+Enter keyboard navigation ("Set Up Later" button removed/renamed)
+#
+# Use with: lume setup <vm> --unattended /path/to/tahoe-26.4.1.yaml
+
+boot_wait: 30
+
+boot_commands:
+  - "<delay 5>"
+
+  # Press spacebar to dismiss the greeting screen
+  - "<space>"
+  - "<delay 2>"
+
+  # Language selection
+  - "<wait 'English', timeout=120>"
+  - "<delay 1>"
+  - "<type 'English'>"
+  - "<delay 1>"
+  - "<click 'English'>"
+  - "<delay 1>"
+  - "<enter>"
+  - "<delay 2>"
+
+  # Country/Region selection
+  # 26.4.1 takes longer than 120s to transition here from language selection.
+  - "<wait 'Country or Region', timeout=300>"
+  - "<delay 1>"
+  - "<click_at 960,900>"
+  - "<delay 1>"
+  - "<type 'United States'>"
+  - "<delay 1>"
+  - "<enter>"
+  - "<delay 1>"
+  - "<click 'Continue'>"
+  - "<delay 2>"
+
+  # Transfer Your Data to This Mac (Migration Assistant)
+  - "<wait 'Transfer Your Data', timeout=120>"
+  - "<delay 30>"
+  - "<click 'Set up as new'>"
+  - "<delay 2>"
+  - "<click 'Continue'>"
+  - "<delay 2>"
+
+  # Written and Spoken Languages
+  - "<wait 'Written and Spoken Languages', timeout=120>"
+  - "<delay 1>"
+  - "<click 'Continue'>"
+  - "<delay 2>"
+
+  # Accessibility
+  - "<wait 'Accessibility', timeout=120>"
+  - "<delay 1>"
+  - "<click 'Not Now'>"
+  - "<delay 2>"
+
+  # Data & Privacy
+  - "<wait 'Data & Privacy', timeout=120>"
+  - "<delay 1>"
+  - "<click 'Continue'>"
+  - "<delay 2>"
+
+  # Create a Mac Account
+  - "<wait 'Create a Mac Account', timeout=120>"
+  - "<delay 10>"
+  - "<click 'Full Name'>"
+  - "<delay 1>"
+  - "<type 'lume'>"
+  - "<delay 1>"
+  - "<tab>"
+  - "<delay 1>"
+  - "<tab>"
+  - "<delay 1>"
+  - "<type 'lume'>"
+  - "<delay 1>"
+  - "<tab>"
+  - "<delay 1>"
+  - "<type 'lume'>"
+  - "<delay 1>"
+  - "<tab>"
+  - "<delay 1>"
+  - "<tab>"
+  - "<delay 1>"
+  - "<space>"
+  - "<delay 1>"
+  - "<click 'Continue'>"
+  - "<delay 2>"
+
+  # Sign In to Your Apple Account — skip it.
+  # In 26.4.1 "Set Up Later" was renamed to "Sign in Later in Settings"
+  # inside the "Other Sign-In Options" dropdown.
+  - "<wait 'Email or Phone Number', timeout=120>"
+  - "<delay 2>"
+  - "<click 'Other Sign-In Options'>"
+  - "<delay 3>"
+  - "<click 'Sign in Later in Settings'>"
+  - "<delay 2>"
+  # Confirmation popup: "Are you sure you want to skip signing in with an Apple Account?"
+  - "<wait \"Don't Skip\", timeout=30>"
+  - "<delay 1>"
+  - "<tab>"
+  - "<delay 1>"
+  - "<enter>"
+  - "<delay 2>"
+
+  # Terms and Conditions
+  # "Agree" appears in license text body, so index=-1 selects the button.
+  - "<wait 'Terms and Conditions', timeout=120>"
+  - "<delay 1>"
+  - "<click 'Agree', index=-1>"
+  - "<delay 1>"
+  # Confirmation popup: "I have read and agree to the macOS Software License Agreement"
+  - "<wait 'I have read and agree', timeout=30>"
+  - "<delay 1>"
+  - "<click 'Agree', index=0>"
+  - "<delay 2>"
+
+  # Age Range — NEW in 26.4.1 (appears after T&C)
+  # Select "18 or older" so no parental controls are applied.
+  - "<wait 'Age Range', timeout=120>"
+  - "<delay 1>"
+  - "<click '18 or older'>"
+  - "<delay 2>"
+  - "<click 'Continue'>"
+  - "<delay 15>"
+
+  # Enable Location Services — appears after Age Range in 26.4.1.
+  # OCR confirmed: "Don't Use" / "Use Location Services" radio buttons + Continue.
+  - "<wait \"Don't Use\", timeout=60>"
+  - "<delay 1>"
+  - "<click \"Don't Use\">"
+  - "<delay 2>"
+  - "<click 'Continue'>"
+  - "<delay 2>"
+
+  # Analytics — appears after Location Services in 26.4.1 (before Time Zone)
+  - "<wait 'Analytics', timeout=120>"
+  - "<delay 1>"
+  - "<click 'Continue'>"
+  - "<delay 2>"
+
+  # Screen Time — appears after Analytics in 26.4.1 (Time Zone removed from flow)
+  - "<wait 'Screen Time', timeout=120>"
+  - "<delay 1>"
+  - "<click 'Set Up Later'>"
+  - "<delay 2>"
+
+  # Siri
+  - "<wait 'Siri', timeout=300>"
+  - "<delay 2>"
+  - "<click 'Enable Ask Siri'>"
+  - "<delay 2>"
+  - "<click 'Continue'>"
+  - "<delay 2>"
+
+  # FileVault — skip
+  - "<wait 'FileVault', timeout=120>"
+  - "<delay 1>"
+  - "<click 'Not Now'>"
+  - "<delay 1>"
+  - "<wait 'Securely Encrypted', timeout=30>"
+  - "<delay 1>"
+  - "<click 'Continue'>"
+  - "<delay 2>"
+
+  # Choose Your Look
+  - "<wait 'Choose Your Look', timeout=120>"
+  - "<delay 1>"
+  - "<click 'Continue'>"
+  - "<delay 2>"
+
+  # Update Mac Automatically
+  - "<wait 'Update Mac Automatically', timeout=120>"
+  - "<delay 1>"
+  - "<click 'Continue'>"
+  - "<delay 2>"
+
+  # Welcome / Get Started
+  - "<wait 'welcome', timeout=120>"
+  - "<delay 1>"
+  - "<click 'Get Started'>"
+  - "<delay 5>"
+
+  # Desktop fully loaded — give it keyboard focus
+  - "<delay 30>"
+  - "<click_at 960,540>"
+  - "<delay 1>"
+
+  # Enable full keyboard navigation
+  - "<cmd+space>"
+  - "<delay 5>"
+  - "<type 'Termina', delay=350>"
+  - "<delay 5>"
+  - "<enter>"
+  - "<delay 5>"
+  - "<type 'defaults write NSGlobalDomain AppleKeyboardUIMode -int 3', delay=350>"
+  - "<enter>"
+  - "<delay 3>"
+  - "<cmd+q>"
+  - "<delay 4>"
+
+  - "<click_at 960,540>"
+  - "<delay 1>"
+
+  # Enable SSH via System Settings
+  - "<cmd+space>"
+  - "<delay 2>"
+  - "<type 'System Settings'>"
+  - "<delay 2>"
+  - "<enter>"
+  - "<delay 5>"
+  - "<wait 'General', timeout=30>"
+  - "<delay 2>"
+  - "<cmd+f>"
+  - "<delay 1>"
+  - "<type 'login'>"
+  - "<delay 2>"
+  - "<click 'Remote Login'>"
+  - "<delay 30>"
+  - "<space>"
+  - "<delay 3>"
+  # Password dialog: "Remote Login is trying to modify system settings."
+  # Type password and click Modify Settings to authenticate.
+  - "<type 'lume'>"
+  - "<delay 1>"
+  - "<click 'Modify Settings'>"
+  - "<delay 10>"
+  - "<click 'Done'>"
+  - "<delay 5>"
+  - "<cmd+q>"
+  - "<delay 2>"
+
+health_check:
+  type: ssh
+  user: lume
+  password: lume
+  timeout: 30
+  retries: 10
+  retry_delay: 15
+
+post_ssh_commands:
+  - "sudo sysadminctl -autologin set -userName lume -password lume"
+  - "perl -e 'my @k=(125,137,82,35,210,188,221,234,163,185,31);my @p=unpack(q{C*},q{lume});my @e;for my $i(0..$#p){$e[$i]=$p[$i]^$k[$i%scalar@k]}my $r=scalar@e%12;push@e,(0)x(12-$r) if $r;open my $f,q{>},q{/tmp/kcp};binmode $f;print $f pack(q{C*},@e);close $f'"
+  - "sudo cp /tmp/kcp /etc/kcpassword"
+  - "sudo chmod 600 /etc/kcpassword"
+  - "rm /tmp/kcp"
+  - "defaults -currentHost write com.apple.screensaver idleTime -int 0"
+  - "defaults write com.apple.screensaver askForPassword -int 0"
+  - "defaults write com.apple.screensaver askForPasswordDelay -int 0"
+  - "sudo pmset -a displaysleep 0"
+  - "sudo pmset -a sleep 0"
+  - "sudo defaults write /Library/Preferences/.GlobalPreferences com.apple.autologout.AutoLogOutDelay -int 0"
+  # Suppress persistent "Sign In with Apple ID" dialog at login
+  - "sudo defaults write /Library/Preferences/com.apple.SetupAssistant.managed SkipFirstRunUI -bool true"
+  - "defaults write NSGlobalDomain com.apple.SetupAssistant.managed DidSeeAvatarSetup 1"

@@ -1,0 +1,18 @@
+boot_wait: 10
+boot_commands:
+  - "<click_at 14,11>"
+  - "<wait 'System Settings', timeout=15>"
+  - "<click 'System Settings'>"
+  - "<wait 'General', timeout=20>"
+  - "<cmd+f>"
+  - "<type 'screen record'>"
+  - "<wait 'record your screen', timeout=20>"
+  - "<click 'record your screen'>"
+  - "<wait 'Screen & System Audio Recording', timeout=10>"
+  - "<click_at 67,612>"
+  - "<wait 'Open', timeout=10>"
+  - "<cmd+shift+g>"
+  - "<type '/System/Applications/Utilities/Script Editor.app'>"
+  - "<enter>"
+  - "<wait 'Open', timeout=10>"
+  - "<click 'Open'>"

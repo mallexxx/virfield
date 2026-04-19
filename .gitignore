@@ -1,0 +1,18 @@
+node_modules/
+dist/
+ui/dist/
+*.log
+.env
+
+# Local config — copy mcp.json.example and fill in your path
+mcp.json
+
+# Working plan — local only, not for distribution
+PLAN.md
+
+# SQLite DB (runtime state, not source)
+server/console.db
+*.db
+
+# Claude Code project files
+.claude/

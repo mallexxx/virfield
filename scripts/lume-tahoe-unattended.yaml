@@ -1,0 +1,90 @@
+# lume-tahoe-unattended.yaml
+# Unattended macOS Tahoe (26.x) Setup Assistant automation.
+# Used as the SECOND step after `lume create` (raw IPSW install).
+#
+# Usage (two-step):
+#   # Step 1: raw install (no --unattended)
+#   lume create uitest-golden --os macos --ipsw /path/to/file.ipsw \
+#     --cpu 4 --memory 8GB --disk-size 80GB --display 1920x1080
+#
+#   # Step 2: run Setup Assistant automation (this file)
+#   lume setup uitest-golden \
+#     --unattended scripts/lume-tahoe-unattended.yaml \
+#     --debug --debug-dir ~/VMShare/lume-debug/
+#
+# Result: user 'lume' / password 'lume', SSH (Remote Login) enabled.
+#
+# The critical step this adds over the built-in 'tahoe' preset:
+#   sudo systemsetup -setremotelogin on  — enables SSH daemon at boot
+
+boot_wait: 30
+boot_commands:
+  # --- Setup Assistant: Language ---
+  - '<delay 5>'
+  - '<space>'
+  - "<wait 'English', timeout=120>"
+  - "<type 'English'>"
+  - '<delay 1>'
+  - '<enter>'
+  - '<delay 2>'
+
+  # --- Country ---
+  - "<wait 'Country or Region', timeout=30>"
+  - '<click_at 960,900>'
+  - "<type 'United States'>"
+  - '<enter>'
+  - "<click 'Continue'>"
+  - '<delay 2>'
+
+  # --- Transfer / Migration ---
+  - "<wait 'Transfer Your Data', timeout=30>"
+  - '<delay 5>'
+  - '<tab><tab><tab>'
+  - '<space>'
+  - "<click 'Continue'>"
+
+  # --- Accessibility ---
+  - "<wait 'Accessibility', timeout=30>"
+  - "<click 'Not Now'>"
+
+  # --- Create Account ---
+  - "<wait 'Create a Mac Account', timeout=30>"
+  - '<tab><tab><tab><tab><tab><tab>'
+  - "<type 'lume'>"
+  - '<tab><tab>'
+  - "<type 'lume'>"
+  - '<tab>'
+  - "<type 'lume'>"
+  - '<tab><tab><space>'
+  - "<click 'Continue'>"
+
+  # --- Terms ---
+  - "<wait 'Terms and Conditions', timeout=30>"
+  - "<click 'Agree', index=-1>"
+  - "<wait 'I have read and agree', timeout=10>"
+  - "<click 'Agree', index=0>"
+  - '<delay 10>'
+
+  # --- Wait for Desktop ---
+  - "<wait 'Desktop', timeout=120>"
+  - '<delay 5>'
+
+  # --- Enable SSH via Terminal ---
+  - "<cmd+space>"
+  - '<delay 1>'
+  - "<type 'Terminal'>"
+  - '<enter>'
+  - '<delay 3>'
+  - "<type 'sudo systemsetup -setremotelogin on\n'>"
+  - "<type 'lume\n'>"
+  - '<delay 2>'
+  - "<type 'echo SSH_ENABLED\n'>"
+  - "<wait 'SSH_ENABLED', timeout=15>"
+
+health_check:
+  type: ssh
+  user: lume
+  password: lume
+  timeout: 30
+  retries: 10
+  retry_delay: 10

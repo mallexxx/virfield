@@ -1,0 +1,25 @@
+boot_wait: 60
+boot_commands:
+  # Startup disk picker: navigate right twice to "Options", press Enter
+  - "<right>"
+  - "<right>"
+  - "<enter>"
+  - "<delay 10>"
+
+  # Open Terminal from Recovery Utilities menu (Option+T)
+  - "<option+t>"
+  - "<delay 10>"
+
+  # Disable SIP
+  - "<type 'csrutil disable'>"
+  - "<enter>"
+  - "<delay 5>"
+
+  # Confirm (macOS Tahoe may prompt for y/n)
+  - "<type 'y'>"
+  - "<enter>"
+  - "<delay 5>"
+
+  # Reboot
+  - "<type 'reboot'>"
+  - "<enter>"
