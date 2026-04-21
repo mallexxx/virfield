@@ -321,7 +321,7 @@ export async function peekabooType(vmId: string, vmIp: string, text: string, app
 export async function peekabooHotkey(vmId: string, vmIp: string, key: string, modifiers?: string[]) {
   return callPeekaboo(vmId, vmIp, 'tools/call', {
     name: 'hotkey',
-    arguments: { key, ...(modifiers ? { modifiers } : {}) },
+    arguments: { keys: key, ...(modifiers ? { modifiers } : {}) },
   });
 }
 
@@ -334,7 +334,7 @@ export async function peekabooScroll(vmId: string, vmIp: string, direction: stri
 
 export async function peekabooListApps(vmId: string, vmIp: string) {
   return callPeekaboo(vmId, vmIp, 'tools/call', {
-    name: 'list_apps',
+    name: 'list',
     arguments: {},
   });
 }

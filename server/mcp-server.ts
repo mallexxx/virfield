@@ -71,12 +71,12 @@ const tools: Tool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        name: { type: 'string', description: 'VM name' },
+        vm_id: { type: 'string', description: 'VM name' },
         cloneFromGolden: { type: 'boolean', description: 'Clone from golden image before starting' },
         goldenName: { type: 'string', description: 'Golden VM to clone from (default: auto-detected from DB)' },
         noDisplay: { type: 'boolean', description: 'Start without display (headless)', default: true },
       },
-      required: ['name'],
+      required: ['vm_id'],
     },
   },
   {
@@ -84,8 +84,8 @@ const tools: Tool[] = [
     description: 'Stop a running VM.',
     inputSchema: {
       type: 'object',
-      properties: { name: { type: 'string' } },
-      required: ['name'],
+      properties: { vm_id: { type: 'string' } },
+      required: ['vm_id'],
     },
   },
   {
@@ -105,8 +105,8 @@ const tools: Tool[] = [
     description: 'Delete a VM (use only for run/dev VMs, not golden).',
     inputSchema: {
       type: 'object',
-      properties: { name: { type: 'string' } },
-      required: ['name'],
+      properties: { vm_id: { type: 'string' } },
+      required: ['vm_id'],
     },
   },
   {
@@ -114,8 +114,8 @@ const tools: Tool[] = [
     description: 'Get the current IP address of a running VM.',
     inputSchema: {
       type: 'object',
-      properties: { name: { type: 'string' } },
-      required: ['name'],
+      properties: { vm_id: { type: 'string' } },
+      required: ['vm_id'],
     },
   },
   {
@@ -123,8 +123,8 @@ const tools: Tool[] = [
     description: 'Get full status of a VM including checklist and peekaboo connection.',
     inputSchema: {
       type: 'object',
-      properties: { name: { type: 'string' } },
-      required: ['name'],
+      properties: { vm_id: { type: 'string' } },
+      required: ['vm_id'],
     },
   },
   {
@@ -567,7 +567,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       }
 
       case 'vm_start': {
-        const vmName = String(a.name);
+        const vmName = String(a.vm_id ?? a.name);
         if (a.cloneFromGolden) {
           const goldenName = String(a.goldenName ?? db.listVMs().find(v => v.tag === 'golden')?.id ?? 'golden');
           await lume.cloneVM(goldenName, vmName);
@@ -579,8 +579,9 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       }
 
       case 'vm_stop': {
-        await lume.stopVM(String(a.name));
-        return { content: [{ type: 'text', text: `VM ${a.name} stopped` }] };
+        const stopName = String(a.vm_id ?? a.name);
+        await lume.stopVM(stopName);
+        return { content: [{ type: 'text', text: `VM ${stopName} stopped` }] };
       }
 
       case 'vm_clone_golden': {
@@ -592,20 +593,22 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       }
 
       case 'vm_delete': {
-        await lume.deleteVM(String(a.name));
-        db.deleteVM(String(a.name));
-        return { content: [{ type: 'text', text: `VM ${a.name} deleted` }] };
+        const delName = String(a.vm_id ?? a.name);
+        await lume.deleteVM(delName);
+        db.deleteVM(delName);
+        return { content: [{ type: 'text', text: `VM ${delName} deleted` }] };
       }
 
       case 'vm_get_ip': {
-        const vm = await lume.getVM(String(a.name));
+        const vm = await lume.getVM(String(a.vm_id ?? a.name));
         return { content: [{ type: 'text', text: vm.ipAddress ?? 'No IP (VM not running)' }] };
       }
 
       case 'vm_status': {
+        const statusName = String(a.vm_id ?? a.name);
         const [vm, stages] = await Promise.all([
-          lume.getVM(String(a.name)),
-          db.getStages(String(a.name)),
+          lume.getVM(statusName),
+          db.getStages(statusName),
         ]);
         const sshOk = vm.ipAddress ? await checkSSH(vm.ipAddress) : false;
         return {
