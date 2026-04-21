@@ -2,7 +2,7 @@
  * Peekaboo MCP proxy — routes MCP tool calls to the Peekaboo MCP server
  * running inside a specific VM, via an SSH port-forward tunnel.
  *
- * Each VM runs: socat TCP-LISTEN:7888 EXEC:peekaboo-mcp-stdio
+ * Each VM runs: socat TCP-LISTEN:4040 EXEC:peekaboo-mcp-stdio
  * We open: SSH -L localPort:127.0.0.1:7888 lume@vmIp
  * Then connect to localhost:localPort and speak MCP JSON-RPC over it.
  */

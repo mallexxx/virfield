@@ -143,7 +143,7 @@ while kill -0 "$SETUP_PID" 2>/dev/null; do
   if [[ "$_recorder_started" == "false" ]]; then
     if lume ls 2>/dev/null | grep -qE "^${VM_NAME}[[:space:]].*running"; then
       open_vnc_viewer "$VM_NAME"
-      start_recorder "$VM_NAME"
+      start_recorder "$VM_NAME" "setup-assistant"
       _recorder_started=true
     fi
   fi

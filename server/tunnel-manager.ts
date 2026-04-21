@@ -13,7 +13,7 @@ import { homedir } from 'os';
 import { existsSync } from 'fs';
 import { join } from 'path';
 
-const PEEKABOO_VM_PORT = 7888;
+const PEEKABOO_VM_PORT = 4040;
 const TUNNEL_PORT_BASE = 7900;
 const MAX_TUNNELS = 20;
 const VM_USER = 'lume';

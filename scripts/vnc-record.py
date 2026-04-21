@@ -162,6 +162,7 @@ ffmpeg = subprocess.Popen(
      "-i", "pipe:0",
      "-c:v", "libx264", "-pix_fmt", "yuv420p",
      "-preset", "fast",
+     "-movflags", "+faststart",
      OUT],
     stdin=subprocess.PIPE,
     stderr=subprocess.DEVNULL,
@@ -169,64 +170,84 @@ ffmpeg = subprocess.Popen(
 
 
 # ── Capture loop ──────────────────────────────────────────────────────────────
+#
+# Design: VNC updates and ffmpeg frame writes are DECOUPLED.
+#   • We request incremental updates as fast as the server delivers them,
+#     compositing each rect into framebuf.
+#   • We write framebuf to ffmpeg only when the wall-clock frame interval
+#     elapses — not once per VNC FramebufferUpdate.
+#
+# Why: lume's VNC proxy often sends the screen as several sequential
+# FramebufferUpdate messages (one per quadrant).  Writing after each update
+# produces frames where only one quadrant is current, causing the "4-quadrant
+# blinking" artefact.  Time-based writes ensure every ffmpeg frame shows the
+# most-recently composited full screen.
 
 framebuf  = bytearray(width * height * 4)  # always BGRA
-sock.settimeout(15)
 frame_idx = 0
+
+def read_vnc_update() -> None:
+    """Read one FramebufferUpdate and composite all its rects into framebuf."""
+    while True:
+        msg_type = struct.unpack("B", read_exactly(sock, 1))[0]
+        if msg_type == 0:    # FramebufferUpdate
+            break
+        elif msg_type == 2:  # Bell — ignore
+            pass
+        elif msg_type == 3:  # ServerCutText — discard
+            read_exactly(sock, 3)
+            n = struct.unpack(">I", read_exactly(sock, 4))[0]
+            read_exactly(sock, n)
+        else:
+            raise ValueError(f"Unexpected VNC msg type {msg_type}")
+
+    read_exactly(sock, 1)   # padding
+    num_rects = struct.unpack(">H", read_exactly(sock, 2))[0]
+
+    for _ in range(num_rects):
+        rx, ry, rw, rh, enc = struct.unpack(">HHHHi", read_exactly(sock, 12))
+        if enc != 0:
+            print(f"Non-raw encoding {enc} — skipping rect", file=sys.stderr)
+            continue
+        raw = read_exactly(sock, rw * rh * bytes_per_pixel)
+        bgra = pixels_to_bgra(raw, rw * rh)
+        for row in range(rh):
+            src = row * rw * 4
+            dst = ((ry + row) * width + rx) * 4
+            framebuf[dst : dst + rw * 4] = bgra[src : src + rw * 4]
+
+# Seed framebuf with the initial full screen.
+sock.settimeout(30)
+sock.sendall(struct.pack(">BBHHHH", 3, 0, 0, 0, width, height))  # full update
+read_vnc_update()
+print("Initial frame captured, starting recording loop", flush=True)
+
+# Short timeout so we poll the server quickly without blocking between frames.
+sock.settimeout(max(0.02, INTERVAL / 4))
+
+next_frame_t = time.monotonic()
 
 try:
     while running:
-        t0 = time.monotonic()
-
-        # Request full framebuffer update (incremental=0)
-        sock.sendall(struct.pack(">BBHHHH", 3, 0, 0, 0, width, height))
-
+        # Request an incremental update and composite whatever arrives.
         try:
-            while True:
-                msg_type = struct.unpack("B", read_exactly(sock, 1))[0]
-                if msg_type == 0:    # FramebufferUpdate
-                    break
-                elif msg_type == 2:  # Bell — ignore
-                    pass
-                elif msg_type == 3:  # ServerCutText — discard
-                    read_exactly(sock, 3)
-                    n = struct.unpack(">I", read_exactly(sock, 4))[0]
-                    read_exactly(sock, n)
-                else:
-                    print(f"Unexpected msg type {msg_type}, stopping", file=sys.stderr)
-                    running = False
-                    break
-
-            if not running:
-                break
-
-            read_exactly(sock, 1)   # padding
-            num_rects = struct.unpack(">H", read_exactly(sock, 2))[0]
-
-            for _ in range(num_rects):
-                rx, ry, rw, rh, enc = struct.unpack(">HHHHi", read_exactly(sock, 12))
-                if enc != 0:
-                    print(f"Non-raw encoding {enc} — skipping rect", file=sys.stderr)
-                    continue
-                raw = read_exactly(sock, rw * rh * bytes_per_pixel)
-                bgra = pixels_to_bgra(raw, rw * rh)
-                for row in range(rh):
-                    src = row * rw * 4
-                    dst = ((ry + row) * width + rx) * 4
-                    framebuf[dst : dst + rw * 4] = bgra[src : src + rw * 4]
-
-        except (socket.timeout, ConnectionError) as e:
+            sock.sendall(struct.pack(">BBHHHH", 3, 1, 0, 0, width, height))
+            read_vnc_update()
+        except socket.timeout:
+            pass   # server had nothing new — fine, we'll repeat the current frame
+        except ConnectionError as e:
             print(f"Socket error: {e} — retrying", file=sys.stderr)
-            time.sleep(1)
+            time.sleep(0.5)
             continue
 
-        ffmpeg.stdin.write(framebuf)
-        frame_idx += 1
-
-        elapsed = time.monotonic() - t0
-        sleep_t = INTERVAL - elapsed
-        if sleep_t > 0:
-            time.sleep(sleep_t)
+        # Write one frame to ffmpeg when the interval has elapsed.
+        now = time.monotonic()
+        if now >= next_frame_t:
+            ffmpeg.stdin.write(bytes(framebuf))
+            frame_idx += 1
+            next_frame_t += INTERVAL
+            if next_frame_t < now:   # fell behind — skip ahead, don't flood
+                next_frame_t = now + INTERVAL
 
 finally:
     sock.close()

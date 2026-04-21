@@ -57,7 +57,7 @@ export function RecordingsTab({ vmId }: Props) {
             className="w-full max-h-72"
           />
           <div className="flex items-center justify-between px-3 py-1.5 text-[10px] text-gray-500">
-            <span className="truncate">{active.name}</span>
+            <span className="truncate font-mono" title={active.path}>{active.path}</span>
             <a
               href={mediaUrl(active.path)}
               download={active.name}
@@ -82,7 +82,7 @@ export function RecordingsTab({ vmId }: Props) {
             }`}
           >
             <span className="text-lg leading-none">▶</span>
-            <span className="flex-1 min-w-0 truncate">{r.name}</span>
+            <span className="flex-1 min-w-0 truncate font-mono text-[10px]" title={r.path}>{r.path}</span>
             <span className="text-gray-600 shrink-0">{formatBytes(r.size)}</span>
             <span className="text-gray-700 shrink-0 text-[10px]">{formatDate(r.mtime)}</span>
           </button>

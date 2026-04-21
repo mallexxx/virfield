@@ -373,8 +373,47 @@ if want tcc; then
   _HAS_BOOT="$(sudo sqlite3 "$TCC_DB" \
     "SELECT COUNT(*) FROM pragma_table_info('access') WHERE name='boot_uuid';" 2>/dev/null || echo 0)"
 
+  # Generate a binary csreq blob from a code-signing requirement string.
+  # macOS 14+ requires a valid csreq for kTCCServiceRemoteDesktop to be honored;
+  # without it tccd ignores the row and shows the permission dialog anyway.
+  _csreq_hex() {
+    python3 - "$1" 2>/dev/null <<'PYEOF'
+import ctypes, sys
+req_str_in = sys.argv[1].encode()
+Security = ctypes.CDLL("/System/Library/Frameworks/Security.framework/Security")
+CF = ctypes.CDLL("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation")
+CF.CFStringCreateWithCString.restype = ctypes.c_void_p
+CF.CFStringCreateWithCString.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint32]
+CF.CFDataGetLength.restype = ctypes.c_long
+CF.CFDataGetBytePtr.restype = ctypes.c_void_p
+Security.SecRequirementCreateWithString.restype = ctypes.c_int32
+Security.SecRequirementCreateWithString.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.POINTER(ctypes.c_void_p)]
+Security.SecRequirementCopyData.restype = ctypes.c_int32
+Security.SecRequirementCopyData.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.POINTER(ctypes.c_void_p)]
+cf_str = CF.CFStringCreateWithCString(None, req_str_in, 0x08000100)
+req_ref = ctypes.c_void_p()
+if Security.SecRequirementCreateWithString(cf_str, 0, ctypes.byref(req_ref)) != 0: sys.exit(1)
+data_ref = ctypes.c_void_p()
+if Security.SecRequirementCopyData(req_ref, 0, ctypes.byref(data_ref)) != 0: sys.exit(1)
+length = CF.CFDataGetLength(data_ref)
+ptr = CF.CFDataGetBytePtr(data_ref)
+blob = (ctypes.c_uint8 * length).from_address(ptr)
+print(bytes(blob).hex())
+PYEOF
+  }
+
+  _TERMINAL_CSREQ_HEX="$(_csreq_hex 'identifier "com.apple.Terminal" and anchor apple')"
+  _SSHD_CSREQ_HEX="$(_csreq_hex 'identifier "com.apple.sshd-keygen-wrapper" and anchor apple')"
+  [[ -n "$_TERMINAL_CSREQ_HEX" ]] && echo "  csreq: Terminal (${#_TERMINAL_CSREQ_HEX} hex chars)" \
+                                   || echo "  WARNING: failed to generate Terminal csreq"
+  [[ -n "$_SSHD_CSREQ_HEX" ]]     && echo "  csreq: sshd-keygen-wrapper (${#_SSHD_CSREQ_HEX} hex chars)" \
+                                   || echo "  WARNING: failed to generate sshd-keygen-wrapper csreq"
+
+  # tcc_grant SVC CLIENT CLIENT_TYPE [CSREQ_HEX]
   tcc_grant() {
-    local SVC="$1" CLIENT="$2" CLIENT_TYPE="$3"
+    local SVC="$1" CLIENT="$2" CLIENT_TYPE="$3" CSREQ_HEX="${4:-}"
+    local CSREQ_SQL="NULL"
+    [[ -n "$CSREQ_HEX" ]] && CSREQ_SQL="X'${CSREQ_HEX}'"
     local _ok=false
     if [[ "$_HAS_BOOT" == "1" ]]; then
       # macOS 14+ full schema
@@ -385,7 +424,7 @@ if want tcc; then
             indirect_object_identifier,indirect_object_code_identity,
             flags,last_modified,pid,pid_version,boot_uuid,last_reminded)
          VALUES(\"$SVC\",\"$CLIENT\",$CLIENT_TYPE,2,4,1,
-                NULL,NULL,NULL,\"UNUSED\",NULL,0,$NOW,NULL,NULL,\"UNUSED\",$NOW);" 2>/dev/null \
+                ${CSREQ_SQL},NULL,NULL,\"UNUSED\",NULL,0,$NOW,NULL,NULL,\"UNUSED\",$NOW);" 2>/dev/null \
         && _ok=true
     elif [[ "$_HAS_AUTH" == "1" ]]; then
       # macOS 12–13 schema (no pid/boot_uuid/last_reminded columns)
@@ -396,7 +435,7 @@ if want tcc; then
             indirect_object_identifier,indirect_object_code_identity,
             flags,last_modified)
          VALUES(\"$SVC\",\"$CLIENT\",$CLIENT_TYPE,2,4,1,
-                NULL,NULL,NULL,\"UNUSED\",NULL,0,$NOW);" 2>/dev/null \
+                ${CSREQ_SQL},NULL,NULL,\"UNUSED\",NULL,0,$NOW);" 2>/dev/null \
         && _ok=true
     else
       # macOS 11 schema (uses 'allowed'/'prompt_count' instead of auth_* columns)
@@ -407,21 +446,21 @@ if want tcc; then
             indirect_object_identifier,indirect_object_code_identity,
             flags,last_modified)
          VALUES(\"$SVC\",\"$CLIENT\",$CLIENT_TYPE,1,0,
-                NULL,NULL,NULL,\"UNUSED\",NULL,0,$NOW);" 2>/dev/null \
+                ${CSREQ_SQL},NULL,NULL,\"UNUSED\",NULL,0,$NOW);" 2>/dev/null \
         && _ok=true
     fi
     $_ok && echo "  $SVC → $CLIENT: granted" \
          || echo "  WARNING: $SVC → $CLIENT grant failed (SIP enabled?)"
   }
 
-  # Terminal.app (bundle-ID based, client_type=0)
+  # Terminal.app (bundle-ID based, client_type=0) — csreq required for RemoteDesktop on macOS 14+
   for SVC in kTCCServiceScreenCapture kTCCServiceRemoteDesktop kTCCServiceAccessibility kTCCServiceDeveloperTool; do
-    tcc_grant "$SVC" "com.apple.Terminal" 0
+    tcc_grant "$SVC" "com.apple.Terminal" 0 "$_TERMINAL_CSREQ_HEX"
   done
 
   # sshd-keygen-wrapper (path-based, client_type=1)
   for SVC in kTCCServiceScreenCapture kTCCServiceRemoteDesktop kTCCServiceAccessibility; do
-    tcc_grant "$SVC" "/usr/libexec/sshd-keygen-wrapper" 1
+    tcc_grant "$SVC" "/usr/libexec/sshd-keygen-wrapper" 1 "$_SSHD_CSREQ_HEX"
   done
 
   sudo killall tccd 2>/dev/null || true

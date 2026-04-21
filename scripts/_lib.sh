@@ -561,13 +561,18 @@ _REC_OUT=""
 
 start_recorder() {
   local vm="$1"
+  local stage="${2:-}"          # optional stage name, e.g. "setup-assistant"
   if [[ "$RECORD" != "true" ]]; then return; fi
   local out
   if [[ -n "$RECORD_OUTPUT" ]]; then
     out="$RECORD_OUTPUT"
   else
     local ts; ts="$(date +%Y%m%d-%H%M%S)"
-    out="$RECORDINGS_DIR/${ts}-${vm}-recording.mp4"
+    if [[ -n "$stage" ]]; then
+      out="$RECORDINGS_DIR/${ts}-${vm}-${stage}-recording.mp4"
+    else
+      out="$RECORDINGS_DIR/${ts}-${vm}-recording.mp4"
+    fi
   fi
   _REC_OUT="$out"
   log "  Starting recorder → $out"
