@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # 02-setup-assistant.sh — Phase 2: Automate macOS Setup Assistant.
 #
-# Runs 'lume setup --unattended tahoe', which manages the VM lifecycle
+# Runs 'lume setup --unattended <preset>', which manages the VM lifecycle
 # internally (boot, reboots during setup, VNC automation). We run it in the
 # background to surface step-by-step progress in the state JSON and build log,
 # apply a hard timeout, and start the VNC recorder once the VM is up.
+# Preset is 'tahoe' for macOS 26+, 'sequoia' for macOS 11–15 (default).
 #
 # After setup completes, boots the VM if needed, waits for SSH, then stops.
 #
@@ -28,9 +29,10 @@ usage() {
   cat <<EOF
 02-setup-assistant.sh — Phase 2: Automate macOS Setup Assistant
 
-Runs 'lume setup --unattended tahoe' which boots the VM, automates the Setup
-Assistant via VNC (167 steps for macOS 26 Tahoe), and creates the 'lume' user
-with SSH enabled. lume setup manages the VM lifecycle including mid-setup reboots.
+Runs 'lume setup --unattended <preset>' which boots the VM, automates the Setup
+Assistant via VNC, and creates the 'lume' user with SSH enabled. lume setup
+manages the VM lifecycle including mid-setup reboots.
+Preset: 'tahoe' for macOS 26+ (167 steps), 'sequoia' for macOS 11–15.
 
 Usage:
   02-setup-assistant.sh [options]
@@ -95,9 +97,11 @@ if lume ls 2>/dev/null | grep -qE "^${VM_NAME}[[:space:]].*running"; then
   sleep 3
 fi
 
-# SETUP_PRESET is set by the caller (build-golden-vm.sh) via --setup-preset,
-# defaulting to the built-in 'tahoe' preset.
-: "${SETUP_PRESET:=tahoe}"
+# SETUP_PRESET is exported by build-golden-vm.sh (which detects the correct preset
+# from the IPSW version).  When run standalone, default to 'sequoia' — the safer
+# choice because it covers macOS 11–15; use SETUP_PRESET=tahoe or export it from
+# the caller to build macOS 26+ VMs.
+: "${SETUP_PRESET:=sequoia}"
 
 # ── lume setup ───────────────────────────────────────────────────────────────
 # lume setup boots the VM internally, handles mid-setup reboots, automates

@@ -220,19 +220,11 @@ buildRouter.post('/vms/build-golden', (req: Request, res: Response) => { try {
     });
   }
 
-  // Prevent duplicate builds for the same golden VM (or any of its intermediates).
+  // Prevent duplicate builds for the same golden VM.
   const alreadyBuilding = activeBuildVmIds();
-  // Derive the intermediate names to check all three
-  const _prefix0 = goldenVm.replace(/-golden$/, '');
-  if ([goldenVm, `${_prefix0}-base`, `${_prefix0}-nosip`].some(id => alreadyBuilding.has(id))) {
+  if (alreadyBuilding.has(goldenVm)) {
     return void res.status(409).json({ error: `Build for '${goldenVm}' is already running. Stop it first.` });
   }
-
-  // Always derive base/nosip names from goldenVm so all 3 VMs share the same prefix.
-  // e.g. macos-15.4-golden → macos-15.4-base, macos-15.4-nosip
-  const prefix = goldenVm.replace(/-golden$/, '');
-  const baseVm  = `${prefix}-base`;
-  const nosipVm = `${prefix}-nosip`;
 
   const args: string[] = ['--ipsw', ipsw];
   if (xcode)           args.push('--xcode', xcode);
@@ -250,12 +242,9 @@ buildRouter.post('/vms/build-golden', (req: Request, res: Response) => { try {
   args.push('--vm', goldenVm);
   args.push('--vmshare', VMSHARE);
 
-  // Seed all three VM rows + stage rows (golden gets all 4 stages for tracking;
-  // base/nosip are intermediate VMs — just register them so they appear in the list)
+  // Single-VM pipeline: register just the golden VM and seed its stage rows.
   const finalGolden = goldenVm;
   db.upsertVM({ id: finalGolden, tag: 'golden' });
-  db.upsertVM({ id: baseVm,  tag: 'dev' });
-  db.upsertVM({ id: nosipVm, tag: 'dev' });
   for (const stage of STAGE_ORDER) {
     db.setStageStatus(finalGolden, stage, 'pending');
   }
@@ -282,8 +271,8 @@ buildRouter.post('/vms/build-golden', (req: Request, res: Response) => { try {
   proc.unref();
 
   const startedAt = new Date().toISOString();
-  activeBuildMap.set(finalGolden, { pid: proc.pid!, proc, goldenVm: finalGolden, baseVm, nosipVm, startedAt });
-  db.upsertBuildJob(finalGolden, baseVm, nosipVm, proc.pid!);
+  activeBuildMap.set(finalGolden, { pid: proc.pid!, proc, goldenVm: finalGolden, baseVm: finalGolden, nosipVm: finalGolden, startedAt });
+  db.upsertBuildJob(finalGolden, finalGolden, finalGolden, proc.pid!);
 
   proc.stdout?.on('data', (d: Buffer) => process.stdout.write(`[build:${finalGolden}] ${d}`));
   proc.stderr?.on('data', (d: Buffer) => process.stderr.write(`[build:${finalGolden}] ${d}`));

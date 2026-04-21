@@ -7,7 +7,7 @@ type StageKey = (typeof STAGE_ORDER)[number];
 
 const STAGE_LABELS: Record<StageKey, string> = {
   download_ipsw:   'Download macOS IPSW',
-  create_vm:       'Create base VM',
+  create_vm:       'Create VM',
   setup_assistant: 'Setup Assistant',
   disable_sip:     'Disable SIP',
   provision_vm:    'Install Xcode & tools',
@@ -39,8 +39,6 @@ interface StageRunOpts {
   ipsw?: string;
   xcode?: string;
   tools?: string;
-  baseVm?: string;
-  nosipVm?: string;
 }
 
 function statusDot(status: BuildStageInfo['status'] | 'pending') {
@@ -394,8 +392,6 @@ export function StageRunner({ vm, onRefresh }: Props) {
         ipsw: opts.ipsw || 'latest',
         xcode: opts.xcode || undefined,
         tools: opts.tools || undefined,
-        baseVm: opts.baseVm ?? `${vm.name}-base`,
-        nosipVm: opts.nosipVm ?? `${vm.name}-nosip`,
       });
 
       // Refresh immediately so the 'running' state is visible without waiting 3s

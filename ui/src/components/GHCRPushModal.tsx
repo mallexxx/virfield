@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useGet, apiPost } from '../hooks/useAPI.ts';
 
 interface GhcrSource {
@@ -19,13 +19,15 @@ interface GhcrTask {
 interface Props {
   vmName: string;
   onClose: () => void;
+  /** Called as soon as a push task is created so the parent can track it inline. */
+  onTaskStarted?: (taskId: string, label: string) => void;
 }
 
 function today() {
   return new Date().toISOString().slice(0, 10).replace(/-/g, '');
 }
 
-export function GHCRPushModal({ vmName, onClose }: Props) {
+export function GHCRPushModal({ vmName, onClose, onTaskStarted }: Props) {
   const { data: sources } = useGet<GhcrSource[]>('/ghcr/sources');
   const { data: settings } = useGet<{ github_token_set: boolean }>('/settings');
 
@@ -37,6 +39,7 @@ export function GHCRPushModal({ vmName, onClose }: Props) {
   const [taskId, setTaskId] = useState<string | null>(null);
   const [task, setTask] = useState<GhcrTask | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const logRef = useRef<HTMLPreElement>(null);
 
   // Auto-select default source
   useEffect(() => {
@@ -46,15 +49,10 @@ export function GHCRPushModal({ vmName, onClose }: Props) {
     }
   }, [sources, sourceId]);
 
-  // Auto-fill image name from VM name
+  // Auto-fill image name + tag from VM name
   useEffect(() => {
-    if (!imageName) {
-      // uitest-26.4.1-golden → uitest-golden
-      const base = vmName.replace(/-\d+[\d.]*-/g, '-').replace(/-golden$/, '-golden');
-      setImageName(base);
-    }
+    if (!imageName) setImageName(vmName);
     if (!tag) {
-      // Extract version from VM name if possible, append date
       const match = vmName.match(/(\d+[\d.]+)/);
       const ver = match ? match[1] : '';
       setTag(ver ? `${ver}-${today()}` : today());
@@ -62,7 +60,7 @@ export function GHCRPushModal({ vmName, onClose }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vmName]);
 
-  // Poll task
+  // Poll task while running
   useEffect(() => {
     if (!taskId) return;
     const poll = async () => {
@@ -71,9 +69,7 @@ export function GHCRPushModal({ vmName, onClose }: Props) {
         if (resp.ok) {
           const t = await resp.json() as GhcrTask;
           setTask(t);
-          if (['done', 'failed', 'cancelled'].includes(t.status)) {
-            setPushing(false);
-          }
+          if (['done', 'failed', 'cancelled'].includes(t.status)) setPushing(false);
         }
       } catch { /* ignore */ }
     };
@@ -82,20 +78,28 @@ export function GHCRPushModal({ vmName, onClose }: Props) {
     return () => clearInterval(interval);
   }, [taskId]);
 
+  // Auto-scroll log to bottom
+  useEffect(() => {
+    if (logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
+  }, [task?.log]);
+
   async function doPush() {
     if (!imageName || !tag || !sourceId) return;
     setError(null);
     setPushing(true);
     try {
-      const extra = additionalTags
-        .split(',')
-        .map(t => t.trim())
-        .filter(Boolean);
+      const extra = additionalTags.split(',').map(t => t.trim()).filter(Boolean);
       const result = await apiPost('/ghcr/push', {
-        vmName, imageName, tag, sourceId,
-        additionalTags: extra,
+        vmName, imageName, tag, sourceId, additionalTags: extra,
       }) as { taskId: string };
       setTaskId(result.taskId);
+      const src = (sources ?? []).find(s => s.id === sourceId);
+      const label = src
+        ? `${src.registry}/${src.organization}/${imageName}:${tag}`
+        : `${imageName}:${tag}`;
+      onTaskStarted?.(result.taskId, label);
     } catch (err) {
       setError(String(err));
       setPushing(false);
@@ -121,7 +125,7 @@ export function GHCRPushModal({ vmName, onClose }: Props) {
             <h2 className="text-sm font-semibold text-gray-100">Push to GHCR</h2>
             <p className="text-[10px] text-gray-500 font-mono mt-0.5">{vmName}</p>
           </div>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-300 text-lg leading-none">×</button>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-300 text-lg leading-none" title={pushing ? 'Minimise — push continues in background' : 'Close'}>×</button>
         </div>
 
         <div className="p-5 space-y-4">
@@ -155,18 +159,14 @@ export function GHCRPushModal({ vmName, onClose }: Props) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs text-gray-400 mb-1">Image Name</label>
-              <input
-                value={imageName}
-                onChange={e => setImageName(e.target.value)}
+              <input value={imageName} onChange={e => setImageName(e.target.value)}
                 placeholder="uitest-golden"
                 className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-orange-500/60 font-mono"
               />
             </div>
             <div>
               <label className="block text-xs text-gray-400 mb-1">Tag</label>
-              <input
-                value={tag}
-                onChange={e => setTag(e.target.value)}
+              <input value={tag} onChange={e => setTag(e.target.value)}
                 placeholder="26.4.1-20260419"
                 className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-orange-500/60 font-mono"
               />
@@ -175,10 +175,10 @@ export function GHCRPushModal({ vmName, onClose }: Props) {
 
           {/* Additional tags */}
           <div>
-            <label className="block text-xs text-gray-400 mb-1">Additional Tags <span className="text-gray-600">(comma-separated, optional)</span></label>
-            <input
-              value={additionalTags}
-              onChange={e => setAdditionalTags(e.target.value)}
+            <label className="block text-xs text-gray-400 mb-1">
+              Additional Tags <span className="text-gray-600">(comma-separated, optional)</span>
+            </label>
+            <input value={additionalTags} onChange={e => setAdditionalTags(e.target.value)}
               placeholder="e.g. 26.4.1-latest, latest"
               className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-orange-500/60 font-mono"
             />
@@ -196,11 +196,8 @@ export function GHCRPushModal({ vmName, onClose }: Props) {
             </div>
           )}
 
-          {/* Error */}
           {error && (
-            <div className="p-2 bg-red-900/20 border border-red-800/40 rounded text-xs text-red-300">
-              {error}
-            </div>
+            <div className="p-2 bg-red-900/20 border border-red-800/40 rounded text-xs text-red-300">{error}</div>
           )}
 
           {/* Live log */}
@@ -213,17 +210,14 @@ export function GHCRPushModal({ vmName, onClose }: Props) {
                   {taskDone ? '✓ Push complete' : taskFailed ? `✗ ${task?.error ?? 'Failed'}` : '⟳ Pushing…'}
                 </span>
                 {taskDone && selectedSource && (
-                  <a
-                    href={`https://${selectedSource.registry}/${selectedSource.organization}/${imageName}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-[10px] text-blue-400 hover:underline"
-                  >
+                  <a href={`https://${selectedSource.registry}/${selectedSource.organization}/${imageName}`}
+                    target="_blank" rel="noreferrer" className="text-[10px] text-blue-400 hover:underline">
                     View on GHCR ↗
                   </a>
                 )}
               </div>
-              <pre className="bg-gray-950 border border-gray-800 rounded p-2 text-[10px] text-gray-400 font-mono overflow-auto max-h-48 whitespace-pre-wrap">
+              <pre ref={logRef}
+                className="bg-gray-950 border border-gray-800 rounded p-2 text-[10px] text-gray-400 font-mono overflow-auto max-h-48 whitespace-pre-wrap">
                 {task?.log || '(waiting for output…)'}
               </pre>
             </div>
@@ -232,26 +226,25 @@ export function GHCRPushModal({ vmName, onClose }: Props) {
 
         <div className="px-5 py-4 border-t border-gray-800 flex items-center justify-end gap-3">
           {pushing && !taskDone ? (
-            <button
-              onClick={cancel}
-              className="text-xs px-3 py-1.5 bg-red-500/20 text-red-300 border border-red-500/40 rounded hover:bg-red-500/30"
-            >
-              Cancel
-            </button>
+            <>
+              <button onClick={cancel}
+                className="text-xs px-3 py-1.5 bg-red-500/20 text-red-300 border border-red-500/40 rounded hover:bg-red-500/30">
+                Cancel
+              </button>
+              <button onClick={onClose}
+                className="text-xs px-3 py-1.5 text-gray-400 hover:text-gray-200 hover:bg-gray-800 rounded">
+                Minimise
+              </button>
+            </>
           ) : (
-            <button
-              onClick={onClose}
-              className="text-xs px-3 py-1.5 text-gray-400 hover:text-gray-200 hover:bg-gray-800 rounded"
-            >
+            <button onClick={onClose}
+              className="text-xs px-3 py-1.5 text-gray-400 hover:text-gray-200 hover:bg-gray-800 rounded">
               {taskDone ? 'Close' : 'Cancel'}
             </button>
           )}
           {!taskDone && (
-            <button
-              onClick={doPush}
-              disabled={!canPush}
-              className="text-xs px-4 py-1.5 bg-orange-500/20 text-orange-300 border border-orange-500/40 rounded hover:bg-orange-500/30 disabled:opacity-40"
-            >
+            <button onClick={doPush} disabled={!canPush}
+              className="text-xs px-4 py-1.5 bg-orange-500/20 text-orange-300 border border-orange-500/40 rounded hover:bg-orange-500/30 disabled:opacity-40">
               {pushing ? 'Pushing…' : '↑ Push to GHCR'}
             </button>
           )}

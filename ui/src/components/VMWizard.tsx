@@ -14,11 +14,17 @@ import { apiPost, useIPSW, useIPSWCatalog, useXcode, useVMs, useProvisionTools, 
 const STAGE_ORDER = ['download_ipsw', 'create_vm', 'setup_assistant', 'disable_sip', 'provision_vm'] as const;
 const STAGE_LABELS: Record<string, string> = {
   download_ipsw:   'Download macOS IPSW',
-  create_vm:       'Create base VM',
+  create_vm:       'Create VM',
   setup_assistant: 'Setup Assistant',
   disable_sip:     'Disable SIP',
   provision_vm:    'Install Xcode & tools',
 };
+
+/** Returns true when the IPSW is a local file path (no download needed). */
+function isLocalIpsw(path: string | null): boolean {
+  if (!path) return false;
+  return path.startsWith('/') || path.endsWith('.ipsw');
+}
 // state.json stage key → UI stage key
 const STATE_KEY_MAP: Record<string, string> = {
   '00-download-ipsw':   'download_ipsw',
@@ -232,10 +238,7 @@ function BuildGoldenWizard({ onClose, onCreated }: Props) {
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
 
-  // Base VM name is deterministic from goldenVm (strip -golden, add -base)
-  const baseVmName = goldenVm.replace(/-golden$/, '') + '-base';
-
-  async function openVNC(vmName = baseVmName) {
+  async function openVNC(vmName = goldenVm) {
     try {
       const resp = await fetch(`/api/vms/${encodeURIComponent(vmName)}`);
       if (!resp.ok) return;
@@ -250,8 +253,8 @@ function BuildGoldenWizard({ onClose, onCreated }: Props) {
   useEffect(() => {
     if (!openVnc || !buildState?.stages) return;
     const VNC_PHASES: Record<string, string> = {
-      '02-setup-assistant': baseVmName,
-      '03-disable-sip':     goldenVm.replace(/-golden$/, '') + '-nosip',
+      '02-setup-assistant': goldenVm,
+      '03-disable-sip':     goldenVm,
     };
     for (const [stateKey, vmName] of Object.entries(VNC_PHASES)) {
       const stage = buildState.stages[stateKey];
@@ -270,6 +273,10 @@ function BuildGoldenWizard({ onClose, onCreated }: Props) {
     const phases = mergedPhases();
     const overallStatus = buildState?.status;
 
+    const visibleStages = STAGE_ORDER.filter(
+      key => key !== 'download_ipsw' || !isLocalIpsw(selectedIpsw),
+    );
+
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -278,7 +285,7 @@ function BuildGoldenWizard({ onClose, onCreated }: Props) {
             <button
               onClick={openVNC}
               className="text-[10px] px-2 py-1 bg-purple-600/20 text-purple-300 border border-purple-600/40 rounded hover:bg-purple-600/30"
-              title={`Open Screen Sharing to ${baseVmName}`}
+              title={`Open Screen Sharing to ${goldenVm}`}
             >
               Screen Sharing
             </button>
@@ -295,7 +302,7 @@ function BuildGoldenWizard({ onClose, onCreated }: Props) {
         )}
 
         <div className="space-y-2">
-          {STAGE_ORDER.map(key => {
+          {visibleStages.map(key => {
             const info = phases[key];
             // Use label from state.json if available, fall back to our constant
             const label = info.label ?? STAGE_LABELS[key];
@@ -525,9 +532,7 @@ function BuildGoldenWizard({ onClose, onCreated }: Props) {
           <p className="mt-0.5 text-[10px] text-red-400">A VM named "{goldenVm}" already exists</p>
         )}
         {!nameConflict && goldenVm && (
-          <p className="mt-0.5 text-[10px] text-gray-600">
-            Also creates: {goldenVm.replace(/-golden$/, '')}-base, {goldenVm.replace(/-golden$/, '')}-nosip
-          </p>
+          <p className="mt-0.5 text-[10px] text-gray-600">Single VM — all 4 phases run in-place on this VM.</p>
         )}
       </div>
 

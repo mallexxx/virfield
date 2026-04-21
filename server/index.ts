@@ -9,6 +9,10 @@ import expressWs from 'express-ws';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { existsSync, utimesSync } from 'fs';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+
+const execFileAsync = promisify(execFile);
 import { ensureLumeServe, stopLumeServe, isLumeServeProcessAlive } from './lume.js';
 import { resetOrphanedStages } from './db.js';
 import { closeAllTunnels, cleanStaleTunnels } from './tunnel-manager.js';
@@ -94,6 +98,13 @@ wsApp.post('/api/host/lume-restart', async (_req, res) => {
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
+});
+
+
+// Returns the absolute path to mcp-server.ts so the UI can show copy-paste configs.
+wsApp.get('/api/host/mcp-server-path', (_req, res) => {
+  const mcpPath = join(dirname(fileURLToPath(import.meta.url)), 'mcp-server.ts');
+  res.json({ path: mcpPath });
 });
 
 // Restart the backend server itself by touching this file — tsx watch detects

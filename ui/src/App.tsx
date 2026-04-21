@@ -5,8 +5,9 @@ import { XcodePanel } from './components/XcodePanel.tsx';
 import { StoragePanel } from './components/StoragePanel.tsx';
 import { GoldenPanel } from './components/GoldenPanel.tsx';
 import { SettingsPanel } from './components/SettingsPanel.tsx';
+import { MCPSetupPanel } from './components/MCPSetupPanel.tsx';
 
-type Tab = 'vms' | 'ipsw' | 'xcode' | 'storage' | 'golden' | 'settings';
+type Tab = 'vms' | 'ipsw' | 'xcode' | 'storage' | 'golden' | 'mcp' | 'settings';
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'vms',      label: 'VMs' },
@@ -14,6 +15,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'xcode',    label: 'Xcode' },
   { id: 'storage',  label: 'Storage' },
   { id: 'golden',   label: 'Golden Images' },
+  { id: 'mcp',      label: 'MCP Setup' },
 ];
 
 export default function App() {
@@ -135,6 +137,7 @@ export default function App() {
         {tab === 'xcode'    && <XcodePanel />}
         {tab === 'storage'  && <StoragePanel />}
         {tab === 'golden'   && <GoldenPanel />}
+        {tab === 'mcp'      && <MCPSetupPanel />}
         {tab === 'settings' && <SettingsPanel />}
       </main>
     </div>

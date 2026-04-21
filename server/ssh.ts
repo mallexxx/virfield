@@ -196,8 +196,8 @@ export async function checkSSH(ip: string): Promise<boolean> {
 export type LogSource = 'app-console' | 'ui-tests' | 'peekaboo-mcp' | 'socat';
 
 const LOG_PATHS: Record<LogSource, string> = {
-  'app-console': '/tmp/ddg-app-console.log',
-  'ui-tests': '/tmp/ddg-ui-tests.log',
+  'app-console': '/tmp/app-console.log',
+  'ui-tests': '/tmp/ui-tests.log',
   'peekaboo-mcp': '/tmp/peekaboo-mcp.log',
   'socat': '/tmp/socat.log',
 };

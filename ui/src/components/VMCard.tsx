@@ -4,6 +4,9 @@ import { StageRunner } from './StageRunner.tsx';
 import { LogViewer } from './LogViewer.tsx';
 import { RecordingsTab } from './RecordingsTab.tsx';
 import { ScreenshotsTab } from './ScreenshotsTab.tsx';
+import { GHCRPushModal } from './GHCRPushModal.tsx';
+
+interface GhcrTask { id: string; status: string; error?: string; log: string; }
 
 interface LogFileEntry { name: string; size: number; mtime: number; }
 
@@ -152,6 +155,11 @@ export function VMCard({ vm, onRefresh, isBeingBuilt, onStopBuild }: Props) {
   const stopConfirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [sshOpen, setSshOpen] = useState(false);
   const sshRef = useRef<HTMLDivElement>(null);
+  const [showGhcrPush, setShowGhcrPush] = useState(false);
+  const [pushTaskId, setPushTaskId] = useState<string | null>(null);
+  const [pushLabel, setPushLabel] = useState('');
+  const [pushTask, setPushTask] = useState<GhcrTask | null>(null);
+  const pushLogRef = useRef<HTMLPreElement>(null);
 
   useEffect(() => {
     if (!sshOpen) return;
@@ -161,6 +169,25 @@ export function VMCard({ vm, onRefresh, isBeingBuilt, onStopBuild }: Props) {
     document.addEventListener('mousedown', onOutside);
     return () => document.removeEventListener('mousedown', onOutside);
   }, [sshOpen]);
+
+  // Poll inline push task
+  useEffect(() => {
+    if (!pushTaskId) return;
+    const poll = async () => {
+      try {
+        const resp = await fetch(`/api/ghcr/task/${pushTaskId}`);
+        if (resp.ok) setPushTask(await resp.json() as GhcrTask);
+      } catch { /* ignore */ }
+    };
+    poll();
+    const t = setInterval(poll, 1500);
+    return () => clearInterval(t);
+  }, [pushTaskId]);
+
+  // Auto-scroll inline push log
+  useEffect(() => {
+    if (pushLogRef.current) pushLogRef.current.scrollTop = pushLogRef.current.scrollHeight;
+  }, [pushTask?.log]);
 
   // Inline config editing (G1)
   const [editingField, setEditingField] = useState<'cpu' | 'memory' | 'disk' | null>(null);
@@ -447,6 +474,13 @@ export function VMCard({ vm, onRefresh, isBeingBuilt, onStopBuild }: Props) {
               className="btn-sm bg-green-600/20 text-green-300 border-green-600/40 hover:bg-green-600/30"
             >Start</button>
           )}
+          {!isBeingBuilt && !isNotCreated && !isIntermediateVM && !hasRunningStage && (
+          <button
+            onClick={() => setShowGhcrPush(true)}
+            className="btn-sm bg-blue-600/20 text-blue-300 border-blue-600/40 hover:bg-blue-600/30"
+            title="Push to GHCR"
+          >↑ GHCR</button>
+          )}
           {!isBeingBuilt && !isNotCreated && !isIntermediateVM && vm.status === 'stopped' && !hasRunningStage && (
           <button
             disabled={busy}
@@ -529,6 +563,51 @@ export function VMCard({ vm, onRefresh, isBeingBuilt, onStopBuild }: Props) {
             <ScreenshotsTab vmId={vm.name} />
           )}
         </div>
+      )}
+      {/* Inline GHCR push progress */}
+      {pushTaskId && pushTask && (
+        <div className="border-t border-gray-800 px-4 py-2 space-y-1">
+          <div className="flex items-center gap-2">
+            <span className={`text-[10px] font-medium ${
+              pushTask.status === 'done' ? 'text-green-400' :
+              ['failed','cancelled'].includes(pushTask.status) ? 'text-red-400' :
+              'text-orange-400 animate-pulse'
+            }`}>
+              {pushTask.status === 'done' ? '✓' : ['failed','cancelled'].includes(pushTask.status) ? '✗' : '⟳'}
+            </span>
+            <span className="text-[10px] text-gray-400 font-mono truncate flex-1" title={pushLabel}>{pushLabel}</span>
+            {pushTask.status === 'done' && (
+              <button onClick={() => { setPushTaskId(null); setPushTask(null); }}
+                className="text-[10px] text-gray-600 hover:text-gray-400 ml-auto shrink-0">✕</button>
+            )}
+            {['failed','cancelled'].includes(pushTask.status) && (
+              <button onClick={() => { setPushTaskId(null); setPushTask(null); }}
+                className="text-[10px] text-red-500/60 hover:text-red-400 ml-auto shrink-0">✕</button>
+            )}
+          </div>
+          {pushTask.log && (
+            <pre ref={pushLogRef}
+              className="bg-gray-950 rounded p-1.5 text-[10px] text-gray-500 font-mono overflow-auto max-h-20 whitespace-pre-wrap">
+              {pushTask.log.split('\n').slice(-6).join('\n')}
+            </pre>
+          )}
+          {['failed','cancelled'].includes(pushTask.status) && pushTask.error && (
+            <div className="text-[10px] text-red-400">{pushTask.error}</div>
+          )}
+        </div>
+      )}
+
+      {showGhcrPush && (
+        <GHCRPushModal
+          vmName={vm.name}
+          onClose={() => setShowGhcrPush(false)}
+          onTaskStarted={(id, label) => {
+            setPushTaskId(id);
+            setPushLabel(label);
+            setPushTask(null);
+            setShowGhcrPush(false);
+          }}
+        />
       )}
     </div>
   );

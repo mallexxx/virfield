@@ -12,7 +12,7 @@
 
 export const STAGE_LABELS: Record<string, string> = {
   download_ipsw:   'Download macOS IPSW',
-  create_vm:       'Create base VM',
+  create_vm:       'Create VM',
   setup_assistant: 'Setup Assistant',
   disable_sip:     'Disable SIP',
   provision_vm:    'Install Xcode & tools',
@@ -70,16 +70,14 @@ export const PROVISION_TOOLS: Array<{ id: string; label: string }> = [
 
 /**
  * Build the CLI args for a phase script.
- *
- * vmNames: { baseVm, nosipVm, goldenVm }
- * opts: extra options (ipsw, xcode, tools, record, logDir)
+ * Single-VM pipeline: all stages operate on goldenVm.
  */
 export function buildStageArgs(
   stage: StageKey,
-  vmNames: { baseVm: string; nosipVm: string; goldenVm: string },
+  vmNames: { goldenVm: string; baseVm?: string; nosipVm?: string },
   opts: { ipsw?: string; xcode?: string; tools?: string; record?: boolean; logDir?: string; vmshare?: string },
 ): string[] {
-  const { baseVm, nosipVm, goldenVm } = vmNames;
+  const { goldenVm } = vmNames;
   const common: string[] = [];
   if (opts.logDir)   common.push('--log-dir', opts.logDir);
   if (opts.record)   common.push('--record');
@@ -87,9 +85,9 @@ export function buildStageArgs(
 
   switch (stage) {
     case 'create_vm':
-      return ['--vm', baseVm, '--ipsw', opts.ipsw ?? 'latest', ...common];
+      return ['--vm', goldenVm, '--ipsw', opts.ipsw ?? 'latest', ...common];
     case 'setup_assistant':
-      return ['--vm', baseVm, ...common];
+      return ['--vm', goldenVm, ...common];
     case 'disable_sip':
       return ['--vm', goldenVm, ...common];
     case 'provision_vm': {

@@ -558,13 +558,12 @@ vmsRouter.delete('/:id/stages/:stage', (req: Request, res: Response) => {
 //
 // Runs one of the 4 virfield pipeline phases on the HOST.
 // Scripts live in VMCONSOLE_SCRIPTS_DIR and write state.json to VMCONSOLE_LOG_BASE/<vm>-latest/.
+// Single-VM pipeline: all stages operate on the same VM (:id).
 //
 // Body (optional):
 //   ipsw     — IPSW path (required for create_vm; defaults to 'latest')
 //   xcode    — Xcode.app path (provision_vm only)
 //   tools    — comma-separated tool IDs (provision_vm only; default 'all')
-//   nosipVm  — override nosip VM name (default: '<id>-nosip')
-//   baseVm   — override base VM name (default: '<id>-base')
 //   record   — boolean, enable VNC recording (default false)
 
 vmsRouter.post('/:id/stages/:stage/run', async (req: Request, res: Response) => {
@@ -588,14 +587,11 @@ vmsRouter.post('/:id/stages/:stage/run', async (req: Request, res: Response) => 
 
   const {
     ipsw, xcode, tools, record = false,
-    baseVm  = `${id}-base`,
-    nosipVm = `${id}-nosip`,
   } = req.body as {
     ipsw?: string; xcode?: string; tools?: string; record?: boolean;
-    baseVm?: string; nosipVm?: string;
   };
 
-  const vmNames = { baseVm, nosipVm, goldenVm: id };
+  const vmNames = { goldenVm: id };
   const scriptArgs = buildStageArgs(stage as StageKey, vmNames, {
     ipsw, xcode, tools, record,
     vmshare: VMSHARE,
@@ -687,8 +683,8 @@ vmsRouter.get('/:id/logs/:source', async (req: Request, res: Response) => {
     if (!vm.ipAddress) return void res.status(400).json({ error: 'VM not running' });
 
     const logPaths: Record<string, string> = {
-      'app-console': '/tmp/ddg-app-console.log',
-      'ui-tests': '/tmp/ddg-ui-tests.log',
+      'app-console': '/tmp/app-console.log',
+      'ui-tests': '/tmp/ui-tests.log',
       'peekaboo-mcp': '/tmp/peekaboo-mcp.log',
       'socat': '/tmp/socat.log',
     };
@@ -740,7 +736,10 @@ vmsRouter.post('/:id/ssh-open', async (req: Request, res: Response) => {
 vmsRouter.post('/:id/promote-golden', async (req: Request, res: Response) => {
   try {
     const meta = db.getVM(req.params.id);
-    const goldenName = 'ddg-uitest-golden';
+    // Derive golden name from source: strip any trailing -clone-<ts> or -run-<ts> suffix,
+    // then append -golden. Falls back to the source name itself if already named *-golden.
+    const baseName = req.params.id.replace(/-(clone|run)-\d+$/, '');
+    const goldenName = baseName.endsWith('-golden') ? baseName : `${baseName}-golden`;
 
     // Clone to golden name
     await lume.cloneVM(req.params.id, goldenName);

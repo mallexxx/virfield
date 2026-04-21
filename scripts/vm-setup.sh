@@ -349,42 +349,79 @@ PLIST_EOF
   echo "LaunchAgent installed: com.uitest.peekaboo-mcp (Terminal → socat TCP:4040 → peekaboo mcp)"
 fi
 
-# ── 11. TCC permissions for Terminal.app ──────────────────────────────────────
+# ── 11. TCC permissions ────────────────────────────────────────────────────────
 # Requires SIP disabled (done in Phase 3).
-# Grants Terminal screen recording + accessibility + developer tool so that
-# peekaboo (child process of Terminal) inherits those permissions.
+# flags=0 on kTCCServiceScreenCapture = full/direct access (bypasses the macOS
+# private window picker introduced in macOS 14). flags=1 would be limited/picker.
 
 if want tcc; then
-  echo "--- TCC: Terminal + sshd-keygen-wrapper screen recording + accessibility ---"
+  echo "--- TCC: screen capture + accessibility + remote desktop bypass ---"
   TCC_DB="/Library/Application Support/com.apple.TCC/TCC.db"
   NOW=$(date +%s)
 
-  # Terminal: screen recording, accessibility, developer tool
-  for SVC in kTCCServiceScreenCapture kTCCServiceAccessibility kTCCServiceDeveloperTool; do
-    sudo sqlite3 "$TCC_DB" \
-      "INSERT OR REPLACE INTO access
-         (service,client,client_type,auth_value,auth_reason,auth_version,
-          csreq,policy_id,indirect_object_identifier_type,
-          indirect_object_identifier,indirect_object_code_identity,
-          flags,last_modified,pid,pid_version,boot_uuid,last_reminded)
-       VALUES(\"$SVC\",\"com.apple.Terminal\",0,2,4,1,
-              NULL,NULL,NULL,\"UNUSED\",NULL,0,$NOW,NULL,NULL,\"UNUSED\",$NOW);" 2>/dev/null \
-      && echo "  $SVC → Terminal: granted" \
-      || echo "  WARNING: $SVC grant failed — SIP may still be enabled"
+  # TCC schema varies by macOS version — detect available columns at runtime so
+  # the same script works on macOS 11 through 26 without hard-coding version checks.
+  #
+  # macOS 11 (Big Sur):   uses 'allowed'/'prompt_count'; no auth_value/auth_reason/auth_version
+  # macOS 12–13:          uses auth_value/auth_reason/auth_version; no boot_uuid/last_reminded
+  # macOS 14+ (Sonoma+):  adds pid/pid_version/boot_uuid/last_reminded
+  #
+  # kTCCServiceRemoteDesktop (bypass-picker alert) is recognised from macOS 14+.
+  # On older macOS the row is harmlessly ignored by tccd, so we still insert it.
+  _HAS_AUTH="$(sudo sqlite3 "$TCC_DB" \
+    "SELECT COUNT(*) FROM pragma_table_info('access') WHERE name='auth_value';" 2>/dev/null || echo 0)"
+  _HAS_BOOT="$(sudo sqlite3 "$TCC_DB" \
+    "SELECT COUNT(*) FROM pragma_table_info('access') WHERE name='boot_uuid';" 2>/dev/null || echo 0)"
+
+  tcc_grant() {
+    local SVC="$1" CLIENT="$2" CLIENT_TYPE="$3"
+    local _ok=false
+    if [[ "$_HAS_BOOT" == "1" ]]; then
+      # macOS 14+ full schema
+      sudo sqlite3 "$TCC_DB" \
+        "INSERT OR REPLACE INTO access
+           (service,client,client_type,auth_value,auth_reason,auth_version,
+            csreq,policy_id,indirect_object_identifier_type,
+            indirect_object_identifier,indirect_object_code_identity,
+            flags,last_modified,pid,pid_version,boot_uuid,last_reminded)
+         VALUES(\"$SVC\",\"$CLIENT\",$CLIENT_TYPE,2,4,1,
+                NULL,NULL,NULL,\"UNUSED\",NULL,0,$NOW,NULL,NULL,\"UNUSED\",$NOW);" 2>/dev/null \
+        && _ok=true
+    elif [[ "$_HAS_AUTH" == "1" ]]; then
+      # macOS 12–13 schema (no pid/boot_uuid/last_reminded columns)
+      sudo sqlite3 "$TCC_DB" \
+        "INSERT OR REPLACE INTO access
+           (service,client,client_type,auth_value,auth_reason,auth_version,
+            csreq,policy_id,indirect_object_identifier_type,
+            indirect_object_identifier,indirect_object_code_identity,
+            flags,last_modified)
+         VALUES(\"$SVC\",\"$CLIENT\",$CLIENT_TYPE,2,4,1,
+                NULL,NULL,NULL,\"UNUSED\",NULL,0,$NOW);" 2>/dev/null \
+        && _ok=true
+    else
+      # macOS 11 schema (uses 'allowed'/'prompt_count' instead of auth_* columns)
+      sudo sqlite3 "$TCC_DB" \
+        "INSERT OR REPLACE INTO access
+           (service,client,client_type,allowed,prompt_count,
+            csreq,policy_id,indirect_object_identifier_type,
+            indirect_object_identifier,indirect_object_code_identity,
+            flags,last_modified)
+         VALUES(\"$SVC\",\"$CLIENT\",$CLIENT_TYPE,1,0,
+                NULL,NULL,NULL,\"UNUSED\",NULL,0,$NOW);" 2>/dev/null \
+        && _ok=true
+    fi
+    $_ok && echo "  $SVC → $CLIENT: granted" \
+         || echo "  WARNING: $SVC → $CLIENT grant failed (SIP enabled?)"
+  }
+
+  # Terminal.app (bundle-ID based, client_type=0)
+  for SVC in kTCCServiceScreenCapture kTCCServiceRemoteDesktop kTCCServiceAccessibility kTCCServiceDeveloperTool; do
+    tcc_grant "$SVC" "com.apple.Terminal" 0
   done
 
-  # sshd-keygen-wrapper: accessibility + control (client_type=1 = path-based)
-  for SVC in kTCCServiceAccessibility kTCCServiceScreenCapture; do
-    sudo sqlite3 "$TCC_DB" \
-      "INSERT OR REPLACE INTO access
-         (service,client,client_type,auth_value,auth_reason,auth_version,
-          csreq,policy_id,indirect_object_identifier_type,
-          indirect_object_identifier,indirect_object_code_identity,
-          flags,last_modified,pid,pid_version,boot_uuid,last_reminded)
-       VALUES(\"$SVC\",\"/usr/libexec/sshd-keygen-wrapper\",1,2,4,1,
-              NULL,NULL,NULL,\"UNUSED\",NULL,0,$NOW,NULL,NULL,\"UNUSED\",$NOW);" 2>/dev/null \
-      && echo "  $SVC → sshd-keygen-wrapper: granted" \
-      || echo "  WARNING: $SVC grant failed for sshd-keygen-wrapper"
+  # sshd-keygen-wrapper (path-based, client_type=1)
+  for SVC in kTCCServiceScreenCapture kTCCServiceRemoteDesktop kTCCServiceAccessibility; do
+    tcc_grant "$SVC" "/usr/libexec/sshd-keygen-wrapper" 1
   done
 
   sudo killall tccd 2>/dev/null || true

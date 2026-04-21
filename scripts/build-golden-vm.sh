@@ -144,9 +144,12 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# ── Derive intermediate VM names ─────────────────────────────────────────────
-BASE_VM="${VM_NAME}-base"
-NOSIP_VM="${VM_NAME}-nosip"
+# ── Single-VM pipeline ────────────────────────────────────────────────────────
+# All 4 phases operate in-place on the same VM. There are no intermediate clones:
+#   Phase 1  — lume create    → VM exists, no OS yet
+#   Phase 2  — lume setup     → macOS + lume user installed
+#   Phase 3  — csrutil disable (recovery VNC, in-place)
+#   Phase 4  — SSH provision  (in-place)
 GOLDEN_VM="${VM_NAME}"
 
 # ── Prerequisites ─────────────────────────────────────────────────────────────
@@ -179,8 +182,20 @@ _lume_preset_for_major() {
   if [[ "$1" -ge 26 ]] 2>/dev/null; then echo tahoe; else echo sequoia; fi
 }
 SETUP_PRESET="sequoia"
-if [[ -n "$IPSW_PATH" ]] && [[ "$IPSW_PATH" != "none" ]] && [[ "$IPSW_PATH" != "latest" ]]; then
-  if _ipsw_is_version_spec "$IPSW_PATH"; then
+if [[ -n "$IPSW_PATH" ]] && [[ "$IPSW_PATH" != "none" ]]; then
+  if [[ "$IPSW_PATH" == "latest" ]]; then
+    # Resolve the 'latest' URL now (before phase 1 downloads it) so we can detect
+    # the macOS version and choose the correct setup preset for phase 2.
+    # lume ipsw prints the URL to stdout; we grep for the https:// line.
+    _latest_url="$(lume ipsw 2>/dev/null | grep '^https://' | tail -1 || true)"
+    if [[ -n "$_latest_url" ]]; then
+      _latest_ver="$(macos_version_from_ipsw "$_latest_url")"
+      _latest_major="${_latest_ver%%.*}"
+      [[ -n "$_latest_major" ]] && SETUP_PRESET="$(_lume_preset_for_major "$_latest_major")"
+    fi
+    # If resolution failed SETUP_PRESET stays 'sequoia' — phase 2 may fail for macOS 26+
+    # but that's better than silently using the wrong preset on an unknown version.
+  elif _ipsw_is_version_spec "$IPSW_PATH"; then
     # Version spec (e.g. 'sequoia', 'tahoe', '15', '26') — resolve to lume preset.
     _major="$(_ipsw_major_for_spec "$IPSW_PATH")"
     [[ -n "$_major" ]] && SETUP_PRESET="$(_lume_preset_for_major "$_major")"
@@ -239,8 +254,6 @@ if [[ $START_PHASE -gt 1 ]]; then
 else
   log "=== build-golden-vm.sh ==="
 fi
-log "  Base VM:   $BASE_VM"
-log "  NoSIP VM:  $NOSIP_VM"
 log "  Golden VM: $GOLDEN_VM"
 log "  IPSW:      ${IPSW_PATH:-(skipped)}"
 log "  Xcode:     ${XCODE_PATH:-(skipped)}"
@@ -261,7 +274,7 @@ skipped = set(skip_str.split()) if skip_str else set()
 start = int(start_str)
 
 PHASE_LABELS = {
-    "01-create-vm":       "Create base VM",
+    "01-create-vm":       "Create VM",
     "02-setup-assistant": "Setup Assistant",
     "03-disable-sip":     "Disable SIP",
     "04-provision-vm":    "Install Xcode & tools",
@@ -334,18 +347,18 @@ except: print('skipped')
 
 if phase_active 1; then
   "$SCRIPT_DIR/01-create-vm.sh" \
-    --vm "$BASE_VM" --ipsw "$IPSW_PATH" \
+    --vm "$GOLDEN_VM" --ipsw "$IPSW_PATH" \
     --cpu "$VM_CPU" --memory "$VM_MEMORY" --disk "$VM_DISK" --display "$VM_DISPLAY" \
     "${COMMON_ARGS[@]}"
 else
-  _log_phase_skip 1 "Create base VM" "01-create-vm"
+  _log_phase_skip 1 "Create VM" "01-create-vm"
 fi
 
 # ── Phase 2: Setup Assistant ──────────────────────────────────────────────────
 
 if phase_active 2; then
   "$SCRIPT_DIR/02-setup-assistant.sh" \
-    --vm "$BASE_VM" \
+    --vm "$GOLDEN_VM" \
     "${COMMON_ARGS[@]}"
 else
   _log_phase_skip 2 "Setup Assistant" "02-setup-assistant"

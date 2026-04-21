@@ -72,6 +72,7 @@ const tools: Tool[] = [
       properties: {
         name: { type: 'string', description: 'VM name' },
         cloneFromGolden: { type: 'boolean', description: 'Clone from golden image before starting' },
+        goldenName: { type: 'string', description: 'Golden VM to clone from (default: auto-detected from DB)' },
         noDisplay: { type: 'boolean', description: 'Start without display (headless)', default: true },
       },
       required: ['name'],
@@ -92,9 +93,10 @@ const tools: Tool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        destName: { type: 'string', description: 'Name for the new VM (default: vm-run-<timestamp>)' },
+        goldenName: { type: 'string', description: 'Golden VM to clone from (e.g. macos-15-golden, uitest-26.4.1-golden)' },
+        destName:   { type: 'string', description: 'Name for the new VM (default: vm-run-<timestamp>)' },
       },
-      required: [],
+      required: ['goldenName'],
     },
   },
   {
@@ -130,9 +132,10 @@ const tools: Tool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        sessionName: { type: 'string', description: 'Optional name for the session VM' },
+        goldenName:  { type: 'string', description: 'Golden VM to clone from (e.g. macos-15-golden, uitest-26.4.1-golden)' },
+        sessionName: { type: 'string', description: 'Optional name for the session VM (default: vm-run-<timestamp>)' },
       },
-      required: [],
+      required: ['goldenName'],
     },
   },
   {
@@ -356,9 +359,11 @@ const tools: Tool[] = [
       type: 'object',
       properties: {
         vm_id:        { type: 'string', description: 'VM name (must be running)' },
-        test_suite:   { type: 'string', description: 'XCTest suite/class to run, e.g. "ErrorPageUITests". Omit for all UI Tests.' },
-        only_testing: { type: 'array', items: { type: 'string' }, description: 'Specific test methods, e.g. ["UI Tests/ErrorPageUITests/testFoo"]. Overrides test_suite.' },
-        xctestrun:    { type: 'string', description: 'Override xctestrun filename in VMShare/DerivedData/Build/Products/ (default: macOS UI Tests_UI Tests_macosx26.4-arm64-x86_64.xctestrun)' },
+        test_suite:   { type: 'string', description: 'XCTest suite/class to run, e.g. "MyUITests". Omit to run all tests.' },
+        only_testing: { type: 'array', items: { type: 'string' }, description: 'Specific test methods, e.g. ["MyBundle/MyTestClass/testFoo"]. Overrides test_suite.' },
+        scheme:       { type: 'string', description: 'Xcode scheme name (e.g. "macOS UI Tests CI"). Preferred: runs scheme pre-actions (test-server, dialog suppression, etc.). Mutually exclusive with xctestrun.' },
+        xctestrun:    { type: 'string', description: 'xctestrun filename in VMShare/DerivedData/Build/Products/. Fallback when scheme is not provided. Auto-discovered if only one .xctestrun exists.' },
+        bundle:       { type: 'string', description: 'Bundle name prefix for test_suite expansion (e.g. "UI Tests"). Defaults to "UI Tests".' },
         iterations:   { type: 'number', description: 'Retry failing tests N times (default: 2)' },
       },
       required: ['vm_id'],
@@ -418,12 +423,13 @@ const tools: Tool[] = [
   },
   {
     name: 'get_log_stream',
-    description: 'Fetch the last N lines of app-console.log from a VM.',
+    description: 'Fetch the last N lines of a log file from a VM.',
     inputSchema: {
       type: 'object',
       properties: {
-        vm_id: { type: 'string' },
-        lines: { type: 'number', default: 200 },
+        vm_id:    { type: 'string' },
+        lines:    { type: 'number', default: 200 },
+        log_path: { type: 'string', description: 'Absolute path to log file on VM (default: /tmp/app-console.log)' },
       },
       required: ['vm_id'],
     },
@@ -559,7 +565,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       case 'vm_start': {
         const vmName = String(a.name);
         if (a.cloneFromGolden) {
-          await lume.cloneVM('uitest-golden', vmName);
+          const goldenName = String(a.goldenName ?? db.listVMs().find(v => v.tag === 'golden')?.id ?? 'golden');
+          await lume.cloneVM(goldenName, vmName);
           db.upsertVM({ id: vmName, tag: 'run' });
         }
         await lume.startVM(vmName, { noDisplay: (a.noDisplay as boolean) ?? true, sharedDir: VMSHARE });
@@ -574,9 +581,10 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
       case 'vm_clone_golden': {
         const dest = String(a.destName ?? `vm-run-${Date.now()}`);
-        await lume.cloneVM('uitest-golden', dest);
+        const goldenSrc = String(a.goldenName ?? db.listVMs().find(v => v.tag === 'golden')?.id ?? 'golden');
+        await lume.cloneVM(goldenSrc, dest);
         db.upsertVM({ id: dest, tag: 'run' });
-        return { content: [{ type: 'text', text: `Cloned golden → ${dest}` }] };
+        return { content: [{ type: 'text', text: `Cloned ${goldenSrc} → ${dest}` }] };
       }
 
       case 'vm_delete': {
@@ -606,9 +614,10 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
       case 'vm_prepare_session': {
         const sessionName = String(a.sessionName ?? `vm-run-${Date.now()}`);
+        const goldenName = String(a.goldenName ?? db.listVMs().find(v => v.tag === 'golden')?.id ?? 'golden');
 
         // 1. Clone golden
-        await lume.cloneVM('uitest-golden', sessionName);
+        await lume.cloneVM(goldenName, sessionName);
         db.upsertVM({ id: sessionName, tag: 'run' });
 
         // 2. Start VM
@@ -994,7 +1003,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       case 'get_log_stream': {
         const ip = await resolveVMIp(String(a.vm_id));
         const lines = Number(a.lines ?? 200);
-        const result = await sshExec(ip, `tail -n ${lines} /tmp/app-console.log 2>/dev/null || echo ''`);
+        const logPath = a.log_path ? String(a.log_path) : '/tmp/app-console.log';
+        const result = await sshExec(ip, `tail -n ${lines} "${logPath}" 2>/dev/null || echo ''`);
         return { content: [{ type: 'text', text: result.stdout }] };
       }
 
@@ -1016,17 +1026,47 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         const ip = await resolveVMIp(vmId);
         const ts = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);
         const resultsDir = `/Volumes/My Shared Files/results/${ts}`;
-        const xctestrun = String(a.xctestrun ?? 'macOS UI Tests_UI Tests_macosx26.4-arm64-x86_64.xctestrun');
-        const xctestrunPath = `/Volumes/My Shared Files/DerivedData/Build/Products/${xctestrun}`;
         const iterations = Number(a.iterations ?? 2);
+        const bundle = String(a.bundle ?? 'UI Tests');
 
         // Build -only-testing flags
         const onlyTesting: string[] = Array.isArray(a.only_testing)
           ? (a.only_testing as string[])
           : a.test_suite
-          ? [`UI Tests/${String(a.test_suite)}`]
+          ? [`${bundle}/${String(a.test_suite)}`]
           : [];
         const onlyTestingFlags = onlyTesting.map(t => `-only-testing "${t}"`).join(' ');
+
+        // Scheme mode: runs scheme pre-actions (test-server, dialog suppression, etc.)
+        // xctestrun mode: skips pre-actions, useful when scheme isn't available
+        let testSourceArg: string;
+        let resolvedId: string;
+        if (a.scheme) {
+          const scheme = String(a.scheme);
+          testSourceArg = `-scheme "${scheme}" -derivedDataPath "/Volumes/My Shared Files/DerivedData"`;
+          resolvedId = scheme;
+        } else {
+          // Resolve xctestrun: explicit arg or auto-discover single file
+          let xctestrun = a.xctestrun ? String(a.xctestrun) : null;
+          if (!xctestrun) {
+            const { readdirSync } = await import('fs');
+            const productsDir = `${VMSHARE}/DerivedData/Build/Products`;
+            try {
+              const files = readdirSync(productsDir).filter(f => f.endsWith('.xctestrun'));
+              if (files.length === 1) {
+                xctestrun = files[0];
+              } else if (files.length === 0) {
+                throw new Error(`No .xctestrun found in ${productsDir}`);
+              } else {
+                throw new Error(`Multiple .xctestrun files in ${productsDir}: ${files.join(', ')} — pass xctestrun or scheme to disambiguate`);
+              }
+            } catch (e: any) {
+              return { content: [{ type: 'text', text: `Error: ${e.message}` }] };
+            }
+          }
+          testSourceArg = `-xctestrun "/Volumes/My Shared Files/DerivedData/Build/Products/${xctestrun}"`;
+          resolvedId = xctestrun;
+        }
 
         const script = `#!/bin/bash
 export PATH="/opt/homebrew/bin:$PATH"
@@ -1041,9 +1081,8 @@ screenresolution set 1920x1080x32@60 2>/dev/null || true
 # pkill -f "YourApp" 2>/dev/null || true; pkill -f "UI Tests-Runner" 2>/dev/null || true
 sleep 2
 xcodebuild test-without-building \\
-  -xctestrun "${xctestrunPath}" \\
+  ${testSourceArg} \\
   -destination 'platform=macOS,arch=arm64' \\
-  -derivedDataPath "/Volumes/My Shared Files/DerivedData" \\
   -skipPackagePluginValidation -skipMacroValidation \\
   ${onlyTestingFlags} \\
   -test-iterations ${iterations} -retry-tests-on-failure \\
@@ -1056,19 +1095,16 @@ echo "=== DONE exit=\${TEST_EXIT} ==="
 exit \$TEST_EXIT`;
 
         const scriptPath = `/Volumes/My Shared Files/run-tests-${ts}.sh`;
-        // Write script to VMShare (accessible from host)
         const { writeFileSync, mkdirSync } = await import('fs');
-        // Create results dir on host first so nohup redirect succeeds
         mkdirSync(`${VMSHARE}/results/${ts}`, { recursive: true });
         writeFileSync(`${VMSHARE}/run-tests-${ts}.sh`, script, { mode: 0o755 });
 
-        // Launch in background via SSH; nohup so it survives SSH disconnect
         await sshExec(ip, `nohup bash "${scriptPath}" > "${resultsDir}/runner.log" 2>&1 &`, 10_000);
 
         return {
           content: [{
             type: 'text',
-            text: JSON.stringify({ run_id: ts, results_dir: resultsDir, status: 'running', xctestrun, only_testing: onlyTesting }, null, 2),
+            text: JSON.stringify({ run_id: ts, results_dir: resultsDir, status: 'running', source: resolvedId, only_testing: onlyTesting }, null, 2),
           }],
         };
       }

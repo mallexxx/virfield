@@ -200,6 +200,89 @@ export async function callPeekaboo(
   });
 }
 
+/**
+ * Send multiple MCP tool calls in a single persistent session.
+ * Required for stateful tools like Peekaboo's click-with-on which depends on
+ * a prior `see` snapshot captured in the same connection.
+ */
+export async function callPeekabooSession(
+  vmId: string,
+  vmIp: string,
+  calls: Array<{ name: string; arguments: Record<string, unknown> }>,
+): Promise<unknown[]> {
+  const { localPort } = await ensureTunnel(vmId, vmIp);
+
+  return new Promise((resolve, reject) => {
+    const socket: Socket = createConnection({ host: '127.0.0.1', port: localPort });
+    const baseId = requestId++;
+    let buffer = '';
+    let initialized = false;
+    let callIndex = 0;
+    const results: unknown[] = [];
+
+    const timer = setTimeout(() => {
+      socket.destroy();
+      reject(new Error('Peekaboo session timed out'));
+    }, 30_000);
+
+    const sendNext = () => {
+      if (callIndex >= calls.length) {
+        clearTimeout(timer);
+        socket.destroy();
+        resolve(results);
+        return;
+      }
+      const call = calls[callIndex];
+      socket.write(JSON.stringify({
+        jsonrpc: '2.0',
+        id: `${baseId}-${callIndex}`,
+        method: 'tools/call',
+        params: { name: call.name, arguments: call.arguments },
+      }) + '\n');
+    };
+
+    socket.on('connect', () => {
+      socket.write(JSON.stringify({
+        jsonrpc: '2.0',
+        id: `init-${baseId}`,
+        method: 'initialize',
+        params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'virfield', version: '0.1.0' } },
+      }) + '\n');
+    });
+
+    socket.on('data', (data: Buffer) => {
+      buffer += data.toString();
+      const lines = buffer.split('\n');
+      buffer = lines.pop()!;
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const msg = JSON.parse(line) as MCPResponse;
+          if (!initialized && String(msg.id).startsWith('init-')) {
+            initialized = true;
+            socket.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized', params: {} }) + '\n');
+            sendNext();
+            return;
+          }
+          if (msg.id === `${baseId}-${callIndex}`) {
+            if (msg.error) {
+              clearTimeout(timer);
+              socket.destroy();
+              reject(new Error(`Peekaboo session error at step ${callIndex}: ${msg.error.message}`));
+              return;
+            }
+            results.push(msg.result);
+            callIndex++;
+            sendNext();
+          }
+        } catch { /* partial */ }
+      }
+    });
+
+    socket.on('error', (err) => { clearTimeout(timer); reject(err); });
+  });
+}
+
 // ── Convenience wrappers for individual Peekaboo tools ───────────────────────
 
 export async function peekabooSee(vmId: string, vmIp: string, app?: string) {
