@@ -19,7 +19,7 @@
 #   peekaboo          brew install steipete/tap/peekaboo
 #   logging           Install debug-level Apple Unified Log config (bundled in scripts/)
 #   peekaboo_agent    LaunchAgent: Terminal opens a socat TCP:4040 → peekaboo mcp tunnel at login
-#   tcc               TCC grants for Terminal: ScreenCapture, Accessibility, DeveloperTool
+#   tcc               TCC grants for all 6 UI-test endpoints: 6 services + AppleEvents→SystemEvents
 #   automation        Enable Xcode automation mode (no auth dialogs during UI test runs)
 #
 
@@ -353,10 +353,26 @@ fi
 # Requires SIP disabled (done in Phase 3).
 # flags=0 on kTCCServiceScreenCapture = full/direct access (bypasses the macOS
 # private window picker introduced in macOS 14). flags=1 would be limited/picker.
+#
+# All 6 UI-test control endpoints receive equal grants across all 7 services:
+#   Accessibility, ScreenCapture, RemoteDesktop, PostEvent,
+#   DeveloperTool, SystemPolicyAllFiles, AppleEvents→SystemEvents
+#
+# Endpoints (system DB):
+#   com.apple.Terminal              (bundle, type=0) — hosts socat/peekaboo MCP
+#   boo.peekaboo.peekaboo           (bundle, type=0) — peekaboo app bundle
+#   /usr/libexec/sshd-keygen-wrapper (path, type=1) — SSH sessions
+#   /opt/homebrew/bin/peekaboo       (path, type=1) — peekaboo binary
+#   /bin/bash                        (path, type=1) — shell via SSH
+#   /bin/zsh                         (path, type=1) — shell via SSH
+#
+# User DB: AppleEvents → com.apple.systemevents for all endpoints
+# (enables osascript System Events control — needed for coords-based click).
 
 if want tcc; then
-  echo "--- TCC: screen capture + accessibility + remote desktop bypass ---"
-  TCC_DB="/Library/Application Support/com.apple.TCC/TCC.db"
+  echo "--- TCC: equalized grants for all 6 UI-test endpoints ---"
+  TCC_SYS_DB="/Library/Application Support/com.apple.TCC/TCC.db"
+  TCC_USR_DB="$HOME/Library/Application Support/com.apple.TCC/TCC.db"
   NOW=$(date +%s)
 
   # TCC schema varies by macOS version — detect available columns at runtime so
@@ -368,9 +384,9 @@ if want tcc; then
   #
   # kTCCServiceRemoteDesktop (bypass-picker alert) is recognised from macOS 14+.
   # On older macOS the row is harmlessly ignored by tccd, so we still insert it.
-  _HAS_AUTH="$(sudo sqlite3 "$TCC_DB" \
+  _HAS_AUTH="$(sudo sqlite3 "$TCC_SYS_DB" \
     "SELECT COUNT(*) FROM pragma_table_info('access') WHERE name='auth_value';" 2>/dev/null || echo 0)"
-  _HAS_BOOT="$(sudo sqlite3 "$TCC_DB" \
+  _HAS_BOOT="$(sudo sqlite3 "$TCC_SYS_DB" \
     "SELECT COUNT(*) FROM pragma_table_info('access') WHERE name='boot_uuid';" 2>/dev/null || echo 0)"
 
   # Generate a binary csreq blob from a code-signing requirement string.
@@ -403,67 +419,129 @@ PYEOF
   }
 
   _TERMINAL_CSREQ_HEX="$(_csreq_hex 'identifier "com.apple.Terminal" and anchor apple')"
+  _PEEKABOO_CSREQ_HEX="$(_csreq_hex 'identifier "boo.peekaboo.peekaboo"')"
   _SSHD_CSREQ_HEX="$(_csreq_hex 'identifier "com.apple.sshd-keygen-wrapper" and anchor apple')"
   [[ -n "$_TERMINAL_CSREQ_HEX" ]] && echo "  csreq: Terminal (${#_TERMINAL_CSREQ_HEX} hex chars)" \
                                    || echo "  WARNING: failed to generate Terminal csreq"
+  [[ -n "$_PEEKABOO_CSREQ_HEX" ]] && echo "  csreq: peekaboo bundle (${#_PEEKABOO_CSREQ_HEX} hex chars)" \
+                                   || echo "  WARNING: failed to generate peekaboo bundle csreq"
   [[ -n "$_SSHD_CSREQ_HEX" ]]     && echo "  csreq: sshd-keygen-wrapper (${#_SSHD_CSREQ_HEX} hex chars)" \
                                    || echo "  WARNING: failed to generate sshd-keygen-wrapper csreq"
 
-  # tcc_grant SVC CLIENT CLIENT_TYPE [CSREQ_HEX]
+  # tcc_grant DB SVC CLIENT CLIENT_TYPE [CSREQ_HEX [INDIRECT_OBJ]]
+  # INDIRECT_OBJ is used for kTCCServiceAppleEvents (the target bundle being controlled).
   tcc_grant() {
-    local SVC="$1" CLIENT="$2" CLIENT_TYPE="$3" CSREQ_HEX="${4:-}"
+    local DB="$1" SVC="$2" CLIENT="$3" CLIENT_TYPE="$4" CSREQ_HEX="${5:-}" INDIRECT_OBJ="${6:-UNUSED}"
     local CSREQ_SQL="NULL"
     [[ -n "$CSREQ_HEX" ]] && CSREQ_SQL="X'${CSREQ_HEX}'"
     local _ok=false
+    local _sudo=""
+    [[ "$DB" == "$TCC_SYS_DB" ]] && _sudo="sudo"
     if [[ "$_HAS_BOOT" == "1" ]]; then
       # macOS 14+ full schema
-      sudo sqlite3 "$TCC_DB" \
+      $_sudo sqlite3 "$DB" \
         "INSERT OR REPLACE INTO access
            (service,client,client_type,auth_value,auth_reason,auth_version,
             csreq,policy_id,indirect_object_identifier_type,
             indirect_object_identifier,indirect_object_code_identity,
             flags,last_modified,pid,pid_version,boot_uuid,last_reminded)
          VALUES(\"$SVC\",\"$CLIENT\",$CLIENT_TYPE,2,4,1,
-                ${CSREQ_SQL},NULL,NULL,\"UNUSED\",NULL,0,$NOW,NULL,NULL,\"UNUSED\",$NOW);" 2>/dev/null \
+                ${CSREQ_SQL},NULL,NULL,\"${INDIRECT_OBJ}\",NULL,0,$NOW,NULL,NULL,\"UNUSED\",$NOW);" 2>/dev/null \
         && _ok=true
     elif [[ "$_HAS_AUTH" == "1" ]]; then
       # macOS 12–13 schema (no pid/boot_uuid/last_reminded columns)
-      sudo sqlite3 "$TCC_DB" \
+      $_sudo sqlite3 "$DB" \
         "INSERT OR REPLACE INTO access
            (service,client,client_type,auth_value,auth_reason,auth_version,
             csreq,policy_id,indirect_object_identifier_type,
             indirect_object_identifier,indirect_object_code_identity,
             flags,last_modified)
          VALUES(\"$SVC\",\"$CLIENT\",$CLIENT_TYPE,2,4,1,
-                ${CSREQ_SQL},NULL,NULL,\"UNUSED\",NULL,0,$NOW);" 2>/dev/null \
+                ${CSREQ_SQL},NULL,NULL,\"${INDIRECT_OBJ}\",NULL,0,$NOW);" 2>/dev/null \
         && _ok=true
     else
       # macOS 11 schema (uses 'allowed'/'prompt_count' instead of auth_* columns)
-      sudo sqlite3 "$TCC_DB" \
+      $_sudo sqlite3 "$DB" \
         "INSERT OR REPLACE INTO access
            (service,client,client_type,allowed,prompt_count,
             csreq,policy_id,indirect_object_identifier_type,
             indirect_object_identifier,indirect_object_code_identity,
             flags,last_modified)
          VALUES(\"$SVC\",\"$CLIENT\",$CLIENT_TYPE,1,0,
-                ${CSREQ_SQL},NULL,NULL,\"UNUSED\",NULL,0,$NOW);" 2>/dev/null \
+                ${CSREQ_SQL},NULL,NULL,\"${INDIRECT_OBJ}\",NULL,0,$NOW);" 2>/dev/null \
         && _ok=true
     fi
     $_ok && echo "  $SVC → $CLIENT: granted" \
          || echo "  WARNING: $SVC → $CLIENT grant failed (SIP enabled?)"
   }
 
-  # Terminal.app (bundle-ID based, client_type=0) — csreq required for RemoteDesktop on macOS 14+
-  for SVC in kTCCServiceScreenCapture kTCCServiceRemoteDesktop kTCCServiceAccessibility kTCCServiceDeveloperTool; do
-    tcc_grant "$SVC" "com.apple.Terminal" 0 "$_TERMINAL_CSREQ_HEX"
+  # ── System DB grants ───────────────────────────────────────────────────────
+  # Services granted to all endpoints (union of what any endpoint currently has).
+  # PostEvent:            allows CGEventPost / keyboard+mouse injection
+  # DeveloperTool:        allows spawning debuggers, instruments, xcrun
+  # SystemPolicyAllFiles: full disk access (needed for reading arbitrary test artifacts)
+  ALL_SVCS=(
+    kTCCServiceAccessibility
+    kTCCServiceScreenCapture
+    kTCCServiceRemoteDesktop
+    kTCCServicePostEvent
+    kTCCServiceDeveloperTool
+    kTCCServiceSystemPolicyAllFiles
+  )
+
+  echo "  [system DB] Terminal (bundle, type=0)"
+  for SVC in "${ALL_SVCS[@]}"; do
+    tcc_grant "$TCC_SYS_DB" "$SVC" "com.apple.Terminal" 0 "$_TERMINAL_CSREQ_HEX"
   done
 
-  # sshd-keygen-wrapper (path-based, client_type=1)
-  for SVC in kTCCServiceScreenCapture kTCCServiceRemoteDesktop kTCCServiceAccessibility; do
-    tcc_grant "$SVC" "/usr/libexec/sshd-keygen-wrapper" 1 "$_SSHD_CSREQ_HEX"
+  echo "  [system DB] peekaboo bundle (type=0)"
+  for SVC in "${ALL_SVCS[@]}"; do
+    tcc_grant "$TCC_SYS_DB" "$SVC" "boo.peekaboo.peekaboo" 0 "$_PEEKABOO_CSREQ_HEX"
+  done
+
+  echo "  [system DB] sshd-keygen-wrapper (path, type=1)"
+  for SVC in "${ALL_SVCS[@]}"; do
+    tcc_grant "$TCC_SYS_DB" "$SVC" "/usr/libexec/sshd-keygen-wrapper" 1 "$_SSHD_CSREQ_HEX"
+  done
+
+  echo "  [system DB] peekaboo binary (path, type=1)"
+  for SVC in "${ALL_SVCS[@]}"; do
+    tcc_grant "$TCC_SYS_DB" "$SVC" "/opt/homebrew/bin/peekaboo" 1 ""
+  done
+
+  echo "  [system DB] /bin/bash (path, type=1)"
+  for SVC in "${ALL_SVCS[@]}"; do
+    tcc_grant "$TCC_SYS_DB" "$SVC" "/bin/bash" 1 ""
+  done
+
+  echo "  [system DB] /bin/zsh (path, type=1)"
+  for SVC in "${ALL_SVCS[@]}"; do
+    tcc_grant "$TCC_SYS_DB" "$SVC" "/bin/zsh" 1 ""
+  done
+
+  # ── User DB grants — AppleEvents → System Events ───────────────────────────
+  # Required for `osascript -e 'tell application "System Events"...'` to work
+  # from SSH sessions without triggering a permission dialog.
+  # The client is whichever process sends the Apple Events; granting all our
+  # endpoints covers every execution path.
+  echo "  [user DB] AppleEvents → com.apple.systemevents for all endpoints"
+  mkdir -p "$(dirname "$TCC_USR_DB")"
+
+  AE_CLIENTS=(
+    "com.apple.Terminal:0:$_TERMINAL_CSREQ_HEX"
+    "boo.peekaboo.peekaboo:0:$_PEEKABOO_CSREQ_HEX"
+    "/usr/libexec/sshd-keygen-wrapper:1:$_SSHD_CSREQ_HEX"
+    "/opt/homebrew/bin/peekaboo:1:"
+    "/bin/bash:1:"
+    "/bin/zsh:1:"
+  )
+  for _entry in "${AE_CLIENTS[@]}"; do
+    _client="${_entry%%:*}"; _rest="${_entry#*:}"; _type="${_rest%%:*}"; _csreq="${_rest#*:}"
+    tcc_grant "$TCC_USR_DB" "kTCCServiceAppleEvents" "$_client" "$_type" "$_csreq" "com.apple.systemevents"
   done
 
   sudo killall tccd 2>/dev/null || true
+  echo "  tccd restarted — TCC grants active"
 fi
 
 # ── 12. Automation mode ───────────────────────────────────────────────────────
