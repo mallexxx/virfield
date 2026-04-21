@@ -285,24 +285,29 @@ export async function callPeekabooSession(
 
 // ── Convenience wrappers for individual Peekaboo tools ───────────────────────
 
-export async function peekabooSee(vmId: string, vmIp: string, app?: string) {
+export async function peekabooSee(vmId: string, vmIp: string, app?: string, includeFrames = false) {
   return callPeekaboo(vmId, vmIp, 'tools/call', {
     name: 'see',
-    arguments: app ? { app } : {},
+    arguments: { ...(app ? { app } : {}), ...(includeFrames ? { includeFrames: true } : {}) },
   });
 }
 
 export async function peekabooScreenshot(vmId: string, vmIp: string, app?: string) {
   return callPeekaboo(vmId, vmIp, 'tools/call', {
-    name: 'screenshot',
+    name: 'image',
     arguments: app ? { app } : {},
   });
 }
 
-export async function peekabooClick(vmId: string, vmIp: string, identifier: string, app?: string) {
+export async function peekabooClick(
+  vmId: string,
+  vmIp: string,
+  opts: { query?: string; on?: string; coords?: string },
+  app?: string,
+) {
   return callPeekaboo(vmId, vmIp, 'tools/call', {
     name: 'click',
-    arguments: { identifier, ...(app ? { app } : {}) },
+    arguments: { ...opts, ...(app ? { app } : {}) },
   });
 }
 
@@ -339,4 +344,31 @@ export async function peekabooPermissions(vmId: string, vmIp: string) {
     name: 'permissions',
     arguments: { action: 'status' },
   });
+}
+
+/**
+ * Click using a persistent session — always sends 'see' first to focus the window,
+ * then 'click' in the same TCP connection.
+ * Required for 'on'/'query' (need snapshot in same session) AND 'coords'
+ * (needs window focus before a raw coordinate click lands correctly).
+ */
+export async function peekabooClickSession(
+  vmId: string,
+  vmIp: string,
+  opts: { query?: string; on?: string; coords?: string },
+  app?: string,
+): Promise<unknown> {
+  if (opts.coords) {
+    // Coords is a raw CGEvent — no snapshot needed. Single call, pass app to target the right window.
+    return callPeekaboo(vmId, vmIp, 'tools/call', {
+      name: 'click',
+      arguments: { coords: opts.coords, ...(app ? { app } : {}) },
+    });
+  }
+  // 'on' and 'query' require a snapshot from the same TCP session.
+  const results = await callPeekabooSession(vmId, vmIp, [
+    { name: 'see', arguments: { ...(app ? { app } : {}) } },
+    { name: 'click', arguments: { ...opts, ...(app ? { app } : {}) } },
+  ]);
+  return results[1];
 }

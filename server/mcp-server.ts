@@ -30,6 +30,7 @@ import {
   peekabooSee,
   peekabooScreenshot,
   peekabooClick,
+  peekabooClickSession,
   peekabooType,
   peekabooHotkey,
   peekabooScroll,
@@ -209,6 +210,7 @@ const tools: Tool[] = [
       properties: {
         vm_id: { type: 'string', description: 'VM name' },
         app: { type: 'string', description: 'App bundle ID or name (optional — defaults to frontmost app)' },
+        includeFrames: { type: 'boolean', description: 'Include full frame (x, y, width, height) for each element' },
       },
       required: ['vm_id'],
     },
@@ -227,15 +229,17 @@ const tools: Tool[] = [
   },
   {
     name: 'peekaboo_click',
-    description: 'Click an element by accessibility identifier in the given VM.',
+    description: 'Click an element in the given VM. Specify one of: query (text/label search), on (element ID from see output), or coords ("x,y").',
     inputSchema: {
       type: 'object',
       properties: {
-        vm_id: { type: 'string' },
-        identifier: { type: 'string', description: 'Accessibility identifier of the element to click' },
-        app: { type: 'string' },
+        vm_id:   { type: 'string' },
+        query:   { type: 'string', description: 'Text/label to search for and click' },
+        on:      { type: 'string', description: 'Element ID from a prior see call (e.g. "elem_6")' },
+        coords:  { type: 'string', description: 'Exact screen coordinates, e.g. "799,372"' },
+        app:     { type: 'string' },
       },
-      required: ['vm_id', 'identifier'],
+      required: ['vm_id'],
     },
   },
   {
@@ -748,8 +752,46 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
       case 'peekaboo_see': {
         const ip = await resolveVMIp(String(a.vm_id));
-        const result = await peekabooSee(String(a.vm_id), ip, a.app as string | undefined);
-        return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+        const result = await peekabooSee(String(a.vm_id), ip, a.app as string | undefined, Boolean(a.includeFrames));
+        let text = JSON.stringify(result, null, 2);
+
+        if (a.includeFrames) {
+          // Augment with frame data from the snapshot file on the VM.
+          // Peekaboo stores full AX frames in ~/.peekaboo/snapshots/<UUID>/snapshot.json
+          const textContent = (result as { content?: Array<{ text?: string }> })?.content?.[0]?.text ?? '';
+          const snapshotIdMatch = textContent.match(/Snapshot ID: ([A-F0-9-]+)/i);
+          if (snapshotIdMatch) {
+            const snapId = snapshotIdMatch[1];
+            const snapPath = `/Users/lume/.peekaboo/snapshots/${snapId}/snapshot.json`;
+            try {
+              const { stdout } = await sshExec(ip, `cat "${snapPath}" 2>/dev/null`);
+              const snapData = JSON.parse(stdout) as { uiMap?: Record<string, { frame?: [[number, number], [number, number]], id?: string, label?: string, role?: string }> };
+              const frameMap: Record<string, { x: number; y: number; width: number; height: number }> = {};
+              for (const [elemId, elemData] of Object.entries(snapData.uiMap ?? {})) {
+                const frame = elemData.frame;
+                if (frame && Array.isArray(frame) && frame.length === 2) {
+                  const [center, size] = frame;
+                  frameMap[elemId] = {
+                    x: Math.round(center[0] - size[0] / 2),
+                    y: Math.round(center[1] - size[1] / 2),
+                    width: size[0],
+                    height: size[1],
+                  };
+                }
+              }
+              // Build a compact frame summary appended to the text
+              const frameLines = Object.entries(frameMap)
+                .map(([id, f]) => `  ${id}: x=${f.x}, y=${f.y}, w=${f.width}, h=${f.height}`)
+                .join('\n');
+              const augmented = `${textContent}\n\nElement Frames (x, y, width, height):\n${frameLines}`;
+              text = JSON.stringify({ ...result as object, frameMap, _augmentedText: augmented }, null, 2);
+            } catch (err) {
+              console.error('[peekaboo_see] Failed to read snapshot frames:', err);
+            }
+          }
+        }
+
+        return { content: [{ type: 'text', text }] };
       }
 
       case 'peekaboo_image': {
@@ -762,7 +804,37 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
       case 'peekaboo_click': {
         const ip = await resolveVMIp(String(a.vm_id));
-        const result = await peekabooClick(String(a.vm_id), ip, String(a.identifier), a.app as string | undefined);
+
+        // coords mode: CGEventPost silently fails for CLI processes without a
+        // WindowServer connection. Use osascript (which has WS access) for an
+        // AX-based coordinate click instead.
+        // Peekaboo `see` reports the element's top-left corner as its position,
+        // so we add +1 to both axes to land safely inside the element's hit area.
+        if (a.coords) {
+          const raw = String(a.coords);
+          const [cx, cy] = raw.split(',').map(s => parseInt(s.trim(), 10));
+          if (isNaN(cx) || isNaN(cy)) throw new Error(`Invalid coords: "${raw}"`);
+          const tx = cx + 1, ty = cy + 1;
+          const { stdout, stderr, code } = await sshExec(
+            ip,
+            `osascript -e 'tell application "System Events" to click at {${tx}, ${ty}}'`,
+            15_000,
+          );
+          if (code !== 0) throw new Error(`Coords click failed: ${(stderr || stdout).trim()}`);
+          return { content: [{ type: 'text', text: `[ok] Clicked at (${cx}, ${cy}): ${stdout.trim()}` }] };
+        }
+
+        // on/query modes: route through peekaboo session (AX snapshot needed in same TCP connection)
+        const opts: { query?: string; on?: string } = {
+          ...(a.query ? { query: String(a.query) } : {}),
+          ...(a.on    ? { on:    String(a.on)    } : {}),
+        };
+        if (!Object.keys(opts).length) throw new Error('peekaboo_click requires one of: query, on, coords');
+        const result = await peekabooClickSession(
+          String(a.vm_id), ip,
+          opts,
+          a.app as string | undefined,
+        );
         return { content: [{ type: 'text', text: JSON.stringify(result) }] };
       }
 
