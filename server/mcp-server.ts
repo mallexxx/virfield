@@ -50,7 +50,7 @@ import { join } from 'path';
 import { createConnection } from 'net';
 import { spawn } from 'child_process';
 import { existsSync } from 'fs';
-import { SCRIPTS_DIR, LOG_BASE, STATE_DIR, RECORDINGS_DIR, VMSHARE as VMSHARE_CFG } from './config.js';
+import { SCRIPTS_DIR, LOG_BASE, STATE_DIR, RECORDINGS_DIR, VMSHARE as VMSHARE_CFG, PORT as VIRFIELD_PORT } from './config.js';
 import { STAGE_SCRIPT_MAP, STAGE_ORDER, StageKey, buildStageArgs, STATE_KEY_TO_DB_STAGE } from './stages.js';
 import { readFileSync, readdirSync, statSync } from 'fs';
 
@@ -601,10 +601,25 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           await lume.cloneVM(goldenName, vmName);
           db.upsertVM({ id: vmName, tag: 'run' });
         }
-        await lume.startVM(vmName, { noDisplay: (a.noDisplay as boolean) ?? true, sharedDir: VMSHARE });
+        // Route through HTTP API so writeStartLog fires and the start appears in the UI log tab.
+        // The HTTP route responds immediately and starts the VM in the background.
+        await fetch(`http://127.0.0.1:${VIRFIELD_PORT}/api/vms/${encodeURIComponent(vmName)}/start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ noDisplay: (a.noDisplay as boolean) ?? true }),
+          signal: AbortSignal.timeout(10_000),
+        }).catch(() => {
+          // HTTP server not reachable — fall back to direct lume call (no log)
+          return lume.startVM(vmName, { noDisplay: (a.noDisplay as boolean) ?? true, sharedDir: VMSHARE });
+        });
         db.touchVMRun(vmName);
-        // startVM now polls until running — fetch current state for a real confirmation.
-        const vm = await lume.getVM(vmName);
+        // Poll for running state (same as before)
+        const deadline = Date.now() + 120_000;
+        let vm = await lume.getVM(vmName);
+        while (vm.status !== 'running' && !vm.ipAddress && Date.now() < deadline) {
+          await new Promise(r => setTimeout(r, 3000));
+          vm = await lume.getVM(vmName);
+        }
         return {
           content: [{
             type: 'text',
