@@ -7,6 +7,8 @@ import { GoldenPanel } from './components/GoldenPanel.tsx';
 import { SettingsPanel } from './components/SettingsPanel.tsx';
 import { MCPSetupPanel } from './components/MCPSetupPanel.tsx';
 
+const GITHUB_REPO = 'mallexxx/virfield';
+
 type Tab = 'vms' | 'ipsw' | 'xcode' | 'storage' | 'golden' | 'mcp' | 'settings';
 
 const TABS: Array<{ id: Tab; label: string }> = [
@@ -18,10 +20,13 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'mcp',      label: 'MCP Setup' },
 ];
 
+interface UpdateInfo { current: string; latest: string; updateAvailable: boolean; latestMessage: string; }
+
 export default function App() {
   const [tab, setTab] = useState<Tab>('vms');
   const [lumeRunning, setLumeRunning] = useState<boolean | null>(null);
   const [lumeStarting, setLumeStarting] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
 
   const checkLume = useCallback(async () => {
     try {
@@ -39,6 +44,19 @@ export default function App() {
     const t = setInterval(checkLume, 5000);
     return () => clearInterval(t);
   }, [checkLume]);
+
+  // Check for updates on load and every 30 min
+  useEffect(() => {
+    async function checkUpdate() {
+      try {
+        const resp = await fetch('/api/host/update-check');
+        if (resp.ok) setUpdateInfo(await resp.json() as UpdateInfo);
+      } catch { /* offline */ }
+    }
+    checkUpdate();
+    const t = setInterval(checkUpdate, 30 * 60 * 1000);
+    return () => clearInterval(t);
+  }, []);
 
   async function startLume() {
     setLumeStarting(true);
@@ -76,6 +94,17 @@ export default function App() {
 
         {/* lume serve status indicator — right-aligned */}
         <div className="ml-auto flex items-center gap-3">
+          {updateInfo?.updateAvailable && (
+            <a
+              href={`https://github.com/${GITHUB_REPO}/commits/main`}
+              target="_blank"
+              rel="noreferrer"
+              title={updateInfo.latestMessage || 'New version available'}
+              className="flex items-center gap-1.5 text-xs px-2 py-0.5 rounded bg-orange-500/20 text-orange-300 border border-orange-500/40 hover:bg-orange-500/30 transition-colors"
+            >
+              ↑ update available
+            </a>
+          )}
           {lumeRunning === false && (
             <div className="flex items-center gap-2">
               <span className="flex items-center gap-1.5 text-xs text-red-400">

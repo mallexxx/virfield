@@ -9,7 +9,7 @@ import expressWs from 'express-ws';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { existsSync, utimesSync } from 'fs';
-import { execFile } from 'child_process';
+import { execFile, execFileSync } from 'child_process';
 import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
@@ -100,6 +100,39 @@ wsApp.post('/api/host/lume-restart', async (_req, res) => {
   }
 });
 
+
+// ── Update check ─────────────────────────────────────────────────────────────
+// Compares local HEAD sha against the latest commit on the GitHub remote.
+// Caches the GitHub response for 30 min to stay within unauthenticated rate limits.
+
+const GITHUB_REPO = 'mallexxx/virfield';
+let currentSha = 'unknown';
+try { currentSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: __dirname, encoding: 'utf8' }).trim(); } catch { /* not a git repo */ }
+
+let updateCache: { ts: number; sha: string; message: string } | null = null;
+
+wsApp.get('/api/host/update-check', async (_req, res) => {
+  const now = Date.now();
+  if (!updateCache || now - updateCache.ts > 30 * 60 * 1000) {
+    try {
+      const resp = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/commits/main`, {
+        headers: { 'Accept': 'application/vnd.github.v3+json', 'User-Agent': 'virfield-server' },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (resp.ok) {
+        const data = await resp.json() as { sha: string; commit: { message: string } };
+        updateCache = { ts: now, sha: data.sha, message: data.commit.message.split('\n')[0] };
+      }
+    } catch { /* network unavailable — return cached or current */ }
+  }
+  const latest = updateCache?.sha ?? currentSha;
+  res.json({
+    current: currentSha,
+    latest,
+    updateAvailable: latest !== 'unknown' && currentSha !== 'unknown' && latest !== currentSha,
+    latestMessage: updateCache?.message ?? '',
+  });
+});
 
 // Returns the absolute path to mcp-server.ts so the UI can show copy-paste configs.
 wsApp.get('/api/host/mcp-server-path', (_req, res) => {
