@@ -358,7 +358,7 @@ const tools: Tool[] = [
   // ── Test runner ──
   {
     name: 'run_tests',
-    description: 'Launch XCUITests in a running VM via xcodebuild test-without-building. Returns immediately with a run_id (timestamp) and results_dir path. Poll get_test_results or use vm_ssh_exec to check progress. Uses the pre-built xctestrun from VMShare/DerivedData.',
+    description: 'Launch XCUITests in a running VM via xcodebuild test-without-building. Returns immediately with a run_id (timestamp) and results_dir path. Poll get_test_results or use vm_ssh_exec to check progress. Uses the pre-built xctestrun from VMShare/DerivedData. Pass scheme+workspace (VM path to .xcworkspace in VMShare) to run scheme pre-actions; scheme alone without workspace will fail.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -366,6 +366,7 @@ const tools: Tool[] = [
         test_suite:   { type: 'string', description: 'XCTest suite/class to run, e.g. "MyUITests". Omit to run all tests.' },
         only_testing: { type: 'array', items: { type: 'string' }, description: 'Specific test methods, e.g. ["MyBundle/MyTestClass/testFoo"]. Overrides test_suite.' },
         scheme:       { type: 'string', description: 'Xcode scheme name (e.g. "macOS UI Tests CI"). Preferred: runs scheme pre-actions (test-server, dialog suppression, etc.). Mutually exclusive with xctestrun.' },
+        workspace:    { type: 'string', description: 'Path to .xcworkspace on the VM (e.g. "/Volumes/My Shared Files/myrepo/DuckDuckGo.xcworkspace"). Required with scheme to run pre-actions. Host-side VMShare path is ~/VMShare/.' },
         xctestrun:    { type: 'string', description: 'xctestrun filename in VMShare/DerivedData/Build/Products/. Fallback when scheme is not provided. Auto-discovered if only one .xctestrun exists.' },
         bundle:       { type: 'string', description: 'Bundle name prefix for test_suite expansion (e.g. "UI Tests"). Defaults to "UI Tests".' },
         iterations:   { type: 'number', description: 'Retry failing tests N times (default: 2)' },
@@ -682,6 +683,26 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
         // 6. Verify tunnel port is actually accepting connections (B6)
         await waitForTCPPort('127.0.0.1', localPort, 30_000);
+
+        // 7. macOS 15+ ScreenCaptureKit bypass-picker dialog auto-dismiss.
+        //    On macOS 15, the first peekaboo screenshot triggers a system dialog:
+        //    "Terminal is requesting to bypass the system private window picker".
+        //    This is informational — the screenshot succeeds — but the dialog stays
+        //    on screen and pollutes the UI for the rest of the session.  Take one
+        //    warm-up see call now, detect the dialog, and click Allow automatically.
+        try {
+          const warmup = await peekabooSee(sessionName, ip, undefined, false);
+          const warmupText = JSON.stringify(warmup);
+          if (warmupText.includes('bypass the system private window picker') ||
+              warmupText.includes('bypass')) {
+            // Dialog detected — click Allow to dismiss it.
+            await peekabooClickSession(sessionName, ip, { query: 'Allow' }, undefined);
+            console.log(`[vm_prepare_session] Dismissed ScreenCaptureKit bypass dialog on ${sessionName}`);
+          }
+        } catch (err) {
+          // Non-fatal: warm-up failed (peekaboo not ready yet, or no dialog to dismiss)
+          console.warn(`[vm_prepare_session] Warm-up see/dismiss skipped:`, err);
+        }
 
         return {
           content: [{
@@ -1163,7 +1184,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         let resolvedId: string;
         if (a.scheme) {
           const scheme = String(a.scheme);
-          testSourceArg = `-scheme "${scheme}" -derivedDataPath "/Volumes/My Shared Files/DerivedData"`;
+          const workspacePart = a.workspace ? ` -workspace "${String(a.workspace)}"` : '';
+          testSourceArg = `-scheme "${scheme}"${workspacePart} -derivedDataPath "/Volumes/My Shared Files/DerivedData"`;
           resolvedId = scheme;
         } else {
           // Resolve xctestrun: explicit arg or auto-discover single file
