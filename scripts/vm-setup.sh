@@ -540,6 +540,43 @@ PYEOF
     tcc_grant "$TCC_USR_DB" "kTCCServiceAppleEvents" "$_client" "$_type" "$_csreq" "com.apple.systemevents"
   done
 
+  # ── macOS 15+ ScreenCaptureKit bypass-picker hint suppression ────────────────
+  # On macOS 15 (Sequoia) and later, the first time an app uses ScreenCaptureKit
+  # with the legacy SCShareableContent API (bypassing the new "window picker"),
+  # macOS shows a one-time dialog: "is requesting to bypass the system private
+  # window picker and directly access your screen and audio."
+  # Even with kTCCServiceScreenCapture granted in TCC.db, this dialog appears on
+  # first use and blocks the UI. The approval is stored in ScreenCaptureApprovals.plist
+  # inside group.com.apple.replayd. Pre-populating it with a far-future hint date
+  # suppresses the dialog on fresh VM clones.
+  if [[ "$(sw_vers -productVersion | cut -d. -f1)" -ge 15 ]]; then
+    echo "  [macOS 15+] Pre-approving ScreenCaptureKit bypass for Terminal + Peekaboo"
+    python3 - <<'SCPY'
+import plistlib, datetime, os
+plist_dir  = os.path.expanduser("~/Library/Group Containers/group.com.apple.replayd")
+plist_path = os.path.join(plist_dir, "ScreenCaptureApprovals.plist")
+os.makedirs(plist_dir, exist_ok=True)
+far_future = datetime.datetime(2099, 1, 1, tzinfo=datetime.timezone.utc)
+now        = datetime.datetime.now(datetime.timezone.utc)
+try:
+    with open(plist_path, "rb") as f:
+        data = plistlib.load(f)
+except Exception:
+    data = {}
+for bundle in ("com.apple.Terminal", "boo.peekaboo.peekaboo"):
+    entry = data.get(bundle, {})
+    entry["kScreenCapturePrivacyHintDate"]     = far_future
+    entry["kScreenCapturePrivacyHintPolicy"]   = 315360000
+    entry["kScreenCaptureApprovalLastAlerted"] = entry.get("kScreenCaptureApprovalLastAlerted", now)
+    entry["kScreenCaptureApprovalLastUsed"]    = now
+    entry["kScreenCaptureAlertableUsageCount"] = 0
+    data[bundle] = entry
+with open(plist_path, "wb") as f:
+    plistlib.dump(data, f, fmt=plistlib.FMT_XML)
+print(f"  ScreenCaptureApprovals.plist: hint suppressed until 2099 for {list(data)}")
+SCPY
+  fi
+
   sudo killall tccd 2>/dev/null || true
   echo "  tccd restarted — TCC grants active"
 fi
