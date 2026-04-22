@@ -12,7 +12,7 @@ import { VMSHARE, SCRIPTS_DIR, LOG_BASE, STATE_DIR } from '../config.js';
 import { STAGE_SCRIPT_MAP, STAGE_ORDER, StageKey, STAGE_STATE_KEY, buildStageArgs } from '../stages.js';
 import { activeBuildVmIds, readBuildState } from './build.js';
 import { join } from 'path';
-import { existsSync, readdirSync, mkdirSync, writeFileSync, readFileSync, symlinkSync, unlinkSync, rmdirSync } from 'fs';
+import { existsSync, readdirSync, mkdirSync, writeFileSync, readFileSync, symlinkSync, unlinkSync, rmdirSync, renameSync, readlinkSync } from 'fs';
 import { homedir } from 'os';
 import * as tasks from '../tasks.js';
 import type { ChildProcess } from 'child_process';
@@ -512,6 +512,74 @@ vmsRouter.delete('/:id', async (req: Request, res: Response) => {
     }
     db.deleteVM(req.params.id);
     res.json({ message: 'VM deleted' });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// ── POST /api/vms/:id/rename ──────────────────────────────────────────────────
+
+vmsRouter.post('/:id/rename', async (req: Request, res: Response) => {
+  const oldId = req.params.id;
+  const { newName } = req.body as { newName?: string };
+
+  if (!newName || !/^[a-zA-Z0-9._-]+$/.test(newName)) {
+    return void res.status(400).json({ error: 'Invalid name — use letters, numbers, hyphens, underscores, dots only' });
+  }
+  if (newName === oldId) return void res.status(400).json({ error: 'New name is the same as current name' });
+
+  // Duplicate check: lume directory and DB
+  const lumeNewDir = join(homedir(), '.lume', newName);
+  if (existsSync(lumeNewDir)) return void res.status(409).json({ error: `VM "${newName}" already exists` });
+  const existing = db.listVMs().find(v => v.id === newName);
+  if (existing) return void res.status(409).json({ error: `VM "${newName}" already exists in database` });
+
+  try {
+    closeTunnel(oldId);
+
+    // Rename lume VM directory
+    const lumeOldDir = join(homedir(), '.lume', oldId);
+    if (existsSync(lumeOldDir)) renameSync(lumeOldDir, lumeNewDir);
+
+    // Rename log directory
+    const oldLogDir = join(LOG_BASE, oldId);
+    const newLogDir = join(LOG_BASE, newName);
+    if (existsSync(oldLogDir)) renameSync(oldLogDir, newLogDir);
+
+    // Rename state JSON
+    const oldState = join(STATE_DIR, `${oldId}.json`);
+    const newState = join(STATE_DIR, `${newName}.json`);
+    if (existsSync(oldState)) renameSync(oldState, newState);
+
+    // Rename recordings whose filename contains the old VM ID
+    const { RECORDINGS_DIR } = await import('../config.js');
+    if (existsSync(RECORDINGS_DIR)) {
+      for (const f of readdirSync(RECORDINGS_DIR)) {
+        if (f.includes(oldId)) {
+          try {
+            renameSync(
+              join(RECORDINGS_DIR, f),
+              join(RECORDINGS_DIR, f.split(oldId).join(newName))
+            );
+          } catch { /* best-effort */ }
+        }
+      }
+    }
+
+    // Update latest.log symlink in new log dir if it points to old path
+    const latestLink = join(newLogDir, 'latest.log');
+    if (existsSync(latestLink)) {
+      try {
+        const target = readlinkSync(latestLink);
+        unlinkSync(latestLink);
+        symlinkSync(target.replace(oldLogDir, newLogDir), latestLink);
+      } catch { /* best-effort */ }
+    }
+
+    // Update DB
+    db.renameVM(oldId, newName);
+
+    res.json({ message: 'VM renamed', newName });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }

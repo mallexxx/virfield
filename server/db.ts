@@ -160,6 +160,18 @@ export function deleteVM(id: string) {
   db.prepare('DELETE FROM vms WHERE id = ?').run(id);
 }
 
+export function renameVM(oldId: string, newId: string) {
+  db.transaction(() => {
+    db.prepare('INSERT OR IGNORE INTO vms (id) SELECT ? FROM vms WHERE id = ?').run(newId, oldId);
+    db.prepare('UPDATE vms SET id = ? WHERE id = ?').run(newId, oldId);
+    db.prepare('UPDATE vm_stages SET vm_id = ? WHERE vm_id = ?').run(newId, oldId);
+    db.prepare('UPDATE vm_tunnels SET vm_id = ? WHERE vm_id = ?').run(newId, oldId);
+    db.prepare('UPDATE build_jobs SET golden_vm = ? WHERE golden_vm = ?').run(newId, oldId);
+    db.prepare('UPDATE build_jobs SET base_vm = ? WHERE base_vm = ?').run(newId, oldId);
+    db.prepare('UPDATE build_jobs SET nosip_vm = ? WHERE nosip_vm = ?').run(newId, oldId);
+  })();
+}
+
 export function touchVMRun(id: string) {
   db.prepare(`UPDATE vms SET last_run_at = strftime('%s','now') WHERE id = ?`).run(id);
 }

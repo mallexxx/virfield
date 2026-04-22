@@ -161,6 +161,10 @@ export function VMCard({ vm, onRefresh, isBeingBuilt, onStopBuild }: Props) {
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleteWithFiles, setDeleteWithFiles] = useState(true);
   const [deleteFileList, setDeleteFileList] = useState<{ name: string; category: string; size: number }[]>([]);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
   const [showGhcrPush, setShowGhcrPush] = useState(false);
   const [pushTaskId, setPushTaskId] = useState<string | null>(null);
   const [pushLabel, setPushLabel] = useState('');
@@ -506,6 +510,16 @@ export function VMCard({ vm, onRefresh, isBeingBuilt, onStopBuild }: Props) {
             {menuOpen && (
               <div className="absolute right-0 top-full mt-1 z-20 bg-gray-800 border border-gray-700 rounded shadow-xl min-w-[140px]">
                 <button
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setRenameValue(vm.name);
+                    setRenameError(null);
+                    setRenameOpen(true);
+                    setTimeout(() => { renameInputRef.current?.select(); }, 50);
+                  }}
+                  className="menu-item text-gray-200 hover:bg-gray-700/50"
+                >Rename</button>
+                <button
                   onClick={() => { setMenuOpen(false); doAction(() => apiPost(`/vms/${vm.name}/promote-golden`)); }}
                   className="menu-item text-yellow-300 hover:bg-yellow-500/10"
                 >Set as Golden</button>
@@ -563,6 +577,57 @@ export function VMCard({ vm, onRefresh, isBeingBuilt, onStopBuild }: Props) {
               }}
               className="text-[11px] px-3 py-1 bg-red-700/60 hover:bg-red-700/80 text-red-200 rounded"
             >Delete</button>
+          </div>
+        </div>
+      )}
+
+      {renameOpen && (
+        <div className="px-4 py-3 border-t border-gray-700/60 bg-gray-900/80 space-y-2">
+          <div className="text-xs text-gray-400 font-medium">Rename VM</div>
+          <input
+            ref={renameInputRef}
+            value={renameValue}
+            onChange={e => { setRenameValue(e.target.value); setRenameError(null); }}
+            onKeyDown={async e => {
+              if (e.key === 'Escape') { setRenameOpen(false); return; }
+              if (e.key === 'Enter') {
+                const n = renameValue.trim();
+                if (!n || n === vm.name) { setRenameOpen(false); return; }
+                try {
+                  const resp = await fetch(`/api/vms/${encodeURIComponent(vm.name)}/rename`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ newName: n }),
+                  });
+                  if (!resp.ok) { const d = await resp.json() as { error: string }; setRenameError(d.error); return; }
+                  setRenameOpen(false);
+                  onRefresh();
+                } catch (err) { setRenameError(String(err)); }
+              }
+            }}
+            placeholder="New name"
+            className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm text-gray-100 font-mono focus:outline-none focus:border-orange-500/60"
+          />
+          {renameError && <div className="text-[11px] text-red-400">{renameError}</div>}
+          <div className="flex gap-2">
+            <button onClick={() => setRenameOpen(false)} className="text-[11px] px-3 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded">Cancel</button>
+            <button
+              onClick={async () => {
+                const n = renameValue.trim();
+                if (!n || n === vm.name) { setRenameOpen(false); return; }
+                try {
+                  const resp = await fetch(`/api/vms/${encodeURIComponent(vm.name)}/rename`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ newName: n }),
+                  });
+                  if (!resp.ok) { const d = await resp.json() as { error: string }; setRenameError(d.error); return; }
+                  setRenameOpen(false);
+                  onRefresh();
+                } catch (err) { setRenameError(String(err)); }
+              }}
+              className="text-[11px] px-3 py-1 bg-orange-600/40 hover:bg-orange-600/60 text-orange-200 rounded"
+            >Rename</button>
           </div>
         </div>
       )}
