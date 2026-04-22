@@ -366,7 +366,7 @@ const tools: Tool[] = [
         test_suite:   { type: 'string', description: 'XCTest suite/class to run, e.g. "MyUITests". Omit to run all tests.' },
         only_testing: { type: 'array', items: { type: 'string' }, description: 'Specific test methods, e.g. ["MyBundle/MyTestClass/testFoo"]. Overrides test_suite.' },
         scheme:       { type: 'string', description: 'Xcode scheme name (e.g. "macOS UI Tests CI"). Preferred: runs scheme pre-actions (test-server, dialog suppression, etc.). Mutually exclusive with xctestrun.' },
-        workspace:    { type: 'string', description: 'Path to .xcworkspace on the VM (e.g. "/Volumes/My Shared Files/myrepo/DuckDuckGo.xcworkspace"). Required with scheme to run pre-actions. Host-side VMShare path is ~/VMShare/.' },
+        workspace:    { type: 'string', description: 'Path to .xcworkspace on the VM (e.g. "/Volumes/My Shared Files/myrepo/MyApp.xcworkspace"). Required with scheme to run pre-actions. Host-side VMShare path is ~/VMShare/.' },
         xctestrun:    { type: 'string', description: 'xctestrun filename in VMShare/DerivedData/Build/Products/. Fallback when scheme is not provided. Auto-discovered if only one .xctestrun exists.' },
         bundle:       { type: 'string', description: 'Bundle name prefix for test_suite expansion (e.g. "UI Tests"). Defaults to "UI Tests".' },
         iterations:   { type: 'number', description: 'Retry failing tests N times (default: 2)' },
@@ -1229,7 +1229,7 @@ xcodebuild test-without-building \\
   ${onlyTestingFlags} \\
   -test-iterations ${iterations} -retry-tests-on-failure \\
   -test-repetition-relaunch-enabled YES \\
-  -resultBundlePath "${resultsDir}/UITests.xcresult" \\
+  -resultBundlePath "${resultsDir}/${bundle}.xcresult" \\
   2>&1 | tee "${resultsDir}/ui-tests.log"
 TEST_EXIT=\${PIPESTATUS[0]}
 xcbeautify --report junit --report-path "${resultsDir}" --junit-report-filename "report.xml" < "${resultsDir}/ui-tests.log" 2>/dev/null || true

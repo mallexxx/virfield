@@ -22,34 +22,28 @@ import { join } from 'path';
 
 export const SCRIPTS_DIR: string =
   process.env.VMCONSOLE_SCRIPTS_DIR
-  ?? process.env.DDG_SCRIPTS_DIR  // legacy alias
   ?? join(homedir(), 'Developer', 'virfield', 'scripts');
 
 export const LOG_BASE: string =
   process.env.VMCONSOLE_LOG_BASE
-  ?? process.env.DDG_LOG_BASE
   ?? join(homedir(), 'Developer', 'virfield', 'logs');
 
 /** ~/Developer/virfield/state/<vm-name>.json — persistent per-VM state file */
 export const STATE_DIR: string =
   process.env.VMCONSOLE_STATE_DIR
-  ?? process.env.DDG_STATE_DIR
   ?? join(homedir(), 'Developer', 'virfield', 'state');
 
 /** VNC recording output directory */
 export const RECORDINGS_DIR: string =
   process.env.VMCONSOLE_RECORDINGS_DIR
-  ?? process.env.DDG_RECORDINGS_DIR
   ?? join(homedir(), 'Developer', 'virfield', 'recordings');
 
 export const REPO_DIR: string =
   process.env.VMCONSOLE_REPO_DIR
-  ?? process.env.DDG_REPO_DIR
   ?? join(homedir(), 'Developer', 'repo');
 
 export const VMSHARE: string =
   process.env.VMCONSOLE_VMSHARE
-  ?? process.env.DDG_VMSHARE
   ?? join(homedir(), 'VMShare');
 
 export const PORT: number = Number(process.env.PORT ?? 3000);
