@@ -80,13 +80,42 @@ if want system; then
   defaults write -g NSQuitAlwaysKeepsWindows -bool false    # per-app quit restore
   defaults write -g ApplePersistenceIgnoreState -bool true   # ignore saved window state entirely
   defaults write com.apple.loginwindow TALLogoutSavesState -bool false   # per-user: no restore after reboot
+  # Per-app override for Terminal (it can override the global pref with its own domain).
+  defaults write com.apple.Terminal NSQuitAlwaysKeepsWindows -bool false
   # System-level write — takes precedence over the per-user pref on modern macOS.
   sudo defaults write /Library/Preferences/com.apple.loginwindow TALLogoutSavesState -bool false
   # Clear any existing saved window state files so they don't restore on first boot.
   rm -rf ~/Library/Saved\ Application\ State/ 2>/dev/null || true
 
-  # Belt-and-suspenders LaunchAgent: clear saved window state on every GUI login
-  # so it can never accumulate between reboots.
+  # LaunchDaemon (runs as root at system boot, BEFORE autologin/LaunchAgents) that
+  # wipes the lume user's saved-application-state directory.  This fires earlier than
+  # any LaunchAgent, so no app can read stale state on the current boot cycle.
+  sudo tee /Library/LaunchDaemons/com.uitest.clear-saved-state.plist > /dev/null << 'DAEMON_EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.uitest.clear-saved-state</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>rm -rf /Users/lume/Library/Saved\ Application\ State 2>/dev/null; true</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <false/>
+</dict>
+</plist>
+DAEMON_EOF
+  sudo chmod 644 /Library/LaunchDaemons/com.uitest.clear-saved-state.plist
+  sudo chown root:wheel /Library/LaunchDaemons/com.uitest.clear-saved-state.plist
+  echo "  LaunchDaemon installed: com.uitest.clear-saved-state (clears saved state before autologin)"
+
+  # Belt-and-suspenders LaunchAgent: re-apply defaults on every GUI login in case
+  # any pref got reset, and clear any state that may have been written mid-session.
   mkdir -p ~/Library/LaunchAgents
   cat > ~/Library/LaunchAgents/com.uitest.suppress-restore-windows.plist << 'RESTORE_EOF'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -103,6 +132,7 @@ if want system; then
       defaults write -g NSQuitAlwaysKeepsWindows -bool false
       defaults write -g ApplePersistenceIgnoreState -bool true
       defaults write com.apple.loginwindow TALLogoutSavesState -bool false
+      defaults write com.apple.Terminal NSQuitAlwaysKeepsWindows -bool false
       rm -rf "$HOME/Library/Saved Application State/" 2>/dev/null
     </string>
   </array>
@@ -111,7 +141,7 @@ if want system; then
 </dict>
 </plist>
 RESTORE_EOF
-  echo "  Suppress-restore-windows LaunchAgent installed: com.uitest.suppress-restore-windows"
+  echo "  LaunchAgent installed: com.uitest.suppress-restore-windows"
 
   # Suppress the persistent "Sign In with Apple ID" dialog.
   # 1. System-wide managed pref — tells macOS the setup UI should be skipped.
@@ -593,4 +623,9 @@ if want automation; then
 fi
 
 echo ""
+# Final cleanup: clear any saved application state that accumulated during this
+# provisioning run (Terminal windows opened by this script, etc.) so the golden
+# image is clean before it is stopped and snapshotted.
+rm -rf ~/Library/Saved\ Application\ State/ 2>/dev/null || true
+
 echo "=== VM provisioning complete ==="
