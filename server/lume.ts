@@ -369,10 +369,63 @@ export async function startVM(name: string, opts: {
   noDisplay?: boolean;
   sharedDir?: string;
 } = {}): Promise<void> {
+  // 1. Check available VM slots — clean up orphaned `lume run` processes if needed.
+  //    Orphaned processes (started outside `lume serve`) hold Virtualization.framework
+  //    slots and cause "exceeds limit" errors even when lume serve thinks slots are free.
+  try {
+    const host = await getHostStatus();
+    if (host.available_slots === 0) {
+      const orphans = listDirectRunVMs();
+      if (orphans.size > 0) {
+        console.warn(
+          `[lume] startVM(${name}): no slots (${host.vm_count}/${host.max_vms}) — ` +
+          `killing orphaned lume run processes: ${[...orphans].join(', ')}`,
+        );
+        execSync(`pkill -f 'lume run' 2>/dev/null || true`);
+        await sleep(2000);
+        const host2 = await getHostStatus();
+        if (host2.available_slots === 0) {
+          throw new Error(
+            `Cannot start VM ${name}: no available slots (${host2.vm_count}/${host2.max_vms} running). ` +
+            `Stop a running VM first.`,
+          );
+        }
+      } else {
+        throw new Error(
+          `Cannot start VM ${name}: no available slots (${host.vm_count}/${host.max_vms} running). ` +
+          `Stop a running VM first.`,
+        );
+      }
+    }
+  } catch (err) {
+    // Re-throw our own "Cannot start" errors; treat slot-check failures as non-fatal.
+    if (String(err).includes('Cannot start VM')) throw err;
+    console.warn('[lume] startVM: slot check failed (proceeding anyway):', err);
+  }
+
+  // 2. Send start request to lume serve.
   await lumePost(`/lume/vms/${encodeURIComponent(name)}/run`, {
     noDisplay: opts.noDisplay ?? true,
     sharedDirectories: opts.sharedDir ? [{ hostPath: opts.sharedDir, readOnly: false }] : undefined,
   });
+
+  // 3. Poll until VM is actually running (up to 60 s).
+  //    lume's /run endpoint returns before the VM is live — the guest OS still needs to boot.
+  const deadline = Date.now() + 60_000;
+  while (Date.now() < deadline) {
+    await sleep(2000);
+    try {
+      const vm = await getVM(name);
+      if (vm.status === 'running') return;
+      if (vm.status === 'stopped') {
+        throw new Error(`VM ${name} failed to start (returned to stopped state)`);
+      }
+    } catch (err) {
+      if (String(err).includes('failed to start')) throw err;
+      // ignore transient getVM errors during early boot
+    }
+  }
+  throw new Error(`VM ${name} did not reach running state within 60 s`);
 }
 
 export async function stopVM(name: string): Promise<void> {

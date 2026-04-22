@@ -4,6 +4,7 @@ import { StageRunner } from './StageRunner.tsx';
 import { LogViewer } from './LogViewer.tsx';
 import { RecordingsTab } from './RecordingsTab.tsx';
 import { ScreenshotsTab } from './ScreenshotsTab.tsx';
+import { FilesTab } from './FilesTab.tsx';
 import { GHCRPushModal } from './GHCRPushModal.tsx';
 
 interface GhcrTask { id: string; status: string; error?: string; log: string; }
@@ -147,7 +148,7 @@ interface Props {
 
 export function VMCard({ vm, onRefresh, isBeingBuilt, onStopBuild }: Props) {
   const [expanded, setExpanded] = useState(false);
-  const [activePanel, setActivePanel] = useState<'stages' | 'logs' | 'recordings' | 'screenshots' | null>(null);
+  const [activePanel, setActivePanel] = useState<'stages' | 'logs' | 'recordings' | 'screenshots' | 'files' | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [canForceStop, setCanForceStop] = useState(false);
@@ -349,6 +350,7 @@ export function VMCard({ vm, onRefresh, isBeingBuilt, onStopBuild }: Props) {
                   onClick={async () => {
                     try {
                       const resp = await fetch(`/api/vms/${encodeURIComponent(vm.name)}/vnc-url`);
+                      if (!resp.ok) throw new Error('VNC URL not available — stop and restart this VM via virfield to get a VNC URL');
                       const { url } = await resp.json() as { url: string };
                       const a = document.createElement('a');
                       a.href = url;
@@ -356,15 +358,8 @@ export function VMCard({ vm, onRefresh, isBeingBuilt, onStopBuild }: Props) {
                       document.body.appendChild(a);
                       a.click();
                       document.body.removeChild(a);
-                    } catch {
-                      if (vm.ipAddress) {
-                        const a = document.createElement('a');
-                        a.href = `vnc://${vm.ipAddress}`;
-                        a.style.display = 'none';
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                      }
+                    } catch (e) {
+                      setError(e instanceof Error ? e.message : 'VNC URL not available');
                     }
                   }}
                   className="btn-sm bg-purple-600/20 text-purple-300 border-purple-600/40 hover:bg-purple-600/30"
@@ -535,6 +530,7 @@ export function VMCard({ vm, onRefresh, isBeingBuilt, onStopBuild }: Props) {
               { id: 'logs',        label: 'Logs' },
               { id: 'recordings',  label: 'Recordings' },
               { id: 'screenshots', label: 'Screenshots' },
+              { id: 'files',       label: 'Files' },
             ] as const).map(p => (
               <button
                 key={p.id}
@@ -561,6 +557,9 @@ export function VMCard({ vm, onRefresh, isBeingBuilt, onStopBuild }: Props) {
           )}
           {activePanel === 'screenshots' && (
             <ScreenshotsTab vmId={vm.name} />
+          )}
+          {activePanel === 'files' && (
+            <FilesTab vmId={vm.name} />
           )}
         </div>
       )}

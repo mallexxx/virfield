@@ -720,12 +720,23 @@ vmsRouter.post('/:id/ssh-open', async (req: Request, res: Response) => {
     const vm = await lume.getVM(req.params.id);
     if (!vm.ipAddress) return void res.status(400).json({ error: 'VM has no IP address' });
     const cmd = `ssh lume@${vm.ipAddress}`;
-    const proc = spawn('osascript', [
-      '-e', `tell application "Terminal" to do script "${cmd}"`,
-      '-e', 'tell application "Terminal" to activate',
-    ], { stdio: 'ignore' });
+    const { effectiveSetting } = await import('./settings.js');
+    const terminal = effectiveSetting('ssh_terminal') || 'Terminal';
+    let script: string[];
+    if (terminal === 'iTerm2' || terminal === 'iTerm') {
+      script = [
+        '-e', `tell application "iTerm2" to create window with default profile command "${cmd}"`,
+        '-e', 'tell application "iTerm2" to activate',
+      ];
+    } else {
+      script = [
+        '-e', `tell application "Terminal" to do script "${cmd}"`,
+        '-e', 'tell application "Terminal" to activate',
+      ];
+    }
+    const proc = spawn('osascript', script, { stdio: 'ignore' });
     proc.unref();
-    res.json({ message: 'Terminal opened', cmd });
+    res.json({ message: `${terminal} opened`, cmd });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }

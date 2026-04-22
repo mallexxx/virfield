@@ -11,6 +11,7 @@ interface Settings {
   recordings_dir: string;
   vmshare: string;
   repo_dir: string;
+  ssh_terminal: string;
 }
 
 interface GhcrSource {
@@ -100,6 +101,7 @@ export function SettingsPanel() {
       recordings_dir: settings.recordings_dir ?? '',
       vmshare: settings.vmshare ?? '',
       repo_dir: settings.repo_dir ?? '',
+      ssh_terminal: settings.ssh_terminal ?? 'Terminal',
     });
   }, [settings]);
 
@@ -303,6 +305,22 @@ export function SettingsPanel() {
           hint="virtiofs shared volume (~/VMShare)" />
         <Field label="Repo Dir" value={form.repo_dir ?? ''} onChange={v => set('repo_dir', v)}
           hint="Git repo containing build-for-testing.sh" />
+      </Section>
+
+      {/* ── SSH ── */}
+      <Section title="SSH">
+        <div className="mb-3">
+          <label className="block text-xs text-gray-400 mb-1">Terminal App</label>
+          <select
+            value={form.ssh_terminal ?? 'Terminal'}
+            onChange={e => set('ssh_terminal', e.target.value)}
+            className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-200 focus:outline-none focus:border-orange-500/60"
+          >
+            <option value="Terminal">Terminal</option>
+            <option value="iTerm2">iTerm2</option>
+          </select>
+          <p className="mt-1 text-[10px] text-gray-600">App used when clicking "Open Terminal" on a running VM.</p>
+        </div>
       </Section>
 
       {/* Save button */}

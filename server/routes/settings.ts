@@ -31,6 +31,7 @@ const SETTING_KEYS = [
   'recordings_dir',
   'vmshare',
   'repo_dir',
+  'ssh_terminal',
 ] as const;
 
 /** Default values (mirrors config.ts). */
@@ -41,6 +42,7 @@ const DEFAULTS: Record<string, string> = {
   recordings_dir: join(homedir(), 'Developer', 'virfield', 'recordings'),
   vmshare:        join(homedir(), 'VMShare'),
   repo_dir:       join(homedir(), 'Developer', 'repo'),
+  ssh_terminal:   'Terminal',
 };
 
 /** GET /api/settings — returns all settings with defaults filled in */

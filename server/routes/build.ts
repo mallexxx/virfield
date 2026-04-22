@@ -401,6 +401,91 @@ buildRouter.get('/vms/:id/screenshots', (req: Request, res: Response) => {
   res.json(scanScreenshots(req.params.id));
 });
 
+// ── GET /api/vms/:id/files ────────────────────────────────────────────────────
+// Aggregates all files known to virfield for this VM across log, recording,
+// screenshot, state, and test-result directories.
+
+interface FileEntry {
+  category: 'log' | 'recording' | 'screenshot' | 'state' | 'result';
+  path: string;
+  name: string;
+  size: number;
+  mtime: number;
+  /** Sub-label, e.g. run timestamp for results */
+  label?: string;
+}
+
+buildRouter.get('/vms/:id/files', (req: Request, res: Response) => {
+  const vmId = req.params.id;
+  const files: FileEntry[] = [];
+
+  // Logs
+  const logDir = join(LOG_BASE, vmId);
+  if (existsSync(logDir)) {
+    try {
+      for (const f of readdirSync(logDir)) {
+        if (!f.endsWith('.log')) continue;
+        try {
+          const s = statSync(join(logDir, f));
+          files.push({ category: 'log', path: join(logDir, f), name: f, size: s.size, mtime: s.mtimeMs });
+        } catch { /* skip */ }
+      }
+    } catch { /* skip */ }
+  }
+
+  // Recordings
+  for (const r of scanRecordings(vmId)) {
+    files.push({ category: 'recording', path: r.path, name: r.name, size: r.size, mtime: r.mtime });
+  }
+
+  // Screenshots
+  for (const s of scanScreenshots(vmId)) {
+    files.push({ category: 'screenshot', path: s.path, name: s.name, size: s.size, mtime: s.mtime });
+  }
+
+  // State JSON
+  const stateFile = join(STATE_DIR, `${vmId}.json`);
+  if (existsSync(stateFile)) {
+    try {
+      const s = statSync(stateFile);
+      files.push({ category: 'state', path: stateFile, name: `${vmId}.json`, size: s.size, mtime: s.mtimeMs });
+    } catch { /* skip */ }
+  }
+
+  // Test results (VMShare/results/<run_id>/) — not VM-filtered, show 20 most recent
+  const resultsBase = join(VMSHARE, 'results');
+  if (existsSync(resultsBase)) {
+    try {
+      const runs = readdirSync(resultsBase, { withFileTypes: true })
+        .filter(e => e.isDirectory())
+        .map(e => {
+          try { return { name: e.name, mtime: statSync(join(resultsBase, e.name)).mtimeMs }; }
+          catch { return null; }
+        })
+        .filter(Boolean)
+        .sort((a, b) => b!.mtime - a!.mtime)
+        .slice(0, 20) as { name: string; mtime: number }[];
+      for (const run of runs) {
+        const runDir = join(resultsBase, run.name);
+        try {
+          for (const f of readdirSync(runDir)) {
+            const fullPath = join(runDir, f);
+            try {
+              const s = statSync(fullPath);
+              if (s.isFile()) {
+                files.push({ category: 'result', path: fullPath, name: f, size: s.size, mtime: s.mtimeMs, label: run.name });
+              }
+            } catch { /* skip */ }
+          }
+        } catch { /* skip */ }
+      }
+    } catch { /* skip */ }
+  }
+
+  files.sort((a, b) => b.mtime - a.mtime);
+  res.json(files);
+});
+
 // ── GET /api/vms/:id/build-log ────────────────────────────────────────────────
 
 // ── GET /api/vms/:id/log-files ────────────────────────────────────────────────
@@ -468,7 +553,7 @@ buildRouter.get('/media', (req: Request, res: Response) => {
   if (!rawPath) return void res.status(400).json({ error: 'path query param required' });
 
   const resolved = resolve(rawPath);
-  const allowed = [LOG_BASE, STATE_DIR, RECORDINGS_DIR].map(d => resolve(d));
+  const allowed = [LOG_BASE, STATE_DIR, RECORDINGS_DIR, VMSHARE].map(d => resolve(d));
   const inAllowed = allowed.some(d => resolved.startsWith(d + '/') || resolved === d);
 
   if (!inAllowed) {

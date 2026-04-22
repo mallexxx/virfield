@@ -51,7 +51,7 @@ import { createConnection } from 'net';
 import { spawn } from 'child_process';
 import { existsSync } from 'fs';
 import { SCRIPTS_DIR, LOG_BASE, STATE_DIR, RECORDINGS_DIR, VMSHARE as VMSHARE_CFG } from './config.js';
-import { STAGE_SCRIPT_MAP, STAGE_ORDER, StageKey, buildStageArgs } from './stages.js';
+import { STAGE_SCRIPT_MAP, STAGE_ORDER, StageKey, buildStageArgs, STATE_KEY_TO_DB_STAGE } from './stages.js';
 import { readFileSync, readdirSync, statSync } from 'fs';
 
 const VMSHARE = VMSHARE_CFG;
@@ -483,6 +483,33 @@ function runStageScript(scriptPath: string, scriptArgs: string[]): Promise<{ cod
   });
 }
 
+// ── Helper: sync build state.json → DB stage statuses ────────────────────────
+//
+// build-golden-vm.sh and each phase script write live progress to:
+//   STATE_DIR/<vm>.json   →  { stages: { "01-create-vm": { status, ... }, ... } }
+//
+// This function reads that file and upserts each stage into the DB so the web
+// console can show real-time build progress instead of "No build logs".
+
+function syncBuildStateToDb(stateFile: string, vmId: string): void {
+  if (!existsSync(stateFile)) return;
+  try {
+    const state = JSON.parse(readFileSync(stateFile, 'utf8')) as {
+      stages?: Record<string, { status?: string; error?: string }>;
+    };
+    for (const [stateKey, dbStage] of Object.entries(STATE_KEY_TO_DB_STAGE)) {
+      const entry = state.stages?.[stateKey];
+      if (!entry) continue;
+      const status = entry.status ?? 'pending';
+      if (['pending', 'running', 'done', 'failed', 'skipped'].includes(status)) {
+        db.setStageStatus(vmId, dbStage, status, entry.error ?? undefined);
+      }
+    }
+  } catch (err) {
+    console.warn(`[build:${vmId}] syncBuildStateToDb error:`, err);
+  }
+}
+
 // ── Helper: scan RECORDINGS_DIR for mp4/mov files belonging to a VM ──────────
 
 function scanRecordingsDir(vmId: string): Array<{ path: string; name: string; size: number; mtime: number }> {
@@ -575,7 +602,14 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         }
         await lume.startVM(vmName, { noDisplay: (a.noDisplay as boolean) ?? true, sharedDir: VMSHARE });
         db.touchVMRun(vmName);
-        return { content: [{ type: 'text', text: `VM ${vmName} start requested` }] };
+        // startVM now polls until running — fetch current state for a real confirmation.
+        const vm = await lume.getVM(vmName);
+        return {
+          content: [{
+            type: 'text',
+            text: `VM ${vmName} is running (ip: ${vm.ipAddress ?? 'pending'})`,
+          }],
+        };
       }
 
       case 'vm_stop': {
@@ -719,7 +753,18 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         });
         proc.stdout?.on('data', (d: Buffer) => process.stdout.write(`[build:${goldenVm}] ${d}`));
         proc.stderr?.on('data', (d: Buffer) => process.stderr.write(`[build:${goldenVm}] ${d}`));
-        proc.on('exit', code => console.log(`[build:${goldenVm}] exited: ${code}`));
+
+        // Poll state.json every 5 s → sync live stage statuses into the DB so
+        // the web console shows real progress instead of "No build logs for this VM."
+        const stateFile = join(STATE_DIR, `${goldenVm}.json`);
+        const pollTimer = setInterval(() => syncBuildStateToDb(stateFile, goldenVm), 5000);
+
+        proc.on('exit', code => {
+          clearInterval(pollTimer);
+          // Final sync — captures the terminal stage statuses (done/failed/skipped).
+          syncBuildStateToDb(stateFile, goldenVm);
+          console.log(`[build:${goldenVm}] exited: ${code}`);
+        });
 
         return {
           content: [{
