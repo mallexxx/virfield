@@ -13,7 +13,7 @@
 
 import { Router, Request, Response } from 'express';
 import { spawn, ChildProcess } from 'child_process';
-import { readdirSync, statSync, existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { readdirSync, statSync, existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, unlinkSync } from 'fs';
 import { join, resolve, basename } from 'path';
 import { homedir } from 'os';
 import { SCRIPTS_DIR, LOG_BASE, STATE_DIR, RECORDINGS_DIR, VMSHARE } from '../config.js';
@@ -406,7 +406,7 @@ buildRouter.get('/vms/:id/screenshots', (req: Request, res: Response) => {
 // screenshot, state, and test-result directories.
 
 interface FileEntry {
-  category: 'log' | 'recording' | 'screenshot' | 'state' | 'result';
+  category: 'log' | 'recording' | 'screenshot' | 'state' | 'result' | 'vm';
   path: string;
   name: string;
   size: number;
@@ -452,15 +452,22 @@ buildRouter.get('/vms/:id/files', (req: Request, res: Response) => {
     } catch { /* skip */ }
   }
 
-  // Test results (VMShare/results/<run_id>/) — not VM-filtered, show 20 most recent
+  // Test results (VMShare/results/<run_id>/) — filtered by vm.json when present
   const resultsBase = join(VMSHARE, 'results');
   if (existsSync(resultsBase)) {
     try {
       const runs = readdirSync(resultsBase, { withFileTypes: true })
         .filter(e => e.isDirectory())
         .map(e => {
-          try { return { name: e.name, mtime: statSync(join(resultsBase, e.name)).mtimeMs }; }
-          catch { return null; }
+          try {
+            const vmFile = join(resultsBase, e.name, 'vm.json');
+            const vmMeta = existsSync(vmFile)
+              ? JSON.parse(readFileSync(vmFile, 'utf8')) as { vm_id?: string }
+              : null;
+            // Only show runs explicitly tagged to this VM; skip untagged (legacy) and other VMs
+            if (!vmMeta?.vm_id || vmMeta.vm_id !== vmId) return null;
+            return { name: e.name, mtime: statSync(join(resultsBase, e.name)).mtimeMs };
+          } catch { return null; }
         })
         .filter(Boolean)
         .sort((a, b) => b!.mtime - a!.mtime)
@@ -469,6 +476,7 @@ buildRouter.get('/vms/:id/files', (req: Request, res: Response) => {
         const runDir = join(resultsBase, run.name);
         try {
           for (const f of readdirSync(runDir)) {
+            if (f === 'vm.json') continue;
             const fullPath = join(runDir, f);
             try {
               const s = statSync(fullPath);
@@ -482,8 +490,95 @@ buildRouter.get('/vms/:id/files', (req: Request, res: Response) => {
     } catch { /* skip */ }
   }
 
+  // Lume VM files (~/.lume/<vmId>/)
+  const lumeVmDir = join(homedir(), '.lume', vmId);
+  if (existsSync(lumeVmDir)) {
+    try {
+      for (const f of readdirSync(lumeVmDir)) {
+        const fullPath = join(lumeVmDir, f);
+        try {
+          const s = statSync(fullPath);
+          if (s.isFile()) {
+            files.push({ category: 'vm', path: fullPath, name: f, size: s.size, mtime: s.mtimeMs });
+          }
+        } catch { /* skip */ }
+      }
+    } catch { /* skip */ }
+  }
+
   files.sort((a, b) => b.mtime - a.mtime);
   res.json(files);
+});
+
+// ── DELETE /api/vms/:id/files ─────────────────────────────────────────────────
+// Remove all associated files: logs dir, recordings, screenshots, state JSON,
+// lume VM dir, and tagged test-result runs. Called by the UI delete confirmation.
+
+buildRouter.delete('/vms/:id/files', (req: Request, res: Response) => {
+  const vmId = req.params.id;
+  const deleted: string[] = [];
+  const errors: string[] = [];
+
+  function tryRm(p: string, recursive = false) {
+    try {
+      if (!existsSync(p)) return;
+      if (recursive) rmSync(p, { recursive: true, force: true });
+      else unlinkSync(p);
+      deleted.push(p);
+    } catch (e) { errors.push(`${p}: ${String(e)}`); }
+  }
+
+  // Log directory
+  tryRm(join(LOG_BASE, vmId), true);
+
+  // Recordings (flat files in RECORDINGS_DIR containing vmId)
+  if (existsSync(RECORDINGS_DIR)) {
+    try {
+      for (const f of readdirSync(RECORDINGS_DIR)) {
+        if (f.includes(vmId)) tryRm(join(RECORDINGS_DIR, f));
+      }
+    } catch { /* skip */ }
+  }
+
+  // Screenshots (in LOG_BASE subdirs named after vmId)
+  if (existsSync(LOG_BASE)) {
+    try {
+      for (const entry of readdirSync(LOG_BASE, { withFileTypes: true })) {
+        if (!entry.isDirectory() || !entry.name.includes(vmId)) continue;
+        const dirPath = join(LOG_BASE, entry.name);
+        try {
+          for (const f of readdirSync(dirPath)) {
+            const ext = f.toLowerCase().split('.').pop() ?? '';
+            if (ext === 'png' || ext === 'jpg' || ext === 'jpeg') tryRm(join(dirPath, f));
+          }
+        } catch { /* skip */ }
+      }
+    } catch { /* skip */ }
+  }
+
+  // State JSON
+  tryRm(join(STATE_DIR, `${vmId}.json`));
+
+  // Tagged test-result runs
+  const resultsBase = join(VMSHARE, 'results');
+  if (existsSync(resultsBase)) {
+    try {
+      for (const entry of readdirSync(resultsBase, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const vmFile = join(resultsBase, entry.name, 'vm.json');
+        if (!existsSync(vmFile)) continue;
+        try {
+          const meta = JSON.parse(readFileSync(vmFile, 'utf8')) as { vm_id?: string };
+          if (meta.vm_id === vmId) tryRm(join(resultsBase, entry.name), true);
+        } catch { /* skip */ }
+      }
+    } catch { /* skip */ }
+  }
+
+  // Lume VM dir (~/.lume/<vmId>/)
+  tryRm(join(homedir(), '.lume', vmId), true);
+
+  res.json({ deleted: deleted.length, errors });
 });
 
 // ── GET /api/vms/:id/build-log ────────────────────────────────────────────────

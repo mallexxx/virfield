@@ -1240,6 +1240,7 @@ exit \$TEST_EXIT`;
         const { writeFileSync, mkdirSync } = await import('fs');
         mkdirSync(`${VMSHARE}/results/${ts}`, { recursive: true });
         writeFileSync(`${VMSHARE}/run-tests-${ts}.sh`, script, { mode: 0o755 });
+        writeFileSync(`${VMSHARE}/results/${ts}/vm.json`, JSON.stringify({ vm_id: vmId, run_id: ts, source: resolvedId }));
 
         await sshExec(ip, `nohup bash "${scriptPath}" > "${resultsDir}/runner.log" 2>&1 &`, 10_000);
 

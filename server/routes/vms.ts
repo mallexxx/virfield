@@ -504,9 +504,12 @@ vmsRouter.post('/:id/clone', async (req: Request, res: Response) => {
 // ── DELETE /api/vms/:id ───────────────────────────────────────────────────────
 
 vmsRouter.delete('/:id', async (req: Request, res: Response) => {
+  const deleteFiles = req.query['deleteFiles'] !== 'false';
   try {
     closeTunnel(req.params.id);
-    await lume.deleteVM(req.params.id);
+    if (deleteFiles) {
+      try { await lume.deleteVM(req.params.id); } catch { /* VM may not exist in lume */ }
+    }
     db.deleteVM(req.params.id);
     res.json({ message: 'VM deleted' });
   } catch (err) {

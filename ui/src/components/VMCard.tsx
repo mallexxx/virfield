@@ -156,6 +156,11 @@ export function VMCard({ vm, onRefresh, isBeingBuilt, onStopBuild }: Props) {
   const stopConfirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [sshOpen, setSshOpen] = useState(false);
   const sshRef = useRef<HTMLDivElement>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleteWithFiles, setDeleteWithFiles] = useState(true);
+  const [deleteFileList, setDeleteFileList] = useState<{ name: string; category: string; size: number }[]>([]);
   const [showGhcrPush, setShowGhcrPush] = useState(false);
   const [pushTaskId, setPushTaskId] = useState<string | null>(null);
   const [pushLabel, setPushLabel] = useState('');
@@ -170,6 +175,15 @@ export function VMCard({ vm, onRefresh, isBeingBuilt, onStopBuild }: Props) {
     document.addEventListener('mousedown', onOutside);
     return () => document.removeEventListener('mousedown', onOutside);
   }, [sshOpen]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    }
+    document.addEventListener('mousedown', onOutside);
+    return () => document.removeEventListener('mousedown', onOutside);
+  }, [menuOpen]);
 
   // Poll inline push task
   useEffect(() => {
@@ -483,21 +497,75 @@ export function VMCard({ vm, onRefresh, isBeingBuilt, onStopBuild }: Props) {
             className="btn-sm"
           >Clone</button>
           )}
-          <div className="relative group">
-            <button className="btn-sm">···</button>
-            <div className="absolute right-0 top-full mt-1 z-10 hidden group-hover:block bg-gray-800 border border-gray-700 rounded shadow-xl min-w-[140px]">
-              <button
-                onClick={() => doAction(() => apiPost(`/vms/${vm.name}/promote-golden`))}
-                className="menu-item text-yellow-300 hover:bg-yellow-500/10"
-              >Set as Golden</button>
-              <button
-                onClick={() => doAction(() => apiDelete(`/vms/${vm.name}`))}
-                className="menu-item text-red-300 hover:bg-red-500/10"
-              >Delete</button>
-            </div>
+          <div className="relative" ref={menuRef}>
+            <button
+              onClick={() => setMenuOpen(v => !v)}
+              onMouseDown={(e) => e.preventDefault()}
+              className={`btn-sm ${menuOpen ? 'ring-1 ring-gray-500/50' : ''}`}
+            >···</button>
+            {menuOpen && (
+              <div className="absolute right-0 top-full mt-1 z-20 bg-gray-800 border border-gray-700 rounded shadow-xl min-w-[140px]">
+                <button
+                  onClick={() => { setMenuOpen(false); doAction(() => apiPost(`/vms/${vm.name}/promote-golden`)); }}
+                  className="menu-item text-yellow-300 hover:bg-yellow-500/10"
+                >Set as Golden</button>
+                <button
+                  onClick={async () => {
+                    setMenuOpen(false);
+                    try {
+                      const resp = await fetch(`/api/vms/${encodeURIComponent(vm.name)}/files`);
+                      const list = resp.ok ? await resp.json() as { name: string; category: string; size: number }[] : [];
+                      setDeleteFileList(list);
+                    } catch { setDeleteFileList([]); }
+                    setDeleteWithFiles(true);
+                    setDeleteConfirm(true);
+                  }}
+                  className="menu-item text-red-300 hover:bg-red-500/10"
+                >Delete</button>
+              </div>
+            )}
           </div>
         </div>
       </div>
+
+      {deleteConfirm && (
+        <div className="px-4 py-3 border-t border-red-900/50 bg-red-950/40 space-y-2">
+          <div className="text-xs text-red-300 font-medium">Delete <span className="font-mono">{vm.name}</span>?</div>
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={deleteWithFiles}
+              onChange={e => setDeleteWithFiles(e.target.checked)}
+              className="mt-0.5 accent-red-500"
+            />
+            <span className="text-[11px] text-red-400/80">
+              {deleteFileList.length > 0 ? (() => {
+                const counts: Record<string, number> = {};
+                for (const f of deleteFileList) counts[f.category] = (counts[f.category] ?? 0) + 1;
+                const summary = Object.entries(counts).map(([c, n]) => `${n} ${c}`).join(', ');
+                return <>Delete associated files ({summary})</>;
+              })() : 'Delete associated files (none found)'}
+            </span>
+          </label>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setDeleteConfirm(false)}
+              className="text-[11px] px-3 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded"
+            >Cancel</button>
+            <button
+              disabled={busy}
+              onClick={() => {
+                setDeleteConfirm(false);
+                doAction(async () => {
+                  if (deleteWithFiles) await apiDelete(`/vms/${vm.name}/files`);
+                  await apiDelete(`/vms/${vm.name}?deleteFiles=false`);
+                });
+              }}
+              className="text-[11px] px-3 py-1 bg-red-700/60 hover:bg-red-700/80 text-red-200 rounded"
+            >Delete</button>
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="px-4 py-2 bg-red-900/30 text-red-300 text-xs border-t border-red-800/40">{error}</div>
@@ -535,6 +603,7 @@ export function VMCard({ vm, onRefresh, isBeingBuilt, onStopBuild }: Props) {
               <button
                 key={p.id}
                 onClick={() => setActivePanel(activePanel === p.id ? null : p.id)}
+                onMouseDown={(e) => e.preventDefault()}
                 className={`px-3 py-1.5 text-xs border-b-2 transition-colors ${
                   activePanel === p.id
                     ? 'border-orange-400 text-orange-300'
