@@ -1221,6 +1221,10 @@ screenresolution set 1920x1080x32@60 2>/dev/null || true
 # defaults write <your.app.bundle.id> moveToApplicationsFolderAlertSuppress 1 2>/dev/null || true
 # Kill any stale app / test runner processes before launching tests (customise for your app):
 # pkill -f "YourApp" 2>/dev/null || true; pkill -f "UI Tests-Runner" 2>/dev/null || true
+# Bust virtiofs guest cache so the VM reads fresh build artifacts from the host.
+# macOS caches virtiofs data in the unified buffer cache; without this, the VM
+# may run a stale test bundle even after a host rebuild.
+sudo purge 2>/dev/null || true
 sleep 2
 xcodebuild test-without-building \\
   ${testSourceArg} \\
