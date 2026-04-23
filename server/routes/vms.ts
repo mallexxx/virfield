@@ -508,6 +508,8 @@ vmsRouter.delete('/:id', async (req: Request, res: Response) => {
   try {
     closeTunnel(req.params.id);
     if (deleteFiles) {
+      // Stop before deleting — lume.deleteVM fails on running VMs
+      try { await lume.stopVM(req.params.id); } catch { /* already stopped or not in lume */ }
       try { await lume.deleteVM(req.params.id); } catch { /* VM may not exist in lume */ }
     }
     db.deleteVM(req.params.id);
