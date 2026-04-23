@@ -368,8 +368,9 @@ const tools: Tool[] = [
         scheme:       { type: 'string', description: 'Xcode scheme name (e.g. "macOS UI Tests CI"). Preferred: runs scheme pre-actions (test-server, dialog suppression, etc.). Mutually exclusive with xctestrun.' },
         workspace:    { type: 'string', description: 'Path to .xcworkspace on the VM (e.g. "/Volumes/My Shared Files/myrepo/MyApp.xcworkspace"). Required with scheme to run pre-actions. Host-side VMShare path is ~/VMShare/.' },
         xctestrun:    { type: 'string', description: 'xctestrun filename in VMShare/DerivedData/Build/Products/. Fallback when scheme is not provided. Auto-discovered if only one .xctestrun exists.' },
-        bundle:       { type: 'string', description: 'Bundle name prefix for test_suite expansion (e.g. "UI Tests"). Defaults to "UI Tests".' },
-        iterations:   { type: 'number', description: 'Retry failing tests N times (default: 2)' },
+        bundle:            { type: 'string', description: 'Bundle name prefix for test_suite expansion (e.g. "UI Tests"). Defaults to "UI Tests".' },
+        iterations:        { type: 'number', description: 'Retry failing tests N times (default: 2)' },
+        derived_data_path: { type: 'string', description: 'Host-side path to DerivedData for this worktree (e.g. ~/VMShare/DerivedData/my-branch). Defaults to ~/VMShare/DerivedData. Use per-worktree paths to isolate parallel agents.' },
       },
       required: ['vm_id'],
     },
@@ -1212,12 +1213,16 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         const onlyTestingFlags = onlyTesting.map(t => `-only-testing "${t}"`).join(' ');
 
         // ── Per-run DerivedData snapshot ──────────────────────────────────────
-        // CoW-clone ~/VMShare/DerivedData → ~/VMShare/DerivedData-<ts> so each
-        // run gets a private copy at a unique VM path. Benefits:
+        // CoW-clone the DerivedData source → a timestamped snapshot so each run
+        // gets a private copy at a unique VM path. Benefits:
         //   1. virtiofs cache bust: VM has never seen this path → always reads fresh
         //   2. Parallel isolation: concurrent agents use separate binaries
         // APFS clonefile (cp -cRp) makes this near-instant even for large trees.
-        const derivedDataBase = join(VMSHARE, 'DerivedData');
+        // Use derived_data_path to point at a per-worktree build dir so parallel
+        // agents building different branches never overwrite each other.
+        const derivedDataBase = a.derived_data_path
+          ? String(a.derived_data_path).replace(/^~/, process.env.HOME ?? '')
+          : join(VMSHARE, 'DerivedData');
         const derivedDataSnapshot = join(VMSHARE, `DerivedData-${ts}`);
         let derivedDataVmPath = '/Volumes/My Shared Files/DerivedData';
 
@@ -1256,7 +1261,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           // Resolve xctestrun: explicit arg or auto-discover single file
           let xctestrun = a.xctestrun ? String(a.xctestrun) : null;
           if (!xctestrun) {
-            const productsDir = `${VMSHARE}/DerivedData/Build/Products`;
+            const productsDir = join(derivedDataBase, 'Build', 'Products');
             try {
               const files = readdirSync(productsDir).filter(f => f.endsWith('.xctestrun'));
               if (files.length === 1) {
