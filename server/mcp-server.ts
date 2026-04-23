@@ -680,12 +680,42 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         await lume.cloneVM(goldenName, sessionName);
         db.upsertVM({ id: sessionName, tag: 'run' });
 
-        // 2. Start VM
-        await lume.startVM(sessionName, { noDisplay: true, sharedDir: VMSHARE });
+        // 2. Start via HTTP API so writeStartLog fires and the start appears in the UI log tab.
+        //    The HTTP route responds immediately and starts lume in the background.
+        await fetch(`http://127.0.0.1:${VIRFIELD_PORT}/api/vms/${encodeURIComponent(sessionName)}/start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ noDisplay: true }),
+          signal: AbortSignal.timeout(10_000),
+        }).catch(() => {
+          // HTTP server unreachable — fall back to direct lume call (no log)
+          lume.startVM(sessionName, { noDisplay: true, sharedDir: VMSHARE }).catch(() => {});
+        });
         db.touchVMRun(sessionName);
 
-        // 3. Wait for IP
-        const ip = await lume.waitForIP(sessionName, 180_000);
+        // 3. Wait for IP — poll ourselves instead of lume.waitForIP so we can detect
+        //    persistent stopped state without bailing on the first transient stopped poll.
+        const startDeadline = Date.now() + 120_000;
+        let ip: string | null = null;
+        let stoppedCount = 0;
+        while (Date.now() < startDeadline) {
+          await new Promise(r => setTimeout(r, 3000));
+          try {
+            const vmState = await lume.getVM(sessionName);
+            if (vmState.ipAddress) { ip = vmState.ipAddress; break; }
+            if (vmState.status === 'stopped') {
+              stoppedCount++;
+              if (stoppedCount >= 3)
+                throw new Error(`VM ${sessionName} failed to start (stopped state after 3 checks — check virfield log for details)`);
+            } else {
+              stoppedCount = 0;
+            }
+          } catch (err) {
+            if (String(err).includes('failed to start')) throw err;
+          }
+        }
+        if (!ip) throw new Error(`VM ${sessionName} timed out waiting for IP (120 s)`);
+
 
         // 4. Wait for SSH
         let sshReady = false;

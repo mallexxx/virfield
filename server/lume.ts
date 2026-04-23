@@ -411,14 +411,21 @@ export async function startVM(name: string, opts: {
 
   // 3. Poll until VM is actually running (up to 60 s).
   //    lume's /run endpoint returns before the VM is live — the guest OS still needs to boot.
+  //    Require 3 consecutive 'stopped' readings before giving up — a single 'stopped' poll
+  //    can be a transient lume state during the very first seconds after a clone+start.
   const deadline = Date.now() + 60_000;
+  let stoppedCount = 0;
   while (Date.now() < deadline) {
     await sleep(2000);
     try {
       const vm = await getVM(name);
       if (vm.status === 'running') return;
       if (vm.status === 'stopped') {
-        throw new Error(`VM ${name} failed to start (returned to stopped state)`);
+        stoppedCount++;
+        if (stoppedCount >= 3)
+          throw new Error(`VM ${name} failed to start (returned to stopped state)`);
+      } else {
+        stoppedCount = 0;
       }
     } catch (err) {
       if (String(err).includes('failed to start')) throw err;
