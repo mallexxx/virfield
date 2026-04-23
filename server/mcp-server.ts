@@ -52,7 +52,7 @@ import { spawn } from 'child_process';
 import { existsSync } from 'fs';
 import { SCRIPTS_DIR, LOG_BASE, STATE_DIR, RECORDINGS_DIR, VMSHARE as VMSHARE_CFG, PORT as VIRFIELD_PORT } from './config.js';
 import { STAGE_SCRIPT_MAP, STAGE_ORDER, StageKey, buildStageArgs, STATE_KEY_TO_DB_STAGE } from './stages.js';
-import { readFileSync, readdirSync, statSync } from 'fs';
+import { readFileSync, readdirSync, statSync, existsSync as fsExistsSync, rmSync } from 'fs';
 
 const VMSHARE = VMSHARE_CFG;
 
@@ -1211,6 +1211,38 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           : [];
         const onlyTestingFlags = onlyTesting.map(t => `-only-testing "${t}"`).join(' ');
 
+        // ── Per-run DerivedData snapshot ──────────────────────────────────────
+        // CoW-clone ~/VMShare/DerivedData → ~/VMShare/DerivedData-<ts> so each
+        // run gets a private copy at a unique VM path. Benefits:
+        //   1. virtiofs cache bust: VM has never seen this path → always reads fresh
+        //   2. Parallel isolation: concurrent agents use separate binaries
+        // APFS clonefile (cp -cRp) makes this near-instant even for large trees.
+        const derivedDataBase = join(VMSHARE, 'DerivedData');
+        const derivedDataSnapshot = join(VMSHARE, `DerivedData-${ts}`);
+        let derivedDataVmPath = '/Volumes/My Shared Files/DerivedData';
+
+        if (fsExistsSync(derivedDataBase)) {
+          // Prune snapshots older than 2 hours
+          try {
+            for (const entry of readdirSync(VMSHARE)) {
+              if (!/^DerivedData-\d{4}/.test(entry)) continue;
+              const p = join(VMSHARE, entry);
+              try {
+                if (Date.now() - statSync(p).mtimeMs > 2 * 60 * 60 * 1000)
+                  rmSync(p, { recursive: true, force: true });
+              } catch { /* skip */ }
+            }
+          } catch { /* VMSHARE not accessible */ }
+
+          // APFS CoW clone
+          const cloned = await new Promise<boolean>(resolve => {
+            const proc = spawn('cp', ['-cRp', derivedDataBase, derivedDataSnapshot]);
+            proc.on('exit', code => resolve(code === 0));
+            proc.on('error', () => resolve(false));
+          });
+          if (cloned) derivedDataVmPath = `/Volumes/My Shared Files/DerivedData-${ts}`;
+        }
+
         // Scheme mode: runs scheme pre-actions (test-server, dialog suppression, etc.)
         // xctestrun mode: skips pre-actions, useful when scheme isn't available
         let testSourceArg: string;
@@ -1218,13 +1250,12 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         if (a.scheme) {
           const scheme = String(a.scheme);
           const workspacePart = a.workspace ? ` -workspace "${String(a.workspace)}"` : '';
-          testSourceArg = `-scheme "${scheme}"${workspacePart} -derivedDataPath "/Volumes/My Shared Files/DerivedData"`;
+          testSourceArg = `-scheme "${scheme}"${workspacePart} -derivedDataPath "${derivedDataVmPath}"`;
           resolvedId = scheme;
         } else {
           // Resolve xctestrun: explicit arg or auto-discover single file
           let xctestrun = a.xctestrun ? String(a.xctestrun) : null;
           if (!xctestrun) {
-            const { readdirSync } = await import('fs');
             const productsDir = `${VMSHARE}/DerivedData/Build/Products`;
             try {
               const files = readdirSync(productsDir).filter(f => f.endsWith('.xctestrun'));
@@ -1239,7 +1270,29 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
               return { content: [{ type: 'text', text: `Error: ${e.message}` }] };
             }
           }
-          testSourceArg = `-xctestrun "/Volumes/My Shared Files/DerivedData/Build/Products/${xctestrun}"`;
+          // Patch the snapshot's xctestrun so baked-in paths point to the snapshot.
+          // xctestrun files are binary plists; convert to XML, replace paths, leave as XML
+          // (xcodebuild accepts both formats).
+          let xctestrunVmPath = `/Volumes/My Shared Files/DerivedData/Build/Products/${xctestrun}`;
+          if (derivedDataVmPath !== '/Volumes/My Shared Files/DerivedData') {
+            const snapshotXctestrun = join(derivedDataSnapshot, 'Build', 'Products', xctestrun);
+            try {
+              await new Promise<void>((resolve, reject) => {
+                const p = spawn('plutil', ['-convert', 'xml1', snapshotXctestrun]);
+                p.on('exit', c => c === 0 ? resolve() : reject());
+                p.on('error', reject);
+              });
+              const orig = readFileSync(snapshotXctestrun, 'utf8');
+              const patched = orig.replaceAll(
+                '/Volumes/My Shared Files/DerivedData/',
+                `${derivedDataVmPath}/`
+              );
+              const { writeFileSync: fsWrite } = await import('fs');
+              fsWrite(snapshotXctestrun, patched, 'utf8');
+              xctestrunVmPath = `${derivedDataVmPath}/Build/Products/${xctestrun}`;
+            } catch { /* patching failed — fall back to original path */ }
+          }
+          testSourceArg = `-xctestrun "${xctestrunVmPath}"`;
           resolvedId = xctestrun;
         }
 
@@ -1254,10 +1307,6 @@ screenresolution set 1920x1080x32@60 2>/dev/null || true
 # defaults write <your.app.bundle.id> moveToApplicationsFolderAlertSuppress 1 2>/dev/null || true
 # Kill any stale app / test runner processes before launching tests (customise for your app):
 # pkill -f "YourApp" 2>/dev/null || true; pkill -f "UI Tests-Runner" 2>/dev/null || true
-# Bust virtiofs guest cache so the VM reads fresh build artifacts from the host.
-# macOS caches virtiofs data in the unified buffer cache; without this, the VM
-# may run a stale test bundle even after a host rebuild.
-sudo purge 2>/dev/null || true
 sleep 2
 xcodebuild test-without-building \\
   ${testSourceArg} \\
