@@ -699,24 +699,42 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         // 6. Verify tunnel port is actually accepting connections (B6)
         await waitForTCPPort('127.0.0.1', localPort, 30_000);
 
-        // 7. macOS 15+ ScreenCaptureKit bypass-picker dialog auto-dismiss.
-        //    On macOS 15, the first peekaboo screenshot triggers a system dialog:
-        //    "Terminal is requesting to bypass the system private window picker".
-        //    This is informational — the screenshot succeeds — but the dialog stays
-        //    on screen and pollutes the UI for the rest of the session.  Take one
-        //    warm-up see call now, detect the dialog, and click Allow automatically.
+        // 7. ScreenCaptureKit bypass-picker dialog pre-suppression (macOS 14+).
+        //    When peekaboo captures a specific app (e.g. DuckDuckGo) that uses SCK,
+        //    replayd shows: "Terminal is requesting to bypass the system private window
+        //    picker".  The dialog fires PER-SESSION based on ScreenCaptureApprovals.plist.
+        //    Fix: SSH in and write far-future hint dates BEFORE any capture is attempted,
+        //    then restart replayd so it reads the new values fresh.  This is reliable
+        //    regardless of which app will be captured later in the session.
         try {
-          const warmup = await peekabooSee(sessionName, ip, undefined, false);
-          const warmupText = JSON.stringify(warmup);
-          if (warmupText.includes('bypass the system private window picker') ||
-              warmupText.includes('bypass')) {
-            // Dialog detected — click Allow to dismiss it.
-            await peekabooClickSession(sessionName, ip, { query: 'Allow' }, undefined);
-            console.log(`[vm_prepare_session] Dismissed ScreenCaptureKit bypass dialog on ${sessionName}`);
-          }
+          const scPy = [
+            'python3 - << \'SCPY\'',
+            'import plistlib, datetime, os',
+            'plist_dir  = os.path.expanduser("~/Library/Group Containers/group.com.apple.replayd")',
+            'plist_path = os.path.join(plist_dir, "ScreenCaptureApprovals.plist")',
+            'os.makedirs(plist_dir, exist_ok=True)',
+            'far_future = datetime.datetime(2099, 1, 1, tzinfo=datetime.timezone.utc)',
+            'now        = datetime.datetime.now(datetime.timezone.utc)',
+            'try:',
+            '    with open(plist_path, "rb") as f: data = plistlib.load(f)',
+            'except Exception: data = {}',
+            'for bundle in ("com.apple.Terminal", "boo.peekaboo.peekaboo"):',
+            '    e = data.get(bundle, {})',
+            '    e["kScreenCapturePrivacyHintDate"]     = far_future',
+            '    e["kScreenCapturePrivacyHintPolicy"]   = 315360000',
+            '    e["kScreenCaptureAlertableUsageCount"] = 0',
+            '    e["kScreenCaptureApprovalLastAlerted"] = e.get("kScreenCaptureApprovalLastAlerted", now)',
+            '    e["kScreenCaptureApprovalLastUsed"]    = now',
+            '    data[bundle] = e',
+            'with open(plist_path, "wb") as f: plistlib.dump(data, f, fmt=plistlib.FMT_XML)',
+            'print("sck-suppressed")',
+            'SCPY',
+          ].join('\n');
+          await sshExec(ip, scPy, 15_000);
+          await sshExec(ip, 'sudo killall replayd 2>/dev/null || true', 5_000);
+          console.log(`[vm_prepare_session] SCK bypass-picker suppressed via plist on ${sessionName}`);
         } catch (err) {
-          // Non-fatal: warm-up failed (peekaboo not ready yet, or no dialog to dismiss)
-          console.warn(`[vm_prepare_session] Warm-up see/dismiss skipped:`, err);
+          console.warn(`[vm_prepare_session] SCK plist suppression skipped:`, err);
         }
 
         return {
