@@ -1292,9 +1292,23 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         // APFS clonefile (cp -cRp) makes this near-instant even for large trees.
         // Use derived_data_path to point at a per-worktree build dir so parallel
         // agents building different branches never overwrite each other.
-        const derivedDataBase = a.derived_data_path
-          ? String(a.derived_data_path).replace(/^~/, process.env.HOME ?? '')
-          : join(VMSHARE, 'DerivedData');
+        // Auto-derive per-worktree DerivedData from workspace path when not explicitly given.
+        // workspace "/Volumes/My Shared Files/bug-08/DuckDuckGo.xcworkspace" → worktree "bug-08"
+        // → DerivedData ~/VMShare/DerivedData/bug-08 (isolated per branch automatically)
+        let derivedDataBase: string;
+        if (a.derived_data_path) {
+          derivedDataBase = String(a.derived_data_path).replace(/^~/, process.env.HOME ?? '');
+        } else if (a.workspace) {
+          // Extract first path component after /Volumes/My Shared Files/ or VMShare root
+          const ws = String(a.workspace);
+          const m = ws.match(/(?:\/Volumes\/My Shared Files\/|VMShare\/)([^/]+)/);
+          const worktree = m?.[1];
+          derivedDataBase = worktree
+            ? join(VMSHARE, 'DerivedData', worktree)
+            : join(VMSHARE, 'DerivedData');
+        } else {
+          derivedDataBase = join(VMSHARE, 'DerivedData');
+        }
         const derivedDataSnapshot = join(VMSHARE, `DerivedData-${ts}`);
         let derivedDataVmPath = '/Volumes/My Shared Files/DerivedData';
 
