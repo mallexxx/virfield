@@ -404,11 +404,13 @@ const tools: Tool[] = [
   // ── Build & test tools ──
   {
     name: 'get_test_results',
-    description: 'List and parse test result artifacts from ~/VMShare/results/. Parses junit.xml into structured YAML (suites → tests with pass/fail/error/duration). Also surfaces .xcresult summaries and any JSON reports. Use after running tests via vm_ssh_exec.',
+    description: 'Parse test result artifacts for a specific run. Always pass run_id (returned by run_tests) to scope results to your run — without it all runs are listed which is useless in parallel-agent scenarios.',
     inputSchema: {
       type: 'object',
       properties: {
-        parse: { type: 'boolean', description: 'Parse recognised formats (junit.xml, summary.json) into YAML. Default: true', default: true },
+        run_id: { type: 'string', description: 'run_id returned by run_tests. Scopes output to that run directory. Omit only to list all runs.' },
+        vm_id:  { type: 'string', description: 'Optional: filter by VM (used when run_id is omitted).' },
+        parse:  { type: 'boolean', description: 'Parse junit.xml/json into structured YAML. Default: true', default: true },
       },
       required: [],
     },
@@ -1035,15 +1037,43 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
       case 'get_test_results': {
         const { readdirSync, statSync, existsSync, readFileSync } = await import('fs');
-        const resultsDir = join(VMSHARE, 'results');
+        const resultsBase = join(VMSHARE, 'results');
 
-        if (!existsSync(resultsDir)) {
+        if (!existsSync(resultsBase)) {
           return { content: [{ type: 'text', text: 'results_dir: not found\npath: ~/VMShare/results/' }] };
         }
 
         const shouldParse = a.parse !== false;
-        const entries = readdirSync(resultsDir, { withFileTypes: true });
-        const lines: string[] = ['results:'];
+        const runId = a.run_id ? String(a.run_id) : null;
+        const vmIdFilter = a.vm_id ? String(a.vm_id) : null;
+
+        // If run_id provided: look directly at that single run directory
+        // Otherwise: list all runs, optionally filtered by vm_id via vm.json
+        let entries: import('fs').Dirent[];
+        let resultsDir: string;
+        if (runId) {
+          resultsDir = join(resultsBase, runId);
+          if (!existsSync(resultsDir)) {
+            return { content: [{ type: 'text', text: `run_id "${runId}" not found in ~/VMShare/results/` }] };
+          }
+          entries = readdirSync(resultsDir, { withFileTypes: true });
+        } else {
+          // List all run directories, filtered by vm_id if given
+          resultsDir = resultsBase;
+          const allRuns = readdirSync(resultsBase, { withFileTypes: true }).filter(e => e.isDirectory());
+          entries = vmIdFilter
+            ? allRuns.filter(e => {
+                try {
+                  const vmFile = join(resultsBase, e.name, 'vm.json');
+                  if (!existsSync(vmFile)) return false;
+                  const meta = JSON.parse(readFileSync(vmFile, 'utf8')) as { vm_id?: string };
+                  return meta.vm_id === vmIdFilter;
+                } catch { return false; }
+              })
+            : allRuns;
+        }
+
+        const lines: string[] = [runId ? `run_id: ${runId}` : 'results:'];
 
         /** Minimal regex-based JUnit XML parser — no dependencies needed. */
         function parseJunit(xml: string): string[] {
@@ -1080,26 +1110,21 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           return out;
         }
 
-        for (const entry of entries) {
-          const fullPath = join(resultsDir, entry.name);
+        function parseEntry(entry: import('fs').Dirent, dir: string) {
+          if (entry.name === 'vm.json') return;
+          const fullPath = join(dir, entry.name);
           const stat = statSync(fullPath);
           const sizekb = Math.round(stat.size / 1024);
           const mtime = new Date(stat.mtimeMs).toISOString();
-
           lines.push(`  - name: "${entry.name}"`);
           lines.push(`    size_kb: ${sizekb}`);
           lines.push(`    modified: "${mtime}"`);
-
           if (shouldParse && (entry.name.endsWith('.xml') || entry.name.endsWith('.junit'))) {
             try {
               const xml = readFileSync(fullPath, 'utf8');
-              if (xml.includes('<testsuite')) {
-                lines.push(...parseJunit(xml));
-              } else {
-                lines.push('    format: xml');
-              }
+              if (xml.includes('<testsuite')) lines.push(...parseJunit(xml));
+              else lines.push('    format: xml');
             } catch { lines.push('    parse_error: true'); }
-
           } else if (shouldParse && entry.name.endsWith('.json')) {
             try {
               const obj = JSON.parse(readFileSync(fullPath, 'utf8')) as Record<string,unknown>;
@@ -1108,14 +1133,31 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
               if (typeof obj.passed === 'number') lines.push(`    passed: ${obj.passed}, failed: ${obj.failed ?? 0}`);
               if (typeof obj.total === 'number') lines.push(`    total: ${obj.total}`);
             } catch { lines.push('    format: json, parse_error: true'); }
-
           } else if (entry.name.endsWith('.xcresult') && stat.isDirectory()) {
             lines.push('    format: xcresult');
             lines.push('    note: "run: xcrun xcresulttool get --path <path> --format json | head -100"');
           }
         }
 
-        if (entries.length === 0) lines.push('  (empty — no files in ~/VMShare/results/)');
+        if (runId) {
+          for (const entry of entries) parseEntry(entry, resultsDir);
+          if (entries.filter(e => e.name !== 'vm.json').length === 0) lines.push('  (no result files yet)');
+        } else {
+          for (const runEntry of entries) {
+            const runDir = join(resultsBase, runEntry.name);
+            lines.push(`  run: "${runEntry.name}"`);
+            try {
+              const vmFile = join(runDir, 'vm.json');
+              if (existsSync(vmFile)) {
+                const meta = JSON.parse(readFileSync(vmFile, 'utf8')) as { vm_id?: string };
+                if (meta.vm_id) lines.push(`    vm_id: "${meta.vm_id}"`);
+              }
+              for (const f of readdirSync(runDir, { withFileTypes: true })) parseEntry(f, runDir);
+            } catch { lines.push('    error: could not read run dir'); }
+          }
+          if (entries.length === 0) lines.push('  (no runs found)');
+        }
+
         return { content: [{ type: 'text', text: lines.join('\n') }] };
       }
 
