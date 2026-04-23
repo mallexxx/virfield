@@ -1271,7 +1271,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       case 'run_tests': {
         const vmId = String(a.vm_id);
         const ip = await resolveVMIp(vmId);
-        const ts = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);
+        const ts = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 23);
         const resultsDir = `/Volumes/My Shared Files/results/${ts}`;
         const iterations = Number(a.iterations ?? 2);
         const bundle = String(a.bundle ?? 'UI Tests');
