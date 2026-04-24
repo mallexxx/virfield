@@ -464,6 +464,10 @@ PYEOF
     local DB="$1" SVC="$2" CLIENT="$3" CLIENT_TYPE="$4" CSREQ_HEX="${5:-}" INDIRECT_OBJ="${6:-UNUSED}"
     local CSREQ_SQL="NULL"
     [[ -n "$CSREQ_HEX" ]] && CSREQ_SQL="X'${CSREQ_HEX}'"
+    # indirect_object_identifier_type: NULL for non-AE services; 0 (bundle) when an
+    # indirect object is present (covers both specific bundles and the '0' wildcard).
+    local _indirect_type="NULL"
+    [[ "$INDIRECT_OBJ" != "UNUSED" ]] && _indirect_type="0"
     local _ok=false
     local _sudo=""
     [[ "$DB" == "$TCC_SYS_DB" ]] && _sudo="sudo"
@@ -476,7 +480,7 @@ PYEOF
             indirect_object_identifier,indirect_object_code_identity,
             flags,last_modified,pid,pid_version,boot_uuid,last_reminded)
          VALUES(\"$SVC\",\"$CLIENT\",$CLIENT_TYPE,2,4,1,
-                ${CSREQ_SQL},NULL,NULL,\"${INDIRECT_OBJ}\",NULL,0,$NOW,NULL,NULL,\"UNUSED\",$NOW);" 2>/dev/null \
+                ${CSREQ_SQL},NULL,${_indirect_type},\"${INDIRECT_OBJ}\",NULL,0,$NOW,NULL,NULL,\"UNUSED\",$NOW);" 2>/dev/null \
         && _ok=true
     elif [[ "$_HAS_AUTH" == "1" ]]; then
       # macOS 12–13 schema (no pid/boot_uuid/last_reminded columns)
@@ -487,7 +491,7 @@ PYEOF
             indirect_object_identifier,indirect_object_code_identity,
             flags,last_modified)
          VALUES(\"$SVC\",\"$CLIENT\",$CLIENT_TYPE,2,4,1,
-                ${CSREQ_SQL},NULL,NULL,\"${INDIRECT_OBJ}\",NULL,0,$NOW);" 2>/dev/null \
+                ${CSREQ_SQL},NULL,${_indirect_type},\"${INDIRECT_OBJ}\",NULL,0,$NOW);" 2>/dev/null \
         && _ok=true
     else
       # macOS 11 schema (uses 'allowed'/'prompt_count' instead of auth_* columns)
@@ -498,7 +502,7 @@ PYEOF
             indirect_object_identifier,indirect_object_code_identity,
             flags,last_modified)
          VALUES(\"$SVC\",\"$CLIENT\",$CLIENT_TYPE,1,0,
-                ${CSREQ_SQL},NULL,NULL,\"${INDIRECT_OBJ}\",NULL,0,$NOW);" 2>/dev/null \
+                ${CSREQ_SQL},NULL,${_indirect_type},\"${INDIRECT_OBJ}\",NULL,0,$NOW);" 2>/dev/null \
         && _ok=true
     fi
     $_ok && echo "  $SVC → $CLIENT: granted" \
@@ -568,6 +572,15 @@ PYEOF
   for _entry in "${AE_CLIENTS[@]}"; do
     _client="${_entry%%:*}"; _rest="${_entry#*:}"; _type="${_rest%%:*}"; _csreq="${_rest#*:}"
     tcc_grant "$TCC_USR_DB" "kTCCServiceAppleEvents" "$_client" "$_type" "$_csreq" "com.apple.systemevents"
+  done
+
+  # Wildcard AppleEvents grant: indirect_object_identifier='0' lets each client
+  # send Apple Events to ANY app without a per-target TCC prompt (e.g. osascript
+  # targeting DuckDuckGo, Safari, or any other app via SSH).
+  echo "  [user DB] AppleEvents → wildcard (any app) for all endpoints"
+  for _entry in "${AE_CLIENTS[@]}"; do
+    _client="${_entry%%:*}"; _rest="${_entry#*:}"; _type="${_rest%%:*}"; _csreq="${_rest#*:}"
+    tcc_grant "$TCC_USR_DB" "kTCCServiceAppleEvents" "$_client" "$_type" "$_csreq" "0"
   done
 
   # ── macOS 15+ ScreenCaptureKit bypass-picker hint suppression ────────────────
