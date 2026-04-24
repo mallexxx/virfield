@@ -647,7 +647,9 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
       case 'vm_delete': {
         const delName = String(a.vm_id ?? a.name);
-        await lume.deleteVM(delName);
+        // Stop first — lume delete fails on a running VM.
+        try { await lume.stopVM(delName); } catch { /* already stopped or not in lume */ }
+        try { await lume.deleteVM(delName); } catch { /* not tracked by lume (DB-only VM) */ }
         db.deleteVM(delName);
         return { content: [{ type: 'text', text: `VM ${delName} deleted` }] };
       }
