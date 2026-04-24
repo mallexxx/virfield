@@ -106,8 +106,10 @@ wsApp.post('/api/host/lume-restart', async (_req, res) => {
 // Caches the GitHub response for 30 min to stay within unauthenticated rate limits.
 
 const GITHUB_REPO = 'mallexxx/virfield';
-let currentSha = 'unknown';
-try { currentSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: __dirname, encoding: 'utf8' }).trim(); } catch { /* not a git repo */ }
+
+function readLocalSha(): string {
+  try { return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: __dirname, encoding: 'utf8' }).trim(); } catch { return 'unknown'; }
+}
 
 let updateCache: { ts: number; sha: string; message: string } | null = null;
 
@@ -125,6 +127,9 @@ wsApp.get('/api/host/update-check', async (_req, res) => {
       }
     } catch { /* network unavailable — return cached or current */ }
   }
+  // Re-read local HEAD each time so a `git pull` + server restart isn't needed
+  // to clear a false "update available" after pushing new commits yourself.
+  const currentSha = readLocalSha();
   const latest = updateCache?.sha ?? currentSha;
   res.json({
     current: currentSha,
