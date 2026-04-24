@@ -1,10 +1,20 @@
 /**
  * AX snapshot/diff/YAML tools.
  * Snapshots are stored in SQLite and on disk at ~/VMShare/.snapshots/
+ *
+ * Peekaboo's `see` tool returns human-readable text wrapped in MCP content:
+ *   { content: [{ type: 'text', text: '📸 UI State Captured\n...' }], isError: false }
+ *
+ * The text format per element is:
+ *   {id} - "{label}" - at (x, y)[ - [not actionable]]
+ * grouped under role headers:
+ *   {role} (N found, M actionable):
+ *
+ * We parse this into ParsedElement[] for diffing.
  */
 
 import { randomUUID } from 'crypto';
-import { mkdirSync, writeFileSync, readFileSync } from 'fs';
+import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 import { saveSnapshot, getSnapshot, getLastSnapshot } from './db.js';
@@ -12,6 +22,67 @@ import { callPeekaboo } from './peekaboo-proxy.js';
 
 const SNAPSHOT_DIR = join(homedir(), 'VMShare', '.snapshots');
 mkdirSync(SNAPSHOT_DIR, { recursive: true });
+
+// ── Parsed element ─────────────────────────────────────────────────────────────
+
+interface ParsedElement {
+  id: string;       // "elem_14", "menu_40"
+  role: string;     // "button", "textField", "menu", "other"
+  label: string;    // accessible label / current value
+  actionable: boolean;
+  x: number;
+  y: number;
+}
+
+/** Extract the Peekaboo text payload from the MCP content wrapper. */
+function extractText(snapshotJson: string): string | null {
+  try {
+    const parsed = JSON.parse(snapshotJson) as unknown;
+    if (typeof parsed === 'string') return parsed;
+    const p = parsed as Record<string, unknown>;
+    const content = p['content'];
+    if (Array.isArray(content) && content.length > 0) {
+      const first = content[0] as Record<string, unknown>;
+      if (typeof first['text'] === 'string') return first['text'] as string;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** Parse Peekaboo's human-readable `see` output into a flat element list. */
+function parsePeekabooText(text: string): ParsedElement[] {
+  const elements: ParsedElement[] = [];
+  let currentRole = '';
+
+  for (const line of text.split('\n')) {
+    // Role header: "button (13 found, 10 actionable):"
+    const roleMatch = line.match(/^(\w+)\s+\(\d+\s+found/);
+    if (roleMatch) {
+      currentRole = roleMatch[1];
+      continue;
+    }
+
+    // Element line: '  elem_14 - "Back" - at (232, 156) - [not actionable]'
+    // or:           '  menu_40 - "Apple" - at (10, 0)'
+    const elemMatch = line.match(/^\s+(\S+)\s+-\s+"([^"]*)"\s+-\s+at\s+\((\d+),\s*(\d+)\)(.*)/);
+    if (elemMatch && currentRole) {
+      const [, id, label, xStr, yStr, rest] = elemMatch;
+      const actionable = !rest.includes('[not actionable]');
+      elements.push({
+        id,
+        role: currentRole,
+        label,
+        actionable,
+        x: Number(xStr),
+        y: Number(yStr),
+      });
+    }
+  }
+
+  return elements;
+}
 
 // ── Snapshot management ───────────────────────────────────────────────────────
 
@@ -24,10 +95,8 @@ export async function takeSnapshot(vmId: string, vmIp: string, name: string, app
   const snapshotJson = JSON.stringify(result);
   const id = `${vmId}-${name}-${Date.now()}`;
 
-  // Save to SQLite
   saveSnapshot(id, vmId, name, app ?? '', snapshotJson);
 
-  // Save to disk
   const filePath = join(SNAPSHOT_DIR, `${id}.json`);
   writeFileSync(filePath, snapshotJson);
 
@@ -36,67 +105,56 @@ export async function takeSnapshot(vmId: string, vmIp: string, name: string, app
 
 // ── Diff ──────────────────────────────────────────────────────────────────────
 
-interface AXElement {
-  identifier?: string;
-  role?: string;
-  label?: string;
-  value?: string;
-  children?: AXElement[];
-}
-
 interface DiffResult {
-  appeared: AXElement[];
-  disappeared: AXElement[];
-  value_changed: Array<{ identifier: string; before: string; after: string }>;
-}
-
-function flattenAX(tree: AXElement, elements: AXElement[] = []): AXElement[] {
-  elements.push(tree);
-  for (const child of tree.children ?? []) {
-    flattenAX(child, elements);
-  }
-  return elements;
+  appeared: Array<{ id: string; role: string; label: string }>;
+  disappeared: Array<{ id: string; role: string; label: string }>;
+  value_changed: Array<{ id: string; role: string; before: string; after: string }>;
 }
 
 export function diffSnapshots(beforeJson: string, afterJson: string): DiffResult {
-  const before = JSON.parse(beforeJson) as AXElement;
-  const after = JSON.parse(afterJson) as AXElement;
+  const beforeText = extractText(beforeJson);
+  const afterText = extractText(afterJson);
 
-  const beforeElements = flattenAX(before);
-  const afterElements = flattenAX(after);
+  if (!beforeText || !afterText) {
+    throw new Error('Snapshot data is not in Peekaboo text format');
+  }
 
-  const beforeById = new Map(beforeElements.filter(e => e.identifier).map(e => [e.identifier!, e]));
-  const afterById = new Map(afterElements.filter(e => e.identifier).map(e => [e.identifier!, e]));
+  const beforeElements = parsePeekabooText(beforeText);
+  const afterElements = parsePeekabooText(afterText);
 
-  const appeared: AXElement[] = [];
-  const disappeared: AXElement[] = [];
+  const beforeMap = new Map(beforeElements.map(e => [e.id, e]));
+  const afterMap = new Map(afterElements.map(e => [e.id, e]));
+
+  const appeared: DiffResult['appeared'] = [];
+  const disappeared: DiffResult['disappeared'] = [];
   const value_changed: DiffResult['value_changed'] = [];
 
-  for (const [id, afterEl] of afterById) {
-    const beforeEl = beforeById.get(id);
+  for (const [id, afterEl] of afterMap) {
+    const beforeEl = beforeMap.get(id);
     if (!beforeEl) {
-      appeared.push(afterEl);
-    } else if (beforeEl.value !== afterEl.value) {
-      value_changed.push({
-        identifier: id,
-        before: beforeEl.value ?? '',
-        after: afterEl.value ?? '',
-      });
+      appeared.push({ id, role: afterEl.role, label: afterEl.label });
+    } else if (beforeEl.label !== afterEl.label) {
+      value_changed.push({ id, role: afterEl.role, before: beforeEl.label, after: afterEl.label });
     }
   }
 
-  for (const [id, beforeEl] of beforeById) {
-    if (!afterById.has(id)) {
-      disappeared.push(beforeEl);
+  for (const [id, beforeEl] of beforeMap) {
+    if (!afterMap.has(id)) {
+      disappeared.push({ id, role: beforeEl.role, label: beforeEl.label });
     }
   }
 
   return { appeared, disappeared, value_changed };
 }
 
-export async function diffLastSnapshot(vmId: string, vmIp: string, app?: string): Promise<DiffResult> {
+export async function diffLastSnapshot(
+  vmId: string,
+  vmIp: string,
+  app?: string,
+  updateBaseline = true,
+): Promise<DiffResult> {
   const last = getLastSnapshot(vmId, app);
-  if (!last) throw new Error(`No snapshot found for VM ${vmId}${app ? ` app ${app}` : ''}`);
+  if (!last) throw new Error(`No snapshot found for VM ${vmId}${app ? ` app ${app}` : ''}. Call ax_snapshot first.`);
 
   const current = await callPeekaboo(vmId, vmIp, 'tools/call', {
     name: 'see',
@@ -104,7 +162,17 @@ export async function diffLastSnapshot(vmId: string, vmIp: string, app?: string)
   });
   const currentJson = JSON.stringify(current);
 
-  return diffSnapshots(last.snapshot_json, currentJson);
+  const diff = diffSnapshots(last.snapshot_json, currentJson);
+
+  // Advance the baseline so the next ax_diff_last shows what changed since this call.
+  if (updateBaseline) {
+    const id = `${vmId}-diff-baseline-${Date.now()}`;
+    saveSnapshot(id, vmId, 'diff-baseline', app ?? '', currentJson);
+    const filePath = join(SNAPSHOT_DIR, `${id}.json`);
+    writeFileSync(filePath, currentJson);
+  }
+
+  return diff;
 }
 
 export async function diffNamedSnapshots(beforeId: string, afterId: string): Promise<DiffResult> {
@@ -117,55 +185,36 @@ export async function diffNamedSnapshots(beforeId: string, afterId: string): Pro
 
 // ── YAML conversion ───────────────────────────────────────────────────────────
 
-function indent(n: number) { return '  '.repeat(n); }
-
-function elementToYaml(el: AXElement, depth: number): string {
-  const lines: string[] = [];
-  const fields: string[] = [];
-  if (el.role) fields.push(`role: ${el.role}`);
-  if (el.identifier) fields.push(`identifier: "${el.identifier}"`);
-  if (el.label) fields.push(`label: "${el.label}"`);
-  if (el.value) fields.push(`value: "${el.value}"`);
-
-  lines.push(`${indent(depth)}- ${fields.join(', ')}`);
-
-  for (const child of el.children ?? []) {
-    lines.push(elementToYaml(child, depth + 1));
-  }
-  return lines.join('\n');
-}
-
 export function snapshotToYaml(snapshotJson: string): string {
-  const tree = JSON.parse(snapshotJson) as AXElement;
-  return elementToYaml(tree, 0);
+  const text = extractText(snapshotJson);
+  if (!text) return '(snapshot in unknown format)';
+  // Return the raw Peekaboo text — it's already human-readable.
+  // Strip the header lines (before "UI Elements:") to reduce noise.
+  const idx = text.indexOf('UI Elements:');
+  return idx >= 0 ? text.slice(idx) : text;
 }
 
 // ── Diff → YAML ───────────────────────────────────────────────────────────────
-
-function elementLine(el: AXElement): string {
-  const parts: string[] = [];
-  if (el.role) parts.push(`role: ${el.role}`);
-  if (el.identifier) parts.push(`id: "${el.identifier}"`);
-  if (el.label) parts.push(`label: "${el.label}"`);
-  if (el.value) parts.push(`value: "${el.value}"`);
-  return parts.join(', ');
-}
 
 export function diffToYaml(diff: DiffResult): string {
   const lines: string[] = [];
 
   if (diff.appeared.length) {
     lines.push('appeared:');
-    for (const el of diff.appeared) lines.push(`  - ${elementLine(el)}`);
+    for (const el of diff.appeared) {
+      lines.push(`  - id: "${el.id}", role: ${el.role}, label: "${el.label}"`);
+    }
   }
   if (diff.disappeared.length) {
     lines.push('disappeared:');
-    for (const el of diff.disappeared) lines.push(`  - ${elementLine(el)}`);
+    for (const el of diff.disappeared) {
+      lines.push(`  - id: "${el.id}", role: ${el.role}, label: "${el.label}"`);
+    }
   }
   if (diff.value_changed.length) {
     lines.push('value_changed:');
     for (const vc of diff.value_changed) {
-      lines.push(`  - id: "${vc.identifier}"`);
+      lines.push(`  - id: "${vc.id}", role: ${vc.role}`);
       lines.push(`    before: "${vc.before}"`);
       lines.push(`    after:  "${vc.after}"`);
     }
@@ -180,13 +229,14 @@ export function querySnapshot(snapshotJson: string, opts: {
   identifier?: string;
   role?: string;
   label?: string;
-}): AXElement[] {
-  const tree = JSON.parse(snapshotJson) as AXElement;
-  const all = flattenAX(tree);
-  return all.filter(el => {
-    if (opts.identifier && el.identifier !== opts.identifier) return false;
+}): Array<{ id: string; role: string; label: string; actionable: boolean }> {
+  const text = extractText(snapshotJson);
+  if (!text) return [];
+  const elements = parsePeekabooText(text);
+  return elements.filter(el => {
+    if (opts.identifier && el.id !== opts.identifier) return false;
     if (opts.role && el.role !== opts.role) return false;
-    if (opts.label && el.label !== opts.label) return false;
+    if (opts.label && !el.label.toLowerCase().includes(opts.label.toLowerCase())) return false;
     return true;
   });
 }

@@ -1048,17 +1048,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           role: a.role as string | undefined,
           label: a.label as string | undefined,
         });
-        // Return YAML — compact one-liner per matched element.
-        type El = { role?: string; identifier?: string; label?: string; value?: string };
         const yaml = results.length
-          ? (results as El[]).map(el => {
-              const p: string[] = [];
-              if (el.role) p.push(`role: ${el.role}`);
-              if (el.identifier) p.push(`id: "${el.identifier}"`);
-              if (el.label) p.push(`label: "${el.label}"`);
-              if (el.value) p.push(`value: "${el.value}"`);
-              return `- ${p.join(', ')}`;
-            }).join('\n')
+          ? results.map(el => `- id: "${el.id}", role: ${el.role}, label: "${el.label}", actionable: ${el.actionable}`).join('\n')
           : 'no_results: true';
         return { content: [{ type: 'text', text: yaml }] };
       }

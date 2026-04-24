@@ -319,9 +319,18 @@ export async function peekabooType(vmId: string, vmIp: string, text: string, app
 }
 
 export async function peekabooHotkey(vmId: string, vmIp: string, key: string, modifiers?: string[]) {
+  // Peekaboo hotkey expects all keys as a single combined string: "cmd,w" or "cmd,shift,t".
+  // Normalise modifier names: "command" → "cmd", "option"/"alt" → "alt", others lowercase.
+  const normalise = (m: string) => {
+    const s = m.toLowerCase();
+    if (s === 'command') return 'cmd';
+    if (s === 'option') return 'alt';
+    return s;
+  };
+  const parts = [...(modifiers ?? []).map(normalise), key.toLowerCase()];
   return callPeekaboo(vmId, vmIp, 'tools/call', {
     name: 'hotkey',
-    arguments: { keys: key, ...(modifiers ? { modifiers } : {}) },
+    arguments: { keys: parts.join(',') },
   });
 }
 
