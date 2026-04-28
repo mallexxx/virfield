@@ -25,7 +25,7 @@ import { registerWSRoutes } from './routes/ws.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 3000);
-const UI_DIST = join(__dirname, '..', 'ui', 'dist');
+const UI_DIST = join(__dirname, '..', '..', 'ui', 'dist');
 const UI_DEV_PROXY = 'http://localhost:5173';
 
 // ── Express setup ─────────────────────────────────────────────────────────────
