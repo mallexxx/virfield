@@ -133,14 +133,13 @@ fi
 # ── Upload + run vm-setup.sh ──────────────────────────────────────────────────
 
 state_progress "$STAGE_ID" "Uploading setup scripts..." "" "$LUME_RUN_PID"
-log "  Uploading vm-setup.sh and supporting files (via VMShare)..."
-# lume ssh does not support stdin redirection — copy via shared dir instead.
-cp "$SCRIPT_DIR/vm-setup.sh" "$VMSHARE/vm-setup.sh"
-cp "$SCRIPT_DIR/com.apple.system.logging.plist" "$VMSHARE/com.apple.system.logging.plist"
-lume_ssh "$VM_NAME" \
-  "cp '/Volumes/My Shared Files/vm-setup.sh' /tmp/vm-setup.sh && chmod +x /tmp/vm-setup.sh && echo upload_ok"
-lume_ssh "$VM_NAME" \
-  "cp '/Volumes/My Shared Files/com.apple.system.logging.plist' /tmp/com.apple.system.logging.plist && echo plist_ok"
+log "  Uploading vm-setup.sh and supporting files (direct SSH)..."
+VM_IP="$(lume get "$VM_NAME" --format json 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); e=d[0] if isinstance(d,list) else d; print(e.get('ipAddress',''))" 2>/dev/null | tr -d '\r\n')"
+[[ -n "$VM_IP" ]] || die "VM IP unavailable for provisioning upload."
+scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+  "$SCRIPT_DIR/vm-setup.sh" "$SCRIPT_DIR/com.apple.system.logging.plist" \
+  "${VM_USER}@${VM_IP}:/tmp/"
+lume_ssh "$VM_NAME" "chmod +x /tmp/vm-setup.sh && echo upload_ok"
 
 state_progress "$STAGE_ID" "Running vm-setup.sh (tools: $TOOLS)..." "" "$LUME_RUN_PID"
 log "  Running vm-setup.sh (tools: $TOOLS, timeout: 15 min)..."
@@ -240,7 +239,8 @@ fi
 
 state_progress "$STAGE_ID" "Smoke test..." "" "$LUME_RUN_PID"
 log "  Smoke test..."
-# Write smoke test to VMShare to avoid nested-quote issues with lume_ssh.
+# Upload the smoke test over SSH. VirtioFS can appear after SSH is available,
+# which made the previous /Volumes/My Shared Files copy nondeterministic.
 cat > "$VMSHARE/smoke-test.sh" << 'SMOKE_EOF'
 #!/bin/bash
 export PATH=/opt/homebrew/bin:$PATH
@@ -256,11 +256,10 @@ printf "  %-22s " "SIP:"; csrutil status
 printf "  %-22s " "sudo NOPASSWD:"; sudo whoami
 $ok && echo smoke_pass || echo smoke_FAIL
 SMOKE_EOF
-lume_ssh "$VM_NAME" \
-  "cp '/Volumes/My Shared Files/smoke-test.sh' /tmp/smoke-test.sh && chmod +x /tmp/smoke-test.sh && echo smoke_upload_ok"
-VM_IP="$(lume get "$VM_NAME" --format json 2>/dev/null | python3 -c \
-  "import sys,json; d=json.load(sys.stdin); e=d[0] if isinstance(d,list) else d; print(e.get('ipAddress',''))" 2>/dev/null | tr -d '\r\n')"
 if [[ -n "$VM_IP" ]]; then
+  scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    "$VMSHARE/smoke-test.sh" "${VM_USER}@${VM_IP}:/tmp/smoke-test.sh"
+  lume_ssh "$VM_NAME" "chmod +x /tmp/smoke-test.sh && echo smoke_upload_ok"
   log "  SSH direct to $VM_IP for smoke test output..."
   ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
       -o ConnectTimeout=10 -o ServerAliveInterval=30 -o ServerAliveCountMax=20 \

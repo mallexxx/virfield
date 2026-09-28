@@ -114,10 +114,17 @@ VNC_ARGS=("$VM_NAME")
 [[ "$VIEWER" == "true" ]] && VNC_ARGS+=("--viewer")
 VNC_ARGS+=("--log-dir" "$LOG_DIR")
 
-log "  Running vnc-send-keys.py ${VNC_ARGS[*]}"
-state_progress "$STAGE_ID" "Sending VNC key sequence (csrutil disable)..." "" "$LUME_RUN_PID"
-VNC_USERNAME="$VM_USER" VNC_PASSWORD="$VM_PASS" \
-  python3 "$SCRIPT_DIR/vnc-send-keys.py" "${VNC_ARGS[@]}" 2>&1 | tee -a "$_LOG_FH"
+if [[ "$VM_NAME" =~ ^macos-27 ]]; then
+  log "  Running macOS 27 Recovery SIP workflow (vncdotool)..."
+  state_progress "$STAGE_ID" "Opening Recovery Terminal and disabling SIP..." "" "$LUME_RUN_PID"
+  VNC_USERNAME="$VM_USER" VNC_PASSWORD="$VM_PASS" \
+    bash "$SCRIPT_DIR/vnc-sip-macos27.sh" "$VM_NAME" "$LOG_DIR" 2>&1 | tee -a "$_LOG_FH"
+else
+  log "  Running vnc-send-keys.py ${VNC_ARGS[*]}"
+  state_progress "$STAGE_ID" "Sending VNC key sequence (csrutil disable)..." "" "$LUME_RUN_PID"
+  VNC_USERNAME="$VM_USER" VNC_PASSWORD="$VM_PASS" \
+    python3 "$SCRIPT_DIR/vnc-send-keys.py" "${VNC_ARGS[@]}" 2>&1 | tee -a "$_LOG_FH"
+fi
 
 # vnc-send-keys.py halts the VM and calls lume stop internally,
 # but call stop again to ensure clean state.
