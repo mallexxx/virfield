@@ -1,0 +1,4 @@
+# Lume 0.5.3 uses offline unattended setup on macOS 27. This marker selects
+# the macOS 27 post-setup VNC finisher in 02-setup-assistant.sh.
+boot_wait: 0
+boot_commands: []

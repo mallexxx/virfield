@@ -181,6 +181,13 @@ _lume_preset_for_major() {
   # Map a macOS major version number to the correct built-in lume preset name.
   if [[ "$1" -ge 26 ]] 2>/dev/null; then echo tahoe; else echo sequoia; fi
 }
+_setup_preset_for_major() {
+  # Prefer a maintained major-version override when one exists.
+  local base custom
+  base="$(_lume_preset_for_major "$1")"
+  custom="$SCRIPT_DIR/${base}-${1}.yaml"
+  [[ -f "$custom" ]] && echo "$custom" || echo "$base"
+}
 SETUP_PRESET="sequoia"
 if [[ -n "$IPSW_PATH" ]] && [[ "$IPSW_PATH" != "none" ]]; then
   if [[ "$IPSW_PATH" == "latest" ]]; then
@@ -191,24 +198,27 @@ if [[ -n "$IPSW_PATH" ]] && [[ "$IPSW_PATH" != "none" ]]; then
     if [[ -n "$_latest_url" ]]; then
       _latest_ver="$(macos_version_from_ipsw "$_latest_url")"
       _latest_major="${_latest_ver%%.*}"
-      [[ -n "$_latest_major" ]] && SETUP_PRESET="$(_lume_preset_for_major "$_latest_major")"
+      [[ -n "$_latest_major" ]] && SETUP_PRESET="$(_setup_preset_for_major "$_latest_major")"
     fi
     # If resolution failed SETUP_PRESET stays 'sequoia' — phase 2 may fail for macOS 26+
     # but that's better than silently using the wrong preset on an unknown version.
   elif _ipsw_is_version_spec "$IPSW_PATH"; then
     # Version spec (e.g. 'sequoia', 'tahoe', '15', '26') — resolve to lume preset.
     _major="$(_ipsw_major_for_spec "$IPSW_PATH")"
-    [[ -n "$_major" ]] && SETUP_PRESET="$(_lume_preset_for_major "$_major")"
+    [[ -n "$_major" ]] && SETUP_PRESET="$(_setup_preset_for_major "$_major")"
   else
     # File path — extract version, look for a version-specific YAML override first.
     _ver="$(macos_version_from_ipsw "$IPSW_PATH")"
     _major="${_ver%%.*}"
     _base_preset="$(_lume_preset_for_major "${_major:-15}")"
     _custom="$SCRIPT_DIR/${_base_preset}-${_ver}.yaml"
+    _custom_major="$SCRIPT_DIR/${_base_preset}-${_major}.yaml"
     if [[ -n "$_ver" ]] && [[ -f "$_custom" ]]; then
       SETUP_PRESET="$_custom"         # e.g. tahoe-26.4.1.yaml
+    elif [[ -n "$_major" ]] && [[ -f "$_custom_major" ]]; then
+      SETUP_PRESET="$_custom_major"   # e.g. tahoe-27.yaml
     elif [[ -n "$_major" ]]; then
-      SETUP_PRESET="$(_lume_preset_for_major "$_major")"
+      SETUP_PRESET="$(_setup_preset_for_major "$_major")"
     fi
   fi
 fi

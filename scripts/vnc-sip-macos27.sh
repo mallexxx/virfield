@@ -3,15 +3,15 @@
 # Its VNC proxy needs vncdotool; the legacy raw-RFB client does not deliver input.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/_vnc_tool.sh"
+
 VM_NAME="$1"
 VM_USER="${VNC_USERNAME:-lume}"
 VM_PASS="${VNC_PASSWORD:-lume}"
 LOG_DIR="${2:-.}"
 
-command -v vncdotool >/dev/null || {
-  echo "vncdotool is required for macOS 27 SIP automation" >&2
-  exit 1
-}
+ensure_vncdotool
 
 vnc_url=""
 for _ in $(seq 1 60); do
@@ -27,9 +27,9 @@ done
 [[ -n "$vnc_url" ]] || { echo "No VNC URL for $VM_NAME" >&2; exit 1; }
 
 read -r vnc_password vnc_host vnc_port < <(
-  python3 -c 'import re,sys; m=re.match(r"vnc://:([^@]+)@([^:]+):(\\d+)",sys.argv[1]); print(*m.groups())' "$vnc_url"
+  python3 -c 'import re,sys; m=re.match(r"vnc://:([^@]+)@([^:]+):(\d+)",sys.argv[1]); print(*m.groups())' "$vnc_url"
 )
-VNC=(vncdotool -s "$vnc_host::$vnc_port" -p "$vnc_password")
+VNC=("$VNCDTOOL" -s "$vnc_host::$vnc_port" -p "$vnc_password")
 shot() { "${VNC[@]}" capture "$LOG_DIR/$1"; }
 
 # Options is the second boot choice. Recovery then exposes a language chooser.

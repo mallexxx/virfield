@@ -182,6 +182,17 @@ fi
 stop_recorder
 log "  lume setup completed successfully."
 
+# Lume 0.5.3 creates the account through its offline setup path, then reports
+# success while macOS 27 still displays post-account Setup Assistant panels.
+if [[ "$(basename "$SETUP_PRESET")" == "tahoe-27.yaml" ]]; then
+  log "  Completing remaining macOS 27 Setup Assistant screens..."
+  if ! lume ls 2>/dev/null | grep -qE "^${VM_NAME}[[:space:]].*running"; then
+    LUME_RUN_PID="$(lume_run_bg "$VM_NAME" --no-display)"
+    sleep 10
+  fi
+  bash "$SCRIPT_DIR/vnc-complete-setup-macos27.sh" "$VM_NAME" "$LOG_DIR" 2>&1 | tee -a "$_LOG_FH"
+fi
+
 # ── Wait for SSH ──────────────────────────────────────────────────────────────
 # lume setup usually leaves the VM running. If not, boot it for SSH check.
 
