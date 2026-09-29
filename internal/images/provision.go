@@ -62,6 +62,9 @@ func (e *Engine) provision(ctx context.Context, l domain.Lease, p domain.ImagePr
 		return err
 	}
 	defer g.Close()
+	if err := e.prepareDesktop(ctx, l, g); err != nil {
+		return err
+	}
 	if err := e.secure(ctx, l, vm.IP, g); err != nil {
 		return err
 	}

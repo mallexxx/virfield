@@ -85,17 +85,25 @@ atomic cache promotion. Disk-space checks run before download and installation.
 A cache hit is also hashed before use. Progress is stored every five seconds;
 API reads remain fast while the worker performs network or VM operations.
 
+Golden shutdown is requested inside macOS over pinned SSH and must be observed
+as stopped within two minutes. It never falls back to hypervisor power-off.
+Lume 0.5.3's `stop` calls `VZVirtualMachine.stop`, which is unsuitable as the
+normal persistence boundary for freshly written guest account/TCC state. Final
+verification authenticates the image password again after a clean reboot, in
+addition to key-only SSH. Disposable-VM deletion uses the separate cleanup path.
+
 Lume subprocesses have fixed argv, bounded private logs, context deadlines and
 an owned process group. Cancellation never uses `pkill`, process-name searches,
 or kills the Lume service. No raw process output or VNC password enters events.
 
 Guest provisioning uses Go SSH, a pinned guest host key and a `VirtualMac`
 hardware check before privileged operations. The documented `lume/lume`
-bootstrap is used only for a newly installed image. Verification replaces it
-with generated image-specific credentials, disables SSH password authentication
-and checks the effective `sshd -T` configuration,
-creates a VM-local workspace, and checks guest build, canonical SIP status and
-Finder after a further reboot. Credentials remain in private 0600 files under
+bootstrap is used only for a newly installed image. After Assistant completes,
+the manager establishes generated image-specific credentials, disables SSH password
+authentication, checks effective `sshd -T` policy and creates a VM-local workspace.
+This happens before Recovery; the Recovery driver receives the generated password
+on private stdin. Final verification checks guest build, canonical SIP status,
+credentials and Finder after another reboot. Credentials remain in private 0600 files under
 the private state directory; they are never returned by status/job/events.
 Each disposable clone receives a distinct password, management key and SSH host key before readiness. Caller keys are supplied per lease; image/cross-lease keys are tested for rejection. See the [SSH contract](README.md).
 
@@ -138,6 +146,7 @@ absence. Cache media and audit history are retained; there is no hidden disk pur
 - [Lume 0.5.3 CLI](https://cua.ai/docs/reference/lume/cli-reference)
 - [Offline setup sequence](https://cua.ai/docs/concepts/how-lume-unattended-setup-works)
 - [Pinned setup implementation](https://github.com/trycua/cua/blob/lume-v0.5.3/libs/lume/src/Unattended/MacOSOfflineSetupPatcher.swift)
+- [Pinned virtualization stop implementation](https://github.com/trycua/cua/blob/lume-v0.5.3/libs/lume/src/Virtualization/VMVirtualizationService.swift)
 - [Pinned SIP implementation](https://github.com/trycua/cua/blob/lume-v0.5.3/libs/lume/src/Commands/Sip.swift)
 
 The live acceptance record is in `VERIFICATION.md`. Unit tests alone do not

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/mallexxx/virfield/internal/domain"
+	"github.com/mallexxx/virfield/internal/guestssh"
 	"github.com/mallexxx/virfield/internal/lume"
 )
 
@@ -116,23 +117,12 @@ func (e *Engine) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile
 			return err
 		}
 		defer guest.Close()
-		out, err := e.waitDesktopState(ctx, guest)
-		if err != nil {
+		if err := e.prepareDesktop(ctx, l, guest); err != nil {
 			return err
 		}
-		if out == "assistant" {
-			endpoint, err := e.Backend.VNCAddress(ctx, l)
-			if err != nil {
-				return err
-			}
-			input, _ := json.Marshal(map[string]string{"url": endpoint, "directory": filepath.Join(folder, "assistant", time.Now().UTC().Format("20060102T150405.000000000Z")), "tesseract": e.Tools.Tesseract})
-			cmd := exec.CommandContext(ctx, e.Tools.Python, "-c", assistantScript)
-			cmd.Stdin = bytes.NewReader(input)
-			if err := lume.RunPrivate(ctx, cmd, filepath.Join(folder, "assistant.log")); err != nil {
-				return err
-			}
-		}
-		if err := e.desktop(ctx, guest); err != nil {
+		// Establish native image credentials before Recovery creates volume-owner
+		// policy. Recovery must authenticate with this identity, not lume/lume.
+		if err := e.secure(ctx, l, vm.IP, guest); err != nil {
 			return err
 		}
 		return e.stop(ctx, l)
@@ -171,7 +161,7 @@ func (e *Engine) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile
 		if strings.TrimSpace(sip) != expected {
 			return domain.Err("sip_verification_failed", "Guest SIP status does not match the requested canonical state")
 		}
-		if err := e.desktop(ctx, guest); err != nil {
+		if err := e.prepareDesktop(ctx, l, guest); err != nil {
 			return err
 		}
 		if err := e.secure(ctx, l, vm.IP, guest); err != nil {
@@ -192,8 +182,15 @@ func (e *Engine) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile
 			return err
 		}
 		defer secured.Close()
-		if err := e.desktop(ctx, secured); err != nil {
+		if err := e.prepareDesktop(ctx, l, secured); err != nil {
 			return err
+		}
+		credentials, err := guestssh.LoadCredentials((&guestssh.Manager{Dir: e.Dir}).CredentialPath(l))
+		if err != nil {
+			return err
+		}
+		if _, err := secured.Run(ctx, "/bin/bash -c 'IFS= read -r password; /usr/bin/dscl . -authonly lume \"$password\"'", credentials.Password+"\n"); err != nil {
+			return domain.Err("credential_verification_failed", "Image password did not persist across reboot; image will not be published")
 		}
 		if p.Provision != "" {
 			if err := e.verifyProvision(ctx, l, secured); err != nil {
@@ -249,14 +246,35 @@ func (e *Engine) stop(ctx context.Context, l domain.Lease) error {
 	if err != nil {
 		return err
 	}
+	var vm domain.VM
 	for _, v := range o.VMs {
-		if v.Key() == l.Key() && v.State == "stopped" {
-			return nil
+		if v.Key() == l.Key() {
+			vm = v
 		}
 	}
-	if err := e.Backend.Stop(ctx, l); err != nil {
+	if vm.State == "stopped" {
+		return nil
+	}
+	if vm.State != "running" {
+		return domain.Err("unexpected_state", "Image must be running or already stopped for clean shutdown")
+	}
+	credentials, err := guestssh.LoadCredentials((&guestssh.Manager{Dir: e.Dir}).CredentialPath(l))
+	if err != nil {
 		return err
 	}
+	guest, err := e.connect(ctx, l, vm.IP, !credentials.Secured)
+	if err != nil {
+		return err
+	}
+	password := credentials.Password
+	if !credentials.Secured {
+		password = "lume"
+	}
+	// Lume's forced stop can discard pending guest directory-service writes.
+	// Request one normal guest shutdown and observe completion; never turn an
+	// ambiguous SSH disconnect into a repeated command or forced power-off.
+	_, shutdownErr := guest.Run(ctx, "/bin/bash -c 'IFS= read -r password; printf \"%s\\n\" \"$password\" | sudo -S -p \"\" /sbin/shutdown -h now'", password+"\n")
+	guest.Close()
 	wait, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	for {
@@ -269,7 +287,10 @@ func (e *Engine) stop(ctx context.Context, l domain.Lease) error {
 			}
 		}
 		if err := pause(wait, time.Second); err != nil {
-			return domain.Err("stop_timeout", "Image did not reach stopped state")
+			if shutdownErr != nil {
+				return domain.Err("guest_shutdown_failed", "Guest shutdown was not confirmed; inspect the image before retry, no forced stop was attempted")
+			}
+			return domain.Err("stop_timeout", "Image did not complete clean shutdown within two minutes; no forced stop was attempted")
 		}
 	}
 }
@@ -286,20 +307,72 @@ func pause(ctx context.Context, d time.Duration) error {
 func (e *Engine) waitDesktopState(ctx context.Context, g *guest) (string, error) {
 	wait, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
+	return waitDesktop(wait, 2*time.Second, 5*time.Second, func(ctx context.Context) (string, error) {
+		return g.Run(ctx, "if /usr/bin/pgrep -x 'Setup Assistant' >/dev/null; then echo assistant; elif test -f /var/db/.AppleSetupDone && /usr/bin/pgrep -x Finder >/dev/null; then echo desktop; else echo waiting; fi", "")
+	})
+}
+
+func waitDesktop(ctx context.Context, poll, settle time.Duration, observe func(context.Context) (string, error)) (string, error) {
+	var desktopSince time.Time
 	for {
-		out, err := g.Run(wait, "if /usr/bin/pgrep -x 'Setup Assistant' >/dev/null; then echo assistant; elif test -f /var/db/.AppleSetupDone && /usr/bin/pgrep -x Finder >/dev/null; then echo desktop; else echo waiting; fi", "")
+		out, err := observe(ctx)
 		if err != nil {
 			return "", err
 		}
 		state := strings.TrimSpace(out)
-		if state == "assistant" || state == "desktop" {
+		if state == "assistant" {
 			return state, nil
 		}
-		if err := pause(wait, 2*time.Second); err != nil {
+		// Finder can appear before the login-time Assistant. Require a settled
+		// desktop before rotating credentials or declaring the GUI ready.
+		if state == "desktop" {
+			if desktopSince.IsZero() {
+				desktopSince = time.Now()
+			} else if time.Since(desktopSince) >= settle {
+				return state, nil
+			}
+		} else {
+			desktopSince = time.Time{}
+		}
+		if err := pause(ctx, poll); err != nil {
 			return "", domain.Err("desktop_timeout", "Guest login did not reach Setup Assistant or Finder within two minutes")
 		}
 	}
 }
+
+// prepareDesktop handles the login-time Assistant that can return after Recovery,
+// as well as the initial setup. It is part of the fixed image job, never a manual
+// guest repair or a readiness shortcut. Unknown screens stop the stage.
+func (e *Engine) prepareDesktop(ctx context.Context, l domain.Lease, g *guest) error {
+	state, err := e.waitDesktopState(ctx, g)
+	if err != nil {
+		return err
+	}
+	if state == "desktop" {
+		return nil
+	}
+	if state == "assistant" {
+		endpoint, err := e.Backend.VNCAddress(ctx, l)
+		if err != nil {
+			return err
+		}
+		folder := filepath.Join(e.Dir, "images", l.ID)
+		attempt := filepath.Join(folder, "assistant", time.Now().UTC().Format("20060102T150405.000000000Z"))
+		if err := os.MkdirAll(attempt, 0700); err != nil {
+			return err
+		}
+		input, _ := json.Marshal(map[string]string{"url": endpoint, "directory": attempt, "tesseract": e.Tools.Tesseract})
+		bounded, cancel := context.WithTimeout(ctx, 10*time.Minute)
+		defer cancel()
+		cmd := exec.CommandContext(bounded, e.Tools.Python, "-c", assistantScript)
+		cmd.Stdin = bytes.NewReader(input)
+		if err := lume.RunPrivate(bounded, cmd, filepath.Join(attempt, "assistant.log")); err != nil {
+			return err
+		}
+	}
+	return e.desktop(ctx, g)
+}
+
 func (e *Engine) desktop(ctx context.Context, g *guest) error {
 	wait, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
