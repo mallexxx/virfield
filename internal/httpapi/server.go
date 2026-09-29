@@ -34,6 +34,9 @@ func New(c *control.Controller, token string, log *slog.Logger) http.Handler {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { write(w, 200, map[string]string{"status": "alive"}) })
 	api := http.NewServeMux()
 	api.HandleFunc("GET /api/v1/status", s.status)
+	api.HandleFunc("POST /api/v1/images/{id}/delete", s.deleteImage)
+	api.HandleFunc("POST /api/v1/images/{id}/build", s.buildImage)
+	api.HandleFunc("POST /api/v1/images/{id}/recover", s.recoverImage)
 	api.HandleFunc("POST /api/v1/leases", s.acquire)
 	api.HandleFunc("GET /api/v1/leases/{id}", s.lease)
 	api.HandleFunc("POST /api/v1/leases/{id}/release", s.release)
@@ -88,7 +91,7 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 		status = 403
 	case "not_found":
 		status = 404
-	case "capacity_exhausted", "idempotency_conflict", "operation_in_progress", "lease_expired", "lease_released", "outcome_unknown", "template_unavailable":
+	case "image_in_use", "image_exists", "capacity_exhausted", "idempotency_conflict", "operation_in_progress", "lease_expired", "lease_released", "outcome_unknown", "template_unavailable":
 		status = 409
 	case "backend_unavailable":
 		status = 503
@@ -221,6 +224,55 @@ func (s *Server) resolve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	op, err := s.c.Resolve(r.Context(), r.PathValue("id"), r.Header.Get("Idempotency-Key"), req.VMName, req.Confirm)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	write(w, 202, op)
+}
+
+func (s *Server) deleteImage(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ConfirmName string `json:"confirm_name"`
+	}
+	if err := decode(w, r, &req); err != nil {
+		s.fail(w, err)
+		return
+	}
+	op, err := s.c.DeleteImage(r.Context(), r.PathValue("id"), r.Header.Get("Idempotency-Key"), req.ConfirmName)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	write(w, 202, op)
+}
+
+func (s *Server) buildImage(w http.ResponseWriter, r *http.Request) {
+	var req struct{}
+	if err := decode(w, r, &req); err != nil {
+		s.fail(w, err)
+		return
+	}
+	op, err := s.c.BuildImage(r.Context(), r.PathValue("id"), r.Header.Get("Idempotency-Key"))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	w.Header().Set("Location", "/api/v1/jobs/"+op.Job.ID)
+	write(w, http.StatusAccepted, op)
+}
+
+func (s *Server) recoverImage(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name    string `json:"vm_name"`
+		Action  string `json:"action"`
+		Confirm bool   `json:"confirm_no_operation_in_flight"`
+	}
+	if err := decode(w, r, &req); err != nil {
+		s.fail(w, err)
+		return
+	}
+	op, err := s.c.RecoverImage(r.Context(), r.PathValue("id"), r.Header.Get("Idempotency-Key"), req.Name, req.Action, req.Confirm)
 	if err != nil {
 		s.fail(w, err)
 		return

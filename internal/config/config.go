@@ -15,12 +15,13 @@ import (
 )
 
 type Config struct {
-	Listen    string            `json:"listen"`
-	LumeURL   string            `json:"lume_url"`
-	StateDir  string            `json:"state_dir"`
-	TokenFile string            `json:"token_file"`
-	MaxVMs    int               `json:"max_vms"`
-	Templates []domain.Template `json:"templates"`
+	ImageTools *domain.ImageTools `json:"image_tools,omitempty"`
+	Listen     string             `json:"listen"`
+	LumeURL    string             `json:"lume_url"`
+	StateDir   string             `json:"state_dir"`
+	TokenFile  string             `json:"token_file"`
+	MaxVMs     int                `json:"max_vms"`
+	Templates  []domain.Template  `json:"templates"`
 }
 
 func Load(path string) (Config, error) {

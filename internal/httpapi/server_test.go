@@ -134,3 +134,28 @@ func TestEmbeddedConsoleHasSecurityHeaders(t *testing.T) {
 		}
 	}
 }
+
+func TestImageDeleteRequiresAuthAndExactConfirmation(t *testing.T) {
+	h := handler(t)
+	for _, route := range []string{"build", "delete", "recover"} {
+		if w := request(h, "POST", "/api/v1/images/test/"+route, `{}`, "image-api-auth", false); w.Code != 401 {
+			t.Fatal(route, w.Code)
+		}
+	}
+	w := request(h, "POST", "/api/v1/images/test/delete", `{"confirm_name":"wrong"}`, "image-api-wrong", true)
+	if w.Code != 400 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	w = request(h, "POST", "/api/v1/images/test/delete", `{"confirm_name":"golden","command":"rm"}`, "image-api-extra", true)
+	if w.Code != 400 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	w = request(h, "POST", "/api/v1/images/test/delete", `{"confirm_name":"golden"}`, "image-api-delete", true)
+	if w.Code != 202 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	w = request(h, "POST", "/api/v1/leases", `{"template":"test","ttl_seconds":3600}`, "image-api-blocked", true)
+	if w.Code != 409 || !strings.Contains(w.Body.String(), "image_in_use") {
+		t.Fatal(w.Code, w.Body.String())
+	}
+}

@@ -63,5 +63,8 @@ func New(c *client.Client) *mcp.Server {
 	mcp.AddTool(s, &mcp.Tool{Name: "virfield_events", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}, Description: "Read ordered durable events after a cursor; persist next_cursor after processing"}, func(ctx context.Context, _ *mcp.CallToolRequest, a eventsArgs) (*mcp.CallToolResult, any, error) {
 		return result(c.Do(ctx, "GET", "events?after="+strconv.FormatInt(a.After, 10)+"&lease_id="+url.QueryEscape(a.LeaseID), nil, ""))
 	})
+	mcp.AddTool(s, &mcp.Tool{Name: "image_build", Annotations: &mcp.ToolAnnotations{IdempotentHint: true}, Description: "Build a NEW allowlisted golden image from its pinned Apple IPSW profile. Downloads and installs macOS, completes setup, applies the operator-configured guest SIP policy and verifies credentials. Requires no active leases. Never overwrites an existing VM. Use the same idempotency key on retries."}, func(ctx context.Context, _ *mcp.CallToolRequest, a releaseArgs) (*mcp.CallToolResult, any, error) {
+		return result(c.Do(ctx, "POST", "images/"+url.PathEscape(a.ID)+"/build", empty{}, a.Key))
+	})
 	return s
 }

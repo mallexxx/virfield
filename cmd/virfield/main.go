@@ -29,7 +29,7 @@ func run() error {
 	tokenFile := flag.String("token-file", "", "owner-only API token file")
 	key := flag.String("key", "", "stable idempotency key; required for acquire/release")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Usage: virfield [flags] status | acquire TEMPLATE TTL_SECONDS | lease ID | job ID | events [AFTER] | release ID | renew ID RFC3339 | resolve ID VM CONFIRM-NO-OPERATION-IN-FLIGHT | init DIRECTORY TEMPLATE VM LOCATION")
+		fmt.Fprintln(os.Stderr, "Usage: virfield [flags] status | image-build IMAGE_ID | image-delete IMAGE_ID EXACT_VM_NAME | acquire TEMPLATE TTL_SECONDS | lease ID | job ID | events [AFTER] | release ID | renew ID RFC3339 | resolve ID VM CONFIRM-NO-OPERATION-IN-FLIGHT | init DIRECTORY TEMPLATE VM LOCATION")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -55,6 +55,27 @@ func run() error {
 	method, path := "GET", ""
 	var body any
 	switch args[0] {
+	case "image-recover":
+		if len(args) != 5 || !domain.ValidName(args[1]) || !domain.ValidName(args[2]) || args[4] != "CONFIRM-NO-OPERATION-IN-FLIGHT" || *key == "" {
+			return errors.New("usage: -key STABLE_KEY image-recover IMAGE_RECORD_ID EXACT_VM_NAME retry|delete CONFIRM-NO-OPERATION-IN-FLIGHT")
+		}
+		method = "POST"
+		path = "images/" + args[1] + "/recover"
+		body = map[string]any{"vm_name": args[2], "action": args[3], "confirm_no_operation_in_flight": true}
+	case "image-build":
+		if len(args) != 2 || !domain.ValidName(args[1]) || *key == "" {
+			return errors.New("usage: -key STABLE_KEY image-build IMAGE_ID")
+		}
+		method = "POST"
+		path = "images/" + args[1] + "/build"
+		body = struct{}{}
+	case "image-delete":
+		if len(args) != 3 || !domain.ValidName(args[1]) || *key == "" {
+			return errors.New("usage: -key STABLE_KEY image-delete IMAGE_ID EXACT_VM_NAME (permanently deletes the image)")
+		}
+		method = "POST"
+		path = "images/" + args[1] + "/delete"
+		body = map[string]string{"confirm_name": args[2]}
 	case "status":
 		if len(args) != 1 {
 			return errors.New("usage: status")

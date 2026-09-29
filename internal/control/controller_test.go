@@ -511,3 +511,35 @@ func TestUnavailableStatusNeverAdvertisesFreeSlots(t *testing.T) {
 		t.Fatal(status)
 	}
 }
+
+func TestImageDeleteRequiresExactConfirmationAndNoLeases(t *testing.T) {
+	c, _, b := setup(t)
+	_, err := c.DeleteImage(context.Background(), "test", "image-delete-1", "wrong")
+	code(t, err, "invalid_request")
+	op := acquire(t, c, "request-1")
+	_, err = c.DeleteImage(context.Background(), "test", "image-delete-1", "golden")
+	code(t, err, "image_in_use")
+	if _, err := c.Release(context.Background(), op.Lease.ID, "release-1"); err != nil {
+		t.Fatal(err)
+	}
+	tick(t, c)
+	deletion, err := c.DeleteImage(context.Background(), "test", "image-delete-1", "golden")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = c.Acquire(context.Background(), "request-2", domain.AcquireRequest{Template: "test", TTLSeconds: 3600})
+	code(t, err, "image_in_use")
+	tick(t, c)
+	tick(t, c)
+	j, err := c.Job(context.Background(), deletion.Job.ID)
+	if err != nil || j.State != "succeeded" {
+		t.Fatalf("%+v %v", j, err)
+	}
+	replay, err := c.DeleteImage(context.Background(), "test", "image-delete-1", "golden")
+	if err != nil || !replay.Replayed {
+		t.Fatalf("%+v %v", replay, err)
+	}
+	if b.count("delete") != 1 {
+		t.Fatal(b.counts)
+	}
+}

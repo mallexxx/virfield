@@ -26,3 +26,6 @@ coverage.out
 .DS_Store
 logs/
 state/
+
+# Python image-job bytecode
+__pycache__/

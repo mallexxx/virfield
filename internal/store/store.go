@@ -52,11 +52,17 @@ func (s *Store) migrate() error {
 	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
 		return err
 	}
-	if version > 1 {
+	if version > 2 {
 		return fmt.Errorf("database schema %d is newer than this binary", version)
 	}
-	if version == 1 {
+	if version == 2 {
 		return nil
+	}
+	if version == 1 {
+		// Version 2 introduces permanent image records in the JSON journal. Older
+		// daemons must refuse these records rather than expire them as ordinary leases.
+		_, err := s.db.Exec(`PRAGMA user_version=2`)
+		return err
 	}
 	_, err := s.db.Exec(`BEGIN IMMEDIATE;
  CREATE TABLE leases (id TEXT PRIMARY KEY, state TEXT NOT NULL, body TEXT NOT NULL);
@@ -65,7 +71,7 @@ func (s *Store) migrate() error {
  CREATE TABLE events (id INTEGER PRIMARY KEY AUTOINCREMENT, lease_id TEXT NOT NULL REFERENCES leases(id), job_id TEXT NOT NULL, type TEXT NOT NULL, message TEXT NOT NULL, at TEXT NOT NULL);
  CREATE INDEX events_lease ON events(lease_id,id);
  CREATE INDEX jobs_state ON jobs(state);
- PRAGMA user_version=1;
+ PRAGMA user_version=2;
  COMMIT;`)
 	return err
 }
@@ -172,7 +178,7 @@ func (s *Store) Save(ctx context.Context, l domain.Lease, j *domain.Job, key, fp
 	if _, err = tx.ExecContext(ctx, `INSERT INTO leases(id,state,body) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET state=excluded.state,body=excluded.body`, l.ID, l.State, string(lb)); err != nil {
 		return err
 	}
-	if j != nil && j.Kind == "cleanup" && j.Phase == "queued" {
+	if j != nil && (j.Kind == "cleanup" || j.Kind == "image_delete") && j.Phase == "queued" {
 		// Cancellation and cleanup acceptance are one transaction, including on
 		// expiry. A crash cannot strand a canceled preparation without cleanup.
 		if _, err = tx.ExecContext(ctx, `UPDATE jobs SET state='canceled',body=json_set(body,'$.state','canceled','$.updated_at',?) WHERE lease_id=? AND state IN ('queued','running','needs_attention')`, time.Now().UTC().Format(time.RFC3339Nano), l.ID); err != nil {

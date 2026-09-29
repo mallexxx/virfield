@@ -111,3 +111,42 @@ func TestMissingRecords(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestUpgradeImageJournalKeepsExistingRecords(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "upgrade.db")
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	l := domain.Lease{ID: "lease-upgrade", State: "pending"}
+	j := domain.Job{ID: "job-upgrade", LeaseID: l.ID, Kind: "prepare", State: "queued"}
+	if err := s.Save(ctx, l, &j, "request-upgrade", "fingerprint", "lease.accepted", "preserve me"); err != nil {
+		t.Fatal(err)
+	}
+	// The v1 and v2 table layouts are identical; the version protects old readers
+	// from treating permanent images as expiring leases.
+	if _, err := s.db.Exec(`PRAGMA user_version=1`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	replay, err := s.Replay(ctx, "request-upgrade", "fingerprint")
+	if err != nil || !replay.Replayed || replay.Lease.ID != l.ID {
+		t.Fatal(replay, err)
+	}
+	events, err := s.Events(ctx, 0, l.ID, 100)
+	if err != nil || len(events) != 1 || events[0].Message != "preserve me" {
+		t.Fatal(events, err)
+	}
+	var version int
+	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 2 {
+		t.Fatal(version, err)
+	}
+}

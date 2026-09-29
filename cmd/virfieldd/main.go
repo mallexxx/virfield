@@ -18,6 +18,7 @@ import (
 	"github.com/mallexxx/virfield/internal/control"
 	"github.com/mallexxx/virfield/internal/hostlock"
 	"github.com/mallexxx/virfield/internal/httpapi"
+	"github.com/mallexxx/virfield/internal/images"
 	"github.com/mallexxx/virfield/internal/lume"
 	"github.com/mallexxx/virfield/internal/store"
 )
@@ -70,6 +71,13 @@ func run(log *slog.Logger) error {
 	manager, err := control.New(db, backend, cfg.Templates, cfg.MaxVMs, log)
 	if err != nil {
 		return err
+	}
+	if cfg.ImageTools != nil {
+		builder, err := images.New(cfg.StateDir, backend, *cfg.ImageTools)
+		if err != nil {
+			return err
+		}
+		manager.SetImageBuilder(builder)
 	}
 	// Bind before starting background effects: a conflicting port must not leave
 	// an invisible controller running beside the real service.

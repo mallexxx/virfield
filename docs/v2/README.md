@@ -1,6 +1,6 @@
 # Virfield v2 — control-plane implementation
 
-**Branch:** `codex/virfield-v2`. **Status:** implemented lifecycle core, not yet a production replacement for v1.
+**Branch:** `codex/virfield-v2`. **Status:** lifecycle core and pinned base-image pipeline implemented; production release gates remain.
 
 This implements the first vertical slice of §13/§16 stage 2 in the
 2026-09-29 Balda/Callee/Prism plan. Broker, Runner and Balda integration remain
@@ -64,16 +64,21 @@ images and arbitrary external VMs are never adopted by name.
 |---|---|
 | `cmd/virfieldd` | Configuration, host singleton lock, HTTP server, shutdown |
 | `internal/control` | Admission, leases, durable job phases, reconciliation, cleanup |
+| `internal/images` | Pinned IPSW downloads, versioned guest provisioning, image verification |
 | `internal/store` | SQLite schema, atomic state + event transactions, idempotency |
-| `internal/lume` | Sole Lume HTTP adapter, bounded requests, no mutation retries |
+| `internal/lume` | Sole Lume HTTP/CLI adapter, fixed image commands, no blind mutation retries |
 | `internal/httpapi`, `internal/web` | Versioned authenticated API, embedded console |
 | `internal/client`, `cmd/virfield` | API-only CLI |
 | `internal/mcpadapter`, `cmd/virfield-mcp` | Official Go SDK stdio MCP adapter |
 | `internal/config`, `internal/hostlock` | Validated config/token, single host owner |
 
-There is no `os/exec`, personal SSH key discovery, host shell endpoint,
-password fallback, PAT storage, process-name scanning or automatic Lume restart
-in v2. API clients have no direct store or Lume dependency.
+There is no personal SSH key discovery, host shell endpoint, PAT storage,
+process-name scanning or automatic Lume restart in v2. Fixed image jobs use
+allowlisted Lume CLI operations and a versioned guest VNC script. The initial
+Lume password is confined to fresh-image bootstrap and is rotated before image
+verification. API clients have no direct store or Lume dependency.
+
+See [Image Manager](IMAGE-PIPELINE.md) for profiles, build, recovery and deletion.
 
 ## Capacity and recovery
 
@@ -133,7 +138,7 @@ unavailable, leave the slot reserved and restore the service separately.
 ```
 
 Tools: `virfield_status`, `vm_acquire`, `vm_lease`, `vm_release`, `vm_renew`,
-`virfield_job`, `virfield_events`. A full pool returns `capacity_exhausted` with
+`virfield_job`, `virfield_events`, `image_build`. A full pool returns `capacity_exhausted` with
 an actionable message. **Queueing belongs to Broker**, not this host daemon.
 
 The daemon currently binds only to loopback. Container/Broker access needs an
@@ -164,18 +169,23 @@ expiry, cleanup failure, drift, token/origin checks, strict JSON, SDK tool calls
 redirect credential protection and Lume HTTP request contracts. The live
 read-only check validates only host status and inventory.
 
-**Not yet accepted:** live clone → boot → SSH → release against two real macOS
-VMs; daemon crash injection under actual Lume operations; disk-full recovery;
+**Live lifecycle accepted:** two real clones reached Lume SSH readiness, a third
+request was refused, SQLite reopen preserved leases, and both clones were deleted.
+**Base-image acceptance passed:** a real Apple download with resume and SHA-256,
+followed by a clean cached-media rebuild through Assistant, Recovery/SIP, SSH
+rotation and reboot verification; two clones and cleanup passed in 10m38s.
+See [the evidence and limitations](VERIFICATION.md).
+**Not yet accepted:** daemon crash injection during actual VM mutations; disk-full recovery;
 long-duration stability. Automated mock tests do not establish these claims.
 
 ## Remaining planned modules and release gates
 
 | Planned scope | Current state / release gate |
 |---|---|
-| Core lifecycle, API, CLI, stdio MCP, minimal UI | Implemented; live mutation acceptance still required |
-| Image Manager: download/pull/build/promote | Not implemented; only allowlisted existing golden images |
-| Versioned provisioning jobs | Legacy scripts retained, not executed by v2; see migration audit |
-| Scoped SSH credentials, verified guest login, tunnels | Not implemented; no personal-key/password fallback |
+| Core lifecycle, API, CLI, stdio MCP, minimal UI | Implemented; two-VM live lifecycle passed |
+| Image Manager: download/pull/build/promote | Pinned download/build/verify/promotion implemented; registry pull pending |
+| Versioned provisioning jobs | Native Lume setup plus verified macOS 27 Assistant/Recovery drivers; full tool/Xcode provisioning pending |
+| Scoped SSH credentials, verified guest login, tunnels | Image-specific credentials implemented; per-lease rotation/delivery and tunnels pending |
 | Resource quotas beyond two VM slots | CPU/RAM/disk admission still required |
 | HTTP MCP, Broker-facing deployment | HTTP API exists; TLS/container routing and scoped principals pending |
 | Production operations | Backup/restore rehearsal, retention/log rotation, soak/fault injection pending |
@@ -186,9 +196,8 @@ long-duration stability. Automated mock tests do not establish these claims.
 The scripts currently call Lume themselves, write JSON state, use `lume/lume`
 credentials and select host directories. Running them unchanged as a generic
 "job" would recreate the exact multiple-owner and credential problems being
-removed. The next image-manager change must introduce a versioned, allowlisted
-manifest, fixed executable/arguments, bounded logs, scoped credentials and a
-single lifecycle owner. Preserve their provisioning knowledge, not their
+removed. The image manager uses a versioned, allowlisted manifest, fixed executable/arguments,
+bounded logs, image-specific credentials and a single lifecycle owner. Preserve their provisioning knowledge, not their
 orchestration authority. Do not add a public "run script" or "SSH exec" escape hatch.
 
 ## Sources and implementation rules

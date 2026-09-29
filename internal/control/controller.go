@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"net"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -28,16 +29,17 @@ type Backend interface {
 	Delete(context.Context, domain.Lease) error
 }
 type Controller struct {
-	mu          sync.Mutex
-	store       *store.Store
-	backend     Backend
-	templates   map[string]domain.Template
-	observation domain.Observation
-	limit       int
-	now         func() time.Time
-	active      map[string]bool
-	wg          sync.WaitGroup
-	log         *slog.Logger
+	imageBuilder ImageBuilder
+	mu           sync.Mutex
+	store        *store.Store
+	backend      Backend
+	templates    map[string]domain.Template
+	observation  domain.Observation
+	limit        int
+	now          func() time.Time
+	active       map[string]bool
+	wg           sync.WaitGroup
+	log          *slog.Logger
 }
 
 func New(s *store.Store, b Backend, templates []domain.Template, limit int, log *slog.Logger) (*Controller, error) {
@@ -45,12 +47,23 @@ func New(s *store.Store, b Backend, templates []domain.Template, limit int, log 
 		return nil, fmt.Errorf("max_vms must be 1 or 2")
 	}
 	tm := map[string]domain.Template{}
+	identities := map[string]bool{}
 	for _, t := range templates {
 		if !domain.ValidName(t.ID) || !domain.ValidName(t.Name) || !domain.ValidName(t.Location) {
 			return nil, fmt.Errorf("invalid template identity")
 		}
+		identity := t.Location + "/" + t.Name
+		if identities[identity] {
+			return nil, fmt.Errorf("duplicate template VM identity %s", identity)
+		}
+		identities[identity] = true
 		if _, ok := tm[t.ID]; ok {
 			return nil, fmt.Errorf("duplicate template %s", t.ID)
+		}
+		if t.Image != nil {
+			if err := t.Image.Validate(); err != nil {
+				return nil, err
+			}
 		}
 		tm[t.ID] = t
 	}
@@ -89,7 +102,7 @@ func (c *Controller) capacity(leases []domain.Lease) domain.Capacity {
 		}
 	}
 	for _, l := range leases {
-		if l.State != "released" {
+		if l.State != "released" && l.State != "image_ready" {
 			used[l.Key()] = true
 		}
 	}
@@ -107,7 +120,15 @@ func (c *Controller) capacity(leases []domain.Lease) domain.Capacity {
 	if limit < 1 {
 		limit = c.limit
 	}
-	return domain.Capacity{Limit: limit, Used: n, Available: max(0, limit-n), Blockers: names}
+	available := max(0, limit-n)
+	for _, l := range leases {
+		if l.Purpose == "image" && l.State != "image_ready" && l.State != "released" {
+			available = 0
+			names = append(names, "Image operation reserves maintenance access; new leases paused")
+			break
+		}
+	}
+	return domain.Capacity{Limit: limit, Used: n, Available: available, Blockers: names}
 }
 func (c *Controller) Status(ctx context.Context) (domain.Status, error) {
 	c.mu.Lock()
@@ -175,6 +196,22 @@ func (c *Controller) Acquire(ctx context.Context, key string, r domain.AcquireRe
 	if err != nil {
 		return domain.Operation{}, err
 	}
+	for _, l := range ls {
+		if l.Purpose == "image" && l.State != "image_ready" {
+			return domain.Operation{}, domain.Err("image_in_use", "image operation is in progress")
+		}
+	}
+	if t.Image != nil {
+		verified := false
+		for _, l := range ls {
+			if l.Purpose == "image" && l.Key() == t.Location+"/"+t.Name && l.State == "image_ready" && l.ImageManifest == fingerprint(t.Image) {
+				verified = true
+			}
+		}
+		if !verified {
+			return domain.Operation{}, domain.Err("template_unavailable", "Configured image profile has no matching verified build; build and verify it before acquiring leases")
+		}
+	}
 	cap := c.capacity(ls)
 	if cap.Available == 0 {
 		return domain.Operation{}, cap.FullError()
@@ -203,6 +240,9 @@ func (c *Controller) Release(ctx context.Context, id, key string) (domain.Operat
 	l, err := c.store.Lease(ctx, id)
 	if err != nil {
 		return domain.Operation{}, err
+	}
+	if l.Purpose == "image" {
+		return domain.Operation{}, domain.Err("invalid_request", "use image operations for permanent images")
 	}
 	if l.State == "released" {
 		return domain.Operation{}, domain.Err("lease_released", "lease is already released")
@@ -240,6 +280,9 @@ func (c *Controller) Renew(ctx context.Context, id string, expires time.Time) (d
 	if err != nil {
 		return l, err
 	}
+	if l.Purpose == "image" {
+		return l, domain.Err("invalid_request", "use image operations for permanent images")
+	}
 	now := c.now()
 	if !l.ExpiresAt.After(now) || l.State == "released" || l.State == "releasing" || l.State == "quarantined" {
 		return l, domain.Err("lease_expired", "lease cannot be renewed")
@@ -276,6 +319,16 @@ func (c *Controller) Recover(ctx context.Context) error {
 	}
 	for _, j := range js {
 		if j.State != "running" {
+			continue
+		}
+		if j.Kind == "image_build" && strings.HasSuffix(j.Phase, "_dispatched") && j.Phase != "download_dispatched" {
+			l, err := c.store.Lease(ctx, j.LeaseID)
+			if err != nil {
+				return err
+			}
+			if err := c.attention(ctx, l, j, "image_outcome_unknown", "Image mutation was interrupted; inspect the VM before cleanup. The step will not be replayed.", true); err != nil {
+				return err
+			}
 			continue
 		}
 		if j.Phase == "clone_dispatched" {
@@ -357,7 +410,7 @@ func (c *Controller) Tick(ctx context.Context) error {
 				hasCleanup = true
 			}
 		}
-		if !l.ExpiresAt.After(c.now()) && l.State != "releasing" && l.State != "quarantined" && !hasCleanup && !c.active[l.ID] {
+		if l.Purpose != "image" && !l.ExpiresAt.After(c.now()) && l.State != "releasing" && l.State != "quarantined" && !hasCleanup && !c.active[l.ID] {
 			if _, err := c.queueCleanup(ctx, l, "", ""); err != nil {
 				return err
 			}
@@ -410,6 +463,12 @@ func (c *Controller) advance(ctx context.Context, l domain.Lease, j domain.Job) 
 	v, exists := c.vm(l)
 	if !j.Deadline.After(c.now()) {
 		return c.attention(ctx, l, j, "operation_timeout", "Operation deadline exceeded. Slot remains reserved until cleanup is confirmed.", j.Phase == "clone_dispatched")
+	}
+	if j.Kind == "image_build" {
+		return c.advanceImageBuild(ctx, l, j)
+	}
+	if j.Kind == "image_delete" {
+		return c.advanceImageDelete(ctx, l, j)
 	}
 	if j.Kind == "cleanup" {
 		return c.cleanup(ctx, l, j, v, exists)
@@ -588,6 +647,9 @@ func (c *Controller) Resolve(ctx context.Context, id, key, vmName string, noOper
 	l, err := c.store.Lease(ctx, id)
 	if err != nil {
 		return domain.Operation{}, err
+	}
+	if l.Purpose == "image" {
+		return domain.Operation{}, domain.Err("invalid_request", "use image operations for permanent images")
 	}
 	if l.VMName != vmName {
 		return domain.Operation{}, domain.Err("invalid_request", "confirmation must match the exact VM name")

@@ -34,9 +34,10 @@ func NewID(prefix string) string {
 
 // Template is explicitly configured by the host operator, never a caller's path.
 type Template struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Location string `json:"location"`
+	Image    *ImageProfile `json:"image,omitempty"`
+	ID       string        `json:"id"`
+	Name     string        `json:"name"`
+	Location string        `json:"location"`
 }
 
 // AcquireRequest reserves a slot immediately. Queueing belongs to Execution Broker.
@@ -57,6 +58,8 @@ func (r AcquireRequest) Validate() error {
 
 // Lease holds capacity until cleanup is confirmed, including after expiry/failure.
 type Lease struct {
+	ImageManifest  string    `json:"image_manifest,omitempty"`
+	Purpose        string    `json:"purpose,omitempty"`
 	ID             string    `json:"id"`
 	VMName         string    `json:"vm_name"`
 	Location       string    `json:"location"`
@@ -73,15 +76,17 @@ type Lease struct {
 
 // Job is a persisted state machine. Phase is written before each external effect.
 type Job struct {
-	ID        string    `json:"id"`
-	LeaseID   string    `json:"lease_id"`
-	Kind      string    `json:"kind"`
-	Phase     string    `json:"phase"`
-	State     string    `json:"state"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Deadline  time.Time `json:"deadline"`
-	Error     *Error    `json:"error,omitempty"`
+	Image     *ImageProfile `json:"image,omitempty"`
+	Progress  string        `json:"progress,omitempty"`
+	ID        string        `json:"id"`
+	LeaseID   string        `json:"lease_id"`
+	Kind      string        `json:"kind"`
+	Phase     string        `json:"phase"`
+	State     string        `json:"state"`
+	CreatedAt time.Time     `json:"created_at"`
+	UpdatedAt time.Time     `json:"updated_at"`
+	Deadline  time.Time     `json:"deadline"`
+	Error     *Error        `json:"error,omitempty"`
 }
 type Event struct {
 	ID      int64     `json:"event_id"`
