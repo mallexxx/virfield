@@ -187,11 +187,17 @@ func (c *Controller) RecoverImage(ctx context.Context, id, key, name, action str
 		return domain.Operation{}, domain.Err("not_found", "no failed image job found")
 	}
 	switch action {
-	case "retry":
+	case "retry", "reprovision":
 		previous := map[string]string{"download_dispatched": "queued", "assistant_dispatched": "setup_done", "sip_dispatched": "assistant_done", "verify_dispatched": "provision_done", "provision_dispatched": "sip_done"}
 		phase, ok := previous[j.Phase]
 		if !ok || j.Kind != "image_build" {
 			return domain.Operation{}, domain.Err("unsafe_retry", "this interrupted stage cannot be retried; inspect and delete the incomplete image")
+		}
+		if action == "reprovision" {
+			if j.Phase != "verify_dispatched" || j.Image == nil || j.Image.Provision == "" {
+				return domain.Operation{}, domain.Err("unsafe_retry", "Reprovision requires a failed verification of a configured UI-test image")
+			}
+			phase = "sip_done"
 		}
 		j.Phase = phase
 		j.State = "queued"
@@ -207,7 +213,7 @@ func (c *Controller) RecoverImage(ctx context.Context, id, key, name, action str
 		l.Error = nil
 		l.UpdatedAt = c.now()
 	default:
-		return domain.Operation{}, domain.Err("invalid_request", "recovery action must be retry or delete")
+		return domain.Operation{}, domain.Err("invalid_request", "recovery action must be retry, reprovision or delete")
 	}
 	if err := c.store.Save(ctx, l, &j, key, fp, "image.operator_recovery", "Operator inspected exact image and authorized "+action); err != nil {
 		return domain.Operation{}, err

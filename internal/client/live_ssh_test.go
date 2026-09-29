@@ -18,7 +18,8 @@ import (
 )
 
 // TestLiveLeaseSSH creates and deletes ONLY two disposable leases using the API.
-// Guest probes are fixed read-only commands. The golden image is preserved.
+// Guest probes are fixed commands; UI-test probes write only disposable guest
+// artifacts. The golden image is preserved.
 func TestLiveLeaseSSH(t *testing.T) {
 	if os.Getenv("VIRFIELD_LIVE_LEASE_SSH") != "I_APPROVE_TEMPORARY_VM_DELETION" {
 		t.Skip("requires authorization for two temporary clones and cleanup")
@@ -46,6 +47,12 @@ func TestLiveLeaseSSH(t *testing.T) {
 	}
 	if status.Capacity.Used != 0 || len(status.Jobs) != 0 {
 		t.Fatal("requires idle v2 manager")
+	}
+	fullProfile := false
+	for _, template := range status.Templates {
+		if template.ID == os.Getenv("VIRFIELD_LIVE_TEMPLATE_ID") && template.Image != nil && template.Image.Provision == "uitest-27-v1" {
+			fullProfile = true
+		}
 	}
 	type owned struct {
 		op      domain.Operation
@@ -215,6 +222,9 @@ func TestLiveLeaseSSH(t *testing.T) {
 			raw.Close()
 			return nil, err
 		}
+		if fullProfile {
+			_ = raw.SetDeadline(time.Now().Add(2 * time.Minute))
+		}
 		return ssh.NewClient(conn, ch, req), nil
 	}
 	dial := func(l domain.Lease, signer ssh.Signer) (*ssh.Client, error) {
@@ -243,10 +253,37 @@ func TestLiveLeaseSSH(t *testing.T) {
 		}
 		out, err := s.CombinedOutput("/usr/sbin/sysctl -n hw.model; /usr/bin/csrutil status; /usr/bin/pgrep -x Finder; test -d ~/workspace")
 		s.Close()
-		g.Close()
 		if err != nil || !strings.Contains(string(out), "VirtualMac") || !strings.Contains(string(out), "disabled") {
+			g.Close()
 			t.Fatal("guest probes failed", err)
 		}
+		if fullProfile {
+			s, err = g.NewSession()
+			if err != nil {
+				g.Close()
+				t.Fatal(err)
+			}
+			out, err = s.CombinedOutput(`set -euo pipefail
+export PATH=/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin
+xcodebuild -version
+xcrun swift -e 'print("virfield-clone-swift-ok")'
+sudo -n true
+test "$(spctl --status 2>&1 || true)" = 'assessments disabled'
+sysctl -n kern.bootargs | grep -q amfi_get_out_of_my_way=1
+peekaboo permissions status --json --no-remote | jq -e '.success == true and ([.data.permissions[] | select(.isRequired == true)] | length >= 2 and all(.isGranted == true))'
+osascript -e 'tell application "System Events" to get name of first process'
+screencapture -x ~/workspace/virfield-acceptance.png
+test -s ~/workspace/virfield-acceptance.png
+printf 'virfield-ui-profile-ok\n'
+`)
+			s.Close()
+			if err != nil || !strings.Contains(string(out), "virfield-ui-profile-ok") {
+				g.Close()
+				t.Fatal("cloned UI-test profile failed", err, string(out))
+			}
+			t.Log("cloned Xcode/Swift, security profile, UI permissions and screenshot passed", l.ready.ID)
+		}
+		g.Close()
 		response, err := c.Do(ctx, "POST", "leases/"+l.ready.ID+"/tunnel", nil, "")
 		if err != nil {
 			t.Fatal(err)

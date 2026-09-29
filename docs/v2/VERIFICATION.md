@@ -266,10 +266,62 @@ interruption of the SSH preparation stage, not arbitrary points in every guest
 shell operation. Private test harness is retained at
 `state/v2-live-20260929-a/ssh-stage-fault.py`.
 
+## Full UI-test golden profile — accepted after explicit authorization
+
+The user explicitly authorized guest-only Gatekeeper/AMFI disable, TCC grants and
+passwordless sudo, and required these to run automatically during golden setup.
+`macos27` now selects `uitest-27-v1`; the host's SIP/TCC/Gatekeeper and selected
+Xcode are unchanged. Host Xcode 27.2 beta (27B5019j) is copied over pinned SSH
+into the guest. Source paths, commands and guest policy remain operator-owned.
+
+Job `job-1f9ee4fe1208db779fd40beffda19f6e` provisioned the retained image
+`image-1488b3ebbe8da8e1956236c90dde9dce`. Final post-reboot verification passed at
+**2026-09-29T17:58:46.730609Z**, followed by stopped-image promotion. This run used
+inspected recovery while developing the fixes below; it is not an uninterrupted
+fresh-build claim.
+
+Live failures exposed and corrected:
+
+- Xcode 26.6 is incompatible with the macOS 27 Homebrew tool profile. The source
+  is now checked before media download; Xcode 27+ is required, and guest selection
+  is restored after Homebrew installs CLT. Existing Xcode can be reused only after
+  exact version comparison and deep strict code-signature verification.
+- The old `EnableAssessment=false` preference did not disable Gatekeeper.
+  Apple's `enabled` CFString set to `no`, readable preference permissions and
+  post-reboot `spctl --status` verification now establish the effective policy.
+- macOS 27's user TCC database is in a protected container, not the assumed HOME
+  path. The recipe resolves the database opened by the registered GUI-user tccd,
+  validates UID/path/schema, waits for read-only database discovery and fails
+  provisioning on any failed grant. It never publishes a partially granted image.
+- Lume's readiness can precede an actual reachable SSH endpoint. Only TCP connect
+  failures get a bounded 90-second readiness wait; host-key, authentication and
+  command failures never trigger replay or weaker authentication.
+
+Verification checks Xcode, executed Swift, required tools, passwordless sudo,
+Gatekeeper, AMFI boot arguments, Terminal TCC grants, System Events and Peekaboo's
+actual required local permissions. The enclosing image checks SIP, build, Finder,
+key-only SSH and reboot. An explicit `reprovision` recovery action can repair a
+failed verification; ordinary verification retry does not replay provisioning.
+Controller tests prove a newly built golden executes the full stage order and
+cannot be published or leased if provisioning or verification fails.
+
+**PASS: `TestLiveLeaseSSH`, 89.98 seconds**, through the installed system daemon:
+
+- `lease-d793cbc4aafaade28ce5fc0d9f699f58` and
+  `lease-376f5685ff6185f97cdc457bc76d1443` inherited the complete profile.
+- Both executed Swift, verified Gatekeeper/AMFI and required Peekaboo permissions,
+  controlled System Events, and created nonempty screenshots in guest workspace.
+- Own-key SSH and tunnels passed; cross-lease and image keys were rejected.
+  The third lease was refused at 2/2; idempotent replay retained the first lease.
+- Both disposable VMs, daemon-held lease credentials and tunnel listeners were
+  removed. The verified golden remains stopped and available.
+
+Private verification and stage logs are in the installed state's image directory.
+Homebrew packages resolve from their taps at build time: the recipe is versioned,
+but package resolution is not a complete reproducible dependency lock.
+
 ## Not yet accepted / production release gates
 
-- Full Xcode/tools/guest-security profile live application and verification;
-  the deployed golden is the accepted base macOS/SIP/SSH image.
 - Remote GitHub Actions execution, remaining VM-mutation crash scenarios,
   prolonged soak and VM-disk disaster recovery. Unit/mock coverage is separate.
 - Registry pull, other macOS builds, remote TLS/container routing and

@@ -10,7 +10,7 @@ import (
 type guest = guestssh.Client
 
 func (e *Engine) connect(ctx context.Context, l domain.Lease, ip string, bootstrap bool) (*guest, error) {
-	return (&guestssh.Manager{Dir: e.Dir}).Connect(ctx, l, ip, bootstrap)
+	return (&guestssh.Manager{Dir: e.Dir}).ConnectReady(ctx, l, ip, bootstrap)
 }
 func (e *Engine) secure(ctx context.Context, l domain.Lease, ip string, g *guest) error {
 	return (&guestssh.Manager{Dir: e.Dir}).SecureImage(ctx, l, ip, g)

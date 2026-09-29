@@ -2,10 +2,9 @@
 
 Image preparation is a durable job in `virfieldd`. CLI, UI and MCP submit the same
 API request. No client invokes Lume directly. Broker/Runner execution and the
-installation of Xcode/provider binaries are separate from this base-image build.
-The accepted base security policy is SIP only. The optional fixed `uitest-27-v1`
-recipe implements Gatekeeper/AMFI/TCC and Xcode/tools provisioning; live acceptance
-is pending. It must be explicitly selected and authorized for the guest image.
+installation of provider binaries remain separate. The optional fixed
+`uitest-27-v1` recipe automatically installs Xcode/tools and configures guest-only
+SIP/Gatekeeper/AMFI/TCC and sudo. Its provisioning and two-clone verification passed. The operator selects and authorizes it once for the image profile; each subsequent `image-build` executes it automatically.
 
 ## Profile and dependencies
 
@@ -74,8 +73,8 @@ A build requires no active leases or running VMs and an absent target name.
 It holds maintenance admission until ready or explicitly cleaned up. Image
 records have no lease expiry. A successful stopped image consumes no VM slot.
 
-The persisted stages are download → create → setup → assistant → SIP → verify
-→ stop → ready. Each external effect has a dispatched checkpoint and a separate
+The persisted stages are download → create → setup → assistant → SIP →
+provision (when configured) → verify → stop → ready. Each external effect has a dispatched checkpoint and a separate
 completion event. The manifest is copied into the accepted job, so changing
 configuration during a restart cannot change an in-progress restore image.
 
@@ -113,7 +112,7 @@ operator to inspect the exact VM and confirm that no operation remains in flight
 ```
 
 `retry` is limited to download, assistant, SIP, provision and verify at their persisted
-failure stage. It cannot skip verification or change the VM identity. A failed
+failure stage. `reprovision` is an explicit operator action after failed UI-profile verification: it reruns the configured provisioning recipe and all reboot checks. Ordinary `retry` of verification never silently reruns provisioning. Existing Xcode is reused only when its full version matches and its deep code-signature verification passes. It cannot skip verification or change the VM identity. A failed
 create/setup requires inspection and `delete`, followed by a new build request.
 
 ```sh
@@ -144,9 +143,9 @@ absence. Cache media and audit history are retained; there is no hidden disk pur
 The live acceptance record is in `VERIFICATION.md`. Unit tests alone do not
 establish that a particular macOS build's Setup Assistant or Recovery UI works.
 
-The image journal uses schema version 2. Opening a v1 database preserves its
-leases, requests and events and updates the version guard. Older core-only
-binaries reject this database instead of expiring permanent image records.
+The deployed journal uses schema version 4; image records were introduced in
+schema 2. Supported migrations preserve leases, requests and events and update
+the version guard. Older binaries reject newer schemas.
 
 ## Reproducible live acceptance
 
@@ -167,7 +166,8 @@ VIRFIELD_LIVE_TOKEN_FILE=/absolute/state/token \
 go test ./internal/client -run '^TestLiveImageRebuild$' -count=1 -v -timeout=118m
 ```
 
-Expect approximately 8–12 minutes with verified local media on the tested host;
+The base-profile acceptance took 10 minutes 38 seconds with verified local media.
+Allow 15–25 minutes for the full tool profile on this host;
 network download time depends on throughput. Long deadlines bound installation,
 not a reason to repeat a dispatched operation. The test retains the daemon's
 journal and prints image/job IDs for exact inspection on failure.
@@ -175,7 +175,7 @@ journal and prints image/job IDs for exact inspection on failure.
 ## Optional UI-test tool profile
 
 Set the operator-owned image profile `provision` to `uitest-27-v1` and
-`image_tools.xcode` to an absolute complete local `Xcode.app`. The recipe requires
+`image_tools.xcode` to an absolute complete local `Xcode.app` or `Xcode-beta.app`, version 27 or newer. Compatibility is checked before downloading media or changing the guest. The source bundle is installed as `/Applications/Xcode.app` inside the guest; the host selection is untouched. The recipe requires
 `disable_sip: true` and build `26A428`. It copies Xcode over pinned SSH without a
 host mount, completes Xcode first launch, installs the pinned Homebrew installer
 and tools, and configures guest-only Gatekeeper, AMFI, TCC and passwordless sudo.
@@ -199,6 +199,11 @@ script exit code. Provisioning is a CLI/operator operation, absent from MCP.
 
 The guest recipe is embedded and has VirtualMac/build guards. It does not import
 host SSH keys, reset guest credentials to `lume`, mount host folders or accept
-caller shell commands. Logs are private and bounded by the SSH transport. The
-2026-09-29 deployment still uses the accepted base profile until authorization
-and full live provisioning succeed.
+caller shell commands. Logs are private and bounded by the SSH transport. The 2026-09-29 deployment now configures this profile for `macos27`, following explicit user authorization. Provisioning and two-clone acceptance passed; publication requires all verification probes. The accepted source is Xcode 27.2 beta (27B5019j); upgrading Xcode or Homebrew tools requires another image acceptance.
+
+The guest Gatekeeper setting uses Apple's Security `policydb` contract:
+`SystemPolicy-prefs.plist` stores the string `enabled = no`, with readable 0644
+permissions. The old Boolean `EnableAssessment` did not disable assessment.
+See [Apple policydb.cpp](https://github.com/apple-oss-distributions/Security/blob/main/OSX/libsecurity_codesigning/lib/policydb.cpp)
+and [policydb.h](https://github.com/apple-oss-distributions/Security/blob/main/OSX/libsecurity_codesigning/lib/policydb.h).
+On macOS 27, the user's database lives in a protected container. The recipe starts the registered GUI user's tccd job, validates its UID, and resolves its one open TCC database through lsof. It validates the allowed path and existing schema before writing; it never creates an empty HOME database or imports another user's decisions. Failed grants stop provisioning.

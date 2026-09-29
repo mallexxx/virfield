@@ -113,6 +113,38 @@ func (e *Manager) Connect(ctx context.Context, l domain.Lease, ip string, bootst
 	}
 	return e.connectCredentials(ctx, l, ip, bootstrap, c)
 }
+
+// ConnectReady retries only failed TCP connections, before any guest command or
+// credential mutation. macOS can temporarily deny the first local-network dial
+// after a daemon update; a Lume SSH-ready flag is not an authenticated connection.
+// Host-key and authentication failures are never retried or downgraded.
+func (e *Manager) ConnectReady(ctx context.Context, l domain.Lease, ip string, bootstrap bool) (*Client, error) {
+	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+	return waitForConnection(ctx, 2*time.Second, func() (*Client, error) {
+		return e.Connect(ctx, l, ip, bootstrap)
+	})
+}
+
+func waitForConnection(ctx context.Context, delay time.Duration, connect func() (*Client, error)) (*Client, error) {
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		g, err := connect()
+		var failure *domain.Error
+		if err == nil || !errors.As(err, &failure) || failure.Code != "guest_connect_failed" {
+			return g, err
+		}
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
 func (e *Manager) connectCredentials(ctx context.Context, l domain.Lease, ip string, bootstrap bool, c Credentials) (*Client, error) {
 	signer, err := ssh.ParsePrivateKey(c.Private)
 	if err != nil {

@@ -4,6 +4,8 @@
 # VF_PASSWORD arrives on encrypted stdin; it is never a host key or shell argument.
 
 set -euo pipefail
+export PATH=/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin
+export HOMEBREW_NO_ANALYTICS=1
 
 TOOLS="system,homebrew,screenresolution,xcbeautify,jq,socat,peekaboo,peekaboo_agent,tcc,automation"
 [[ "$(/usr/sbin/sysctl -n hw.model)" == VirtualMac* ]] || exit 64
@@ -28,21 +30,15 @@ want() {
 if want system; then
   echo "--- System settings ---"
 
-  # Disable Gatekeeper. On macOS 15+, spctl --master-disable is MDM-gated.
-  # Write to the prefs plist spctl actually reads (correct path confirmed via dtruss).
-  sudo defaults write /var/db/SystemPolicyConfiguration/SystemPolicy-prefs EnableAssessment -bool false
-  # Also open up the authority table: allow "No Matching Rule" (unsigned/dev-signed apps)
-  # and allow unnotarized Developer ID apps — both blocked by default on macOS 15.
-  sudo sqlite3 /var/db/SystemPolicyConfiguration/SystemPolicy \
-    "UPDATE authority SET allow=1 WHERE label='No Matching Rule';" 2>/dev/null || true
-  sudo sqlite3 /var/db/SystemPolicyConfiguration/SystemPolicy \
-    "UPDATE authority SET allow=1 WHERE label='Unnotarized Developer ID';" 2>/dev/null || true
+  # Apple's Security policydb uses CFString "enabled" == "no", not the legacy
+  # recipe's ineffective Boolean EnableAssessment. Non-root spctl must read it.
+  sudo defaults write /var/db/SystemPolicyConfiguration/SystemPolicy-prefs enabled -string no
+  sudo chmod 644 /var/db/SystemPolicyConfiguration/SystemPolicy-prefs.plist
   sudo pkill -9 syspolicyd 2>/dev/null || true
   sleep 2
-  echo "  Gatekeeper disabled."
-
   _spctl_status="$(spctl --status 2>&1 || true)"
   echo "  spctl status: $_spctl_status"
+  [[ "$_spctl_status" == 'assessments disabled' ]] || exit 67
 
   # Disable AMFI (Apple Mobile File Integrity) enforcement so development-signed
   # apps (Apple Development cert, unnotarized) launch without provisioning profile checks.
@@ -228,6 +224,8 @@ fi
 
 # Ensure brew is in PATH for rest of script
 eval "$(/opt/homebrew/bin/brew shellenv 2>/dev/null || /usr/local/bin/brew shellenv 2>/dev/null || true)"
+# Homebrew may select newly installed CLT; preserve the golden's full Xcode.
+sudo /usr/bin/xcode-select -s /Applications/Xcode.app
 
 # ── 6. Brew tools ─────────────────────────────────────────────────────────────
 
@@ -313,7 +311,30 @@ fi
 if want tcc; then
   echo "--- TCC: equalized grants for all 6 UI-test endpoints ---"
   TCC_SYS_DB="/Library/Application Support/com.apple.TCC/TCC.db"
-  TCC_USR_DB="$HOME/Library/Application Support/com.apple.TCC/TCC.db"
+  # macOS 27 stores per-user TCC in a protected container, not necessarily HOME.
+  # Resolve only the database opened by this GUI user's registered tccd job.
+  _tcc_uid="$(id -u)"
+  sudo launchctl kickstart "gui/${_tcc_uid}/com.apple.tccd"
+  _tcc_pid=""
+  TCC_USR_DB=""
+  # launchd can publish a PID before tccd has opened its database. Wait for both;
+  # only the read-only discovery is retried, never a grant mutation.
+  for ((i=0; i<20; i++)); do
+    _tcc_pid="$(launchctl print "gui/${_tcc_uid}/com.apple.tccd" | awk '$1 == "pid" && $2 == "=" { print $3; exit }')"
+    if [[ "$_tcc_pid" =~ ^[0-9]+$ ]]; then
+      [[ "$(ps -p "$_tcc_pid" -o uid= | tr -d ' ')" == "$_tcc_uid" ]] || exit 68
+      TCC_USR_DB="$(sudo lsof -a -p "$_tcc_pid" -Fn | sed -n 's/^n//p' | grep '/Library/Application Support/com.apple.TCC/TCC.db$' | sort -u || true)"
+      [[ -n "$TCC_USR_DB" ]] && break
+    fi
+    sleep 1
+  done
+  [[ "$_tcc_pid" =~ ^[0-9]+$ ]] || { echo 'User tccd did not start' >&2; exit 68; }
+  [[ -n "$TCC_USR_DB" && "$TCC_USR_DB" != *$'\n'* ]] || { echo 'Expected one user TCC database' >&2; exit 68; }
+  case "$TCC_USR_DB" in
+    "$HOME/Library/Application Support/com.apple.TCC/TCC.db"|/private/var/containers/Data/ProtectedSystem/*/Data/Library/Application\ Support/com.apple.TCC/TCC.db) ;;
+    *) echo 'Unexpected user TCC database location' >&2; exit 68 ;;
+  esac
+  [[ "$(sudo sqlite3 -readonly "$TCC_USR_DB" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='access';")" == 1 ]] || exit 68
   NOW=$(date +%s)
 
   # TCC schema varies by macOS version — detect available columns at runtime so
@@ -380,11 +401,10 @@ PYEOF
     local _indirect_type="NULL"
     [[ "$INDIRECT_OBJ" != "UNUSED" ]] && _indirect_type="0"
     local _ok=false
-    local _sudo=""
-    [[ "$DB" == "$TCC_SYS_DB" ]] && _sudo="sudo"
+    local _sudo="sudo"
     if [[ "$_HAS_BOOT" == "1" ]]; then
       # macOS 14+ full schema
-      $_sudo sqlite3 "$DB" \
+      $_sudo sqlite3 -cmd ".timeout 5000" "$DB" \
         "INSERT OR REPLACE INTO access
            (service,client,client_type,auth_value,auth_reason,auth_version,
             csreq,policy_id,indirect_object_identifier_type,
@@ -395,7 +415,7 @@ PYEOF
         && _ok=true
     elif [[ "$_HAS_AUTH" == "1" ]]; then
       # macOS 12–13 schema (no pid/boot_uuid/last_reminded columns)
-      $_sudo sqlite3 "$DB" \
+      $_sudo sqlite3 -cmd ".timeout 5000" "$DB" \
         "INSERT OR REPLACE INTO access
            (service,client,client_type,auth_value,auth_reason,auth_version,
             csreq,policy_id,indirect_object_identifier_type,
@@ -406,7 +426,7 @@ PYEOF
         && _ok=true
     else
       # macOS 11 schema (uses 'allowed'/'prompt_count' instead of auth_* columns)
-      $_sudo sqlite3 "$DB" \
+      $_sudo sqlite3 -cmd ".timeout 5000" "$DB" \
         "INSERT OR REPLACE INTO access
            (service,client,client_type,allowed,prompt_count,
             csreq,policy_id,indirect_object_identifier_type,
@@ -416,8 +436,12 @@ PYEOF
                 ${CSREQ_SQL},NULL,${_indirect_type},\"${INDIRECT_OBJ}\",NULL,0,$NOW);" 2>/dev/null \
         && _ok=true
     fi
-    $_ok && echo "  $SVC → $CLIENT: granted" \
-         || echo "  WARNING: $SVC → $CLIENT grant failed (SIP enabled?)"
+    if $_ok; then
+      echo "  $SVC → $CLIENT: granted"
+    else
+      echo "  ERROR: $SVC → $CLIENT grant failed" >&2
+      return 1
+    fi
   }
 
   # ── System DB grants ───────────────────────────────────────────────────────
@@ -470,7 +494,6 @@ PYEOF
   # The client is whichever process sends the Apple Events; granting all our
   # endpoints covers every execution path.
   echo "  [user DB] AppleEvents → com.apple.systemevents for all endpoints"
-  mkdir -p "$(dirname "$TCC_USR_DB")"
 
   AE_CLIENTS=(
     "com.apple.Terminal:0:$_TERMINAL_CSREQ_HEX"

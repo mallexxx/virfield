@@ -67,7 +67,7 @@ func run() error {
 	switch args[0] {
 	case "image-recover":
 		if len(args) != 5 || !domain.ValidName(args[1]) || !domain.ValidName(args[2]) || args[4] != "CONFIRM-NO-OPERATION-IN-FLIGHT" || *key == "" {
-			return errors.New("usage: -key STABLE_KEY image-recover IMAGE_RECORD_ID EXACT_VM_NAME retry|delete CONFIRM-NO-OPERATION-IN-FLIGHT")
+			return errors.New("usage: -key STABLE_KEY image-recover IMAGE_RECORD_ID EXACT_VM_NAME retry|reprovision|delete CONFIRM-NO-OPERATION-IN-FLIGHT")
 		}
 		method = "POST"
 		path = "images/" + args[1] + "/recover"

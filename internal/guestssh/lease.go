@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/mallexxx/virfield/internal/domain"
 	"golang.org/x/crypto/ssh"
@@ -40,22 +39,9 @@ func (e *Manager) Prepare(ctx context.Context, l domain.Lease) (domain.SSHConnec
 	if !inherited.Secured || len(inherited.HostKey) == 0 {
 		return result, domain.Err("image_credentials_missing", "Image credentials are not verified")
 	}
-	var g *Client
-	connectDeadline := time.Now().Add(90 * time.Second)
-	for {
-		g, err = source.Connect(ctx, image, l.IP, false)
-		if err == nil {
-			break
-		}
-		var failure *domain.Error
-		if !errors.As(err, &failure) || failure.Code != "guest_connect_failed" || time.Now().After(connectDeadline) {
-			return result, err
-		}
-		select {
-		case <-ctx.Done():
-			return result, ctx.Err()
-		case <-time.After(2 * time.Second):
-		}
+	g, err := source.ConnectReady(ctx, image, l.IP, false)
+	if err != nil {
+		return result, err
 	}
 
 	defer g.Close()

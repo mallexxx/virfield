@@ -243,3 +243,104 @@ func TestProvisionRevokesPublicationAndVerifiesBeforePromotion(t *testing.T) {
 		t.Fatal("provisioned image not verified", err)
 	}
 }
+
+func TestNewGoldenAutomaticallyProvisionsAndFailsClosed(t *testing.T) {
+	for _, failure := range []string{"", "provision", "verify"} {
+		t.Run("failure="+failure, func(t *testing.T) {
+			c, b := imageController(t)
+			profile := c.templates["test"].Image
+			profile.DisableSIP = true
+			profile.Provision = "uitest-27-v1"
+			b.fail = failure
+			ctx := context.Background()
+			op, err := c.BuildImage(ctx, "test", "automatic-uitest-golden")
+			if err != nil {
+				t.Fatal(err)
+			}
+			for range 12 {
+				tick(t, c)
+			}
+			l, err := c.Lease(ctx, op.Lease.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if failure == "" {
+				if l.State != "image_ready" || l.ImageManifest != fingerprint(profile) {
+					t.Fatal("complete profile not published", l.State)
+				}
+				if strings.Join(b.steps, ",") != "download,create,setup,assistant,sip,provision,verify,stop" {
+					t.Fatal("new golden skipped its configured setup", b.steps)
+				}
+			} else {
+				if l.State == "image_ready" || l.ImageManifest != "" {
+					t.Fatal("failed setup published an image")
+				}
+				_, err = c.Acquire(ctx, "failed-profile-lease", domain.AcquireRequest{Template: "test", TTLSeconds: 3600})
+				code(t, err, "image_in_use")
+				before := len(b.steps)
+				if err := c.Recover(ctx); err != nil {
+					t.Fatal(err)
+				}
+				for range 3 {
+					tick(t, c)
+				}
+				if len(b.steps) != before {
+					t.Fatal("failed guest setup was silently replayed")
+				}
+			}
+		})
+	}
+}
+
+func TestFailedVerificationRequiresExplicitReprovision(t *testing.T) {
+	for _, action := range []string{"retry", "reprovision"} {
+		t.Run(action, func(t *testing.T) {
+			c, b := imageController(t)
+			c.templates["test"].Image.DisableSIP = true
+			c.templates["test"].Image.Provision = "uitest-27-v1"
+			b.fail = "verify"
+			ctx := context.Background()
+			op, err := c.BuildImage(ctx, "test", "failed-verify-image")
+			if err != nil {
+				t.Fatal(err)
+			}
+			for range 12 {
+				tick(t, c)
+			}
+			_, err = c.RecoverImage(ctx, op.Lease.ID, "unconfirmed-reprovision", "golden", action, false)
+			code(t, err, "invalid_request")
+			b.fail = ""
+			recovery, err := c.RecoverImage(ctx, op.Lease.ID, "confirmed-reprovision", "golden", action, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			expected := "provision_done"
+			if action == "reprovision" {
+				expected = "sip_done"
+			}
+			if recovery.Job.Phase != expected {
+				t.Fatal(recovery.Job.Phase)
+			}
+			for range 5 {
+				tick(t, c)
+			}
+			l, err := c.Lease(ctx, op.Lease.ID)
+			if err != nil || l.State != "image_ready" {
+				t.Fatal(l.State, err)
+			}
+			count := 0
+			for _, step := range b.steps {
+				if step == "provision" {
+					count++
+				}
+			}
+			want := 1
+			if action == "reprovision" {
+				want = 2
+			}
+			if count != want {
+				t.Fatal("unexpected provisioning replay", count, want)
+			}
+		})
+	}
+}

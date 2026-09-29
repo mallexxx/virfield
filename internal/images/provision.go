@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,12 +18,40 @@ import (
 //go:embed provision27.sh
 var provisionScript string
 
-func (e *Engine) provision(ctx context.Context, l domain.Lease, p domain.ImageProfile, progress func(string) error) error {
-	if p.Provision != "uitest-27-v1" || !filepath.IsAbs(e.Tools.Xcode) || filepath.Base(e.Tools.Xcode) != "Xcode.app" {
-		return domain.Err("invalid_profile", "uitest-27-v1 requires an absolute local Xcode.app source")
+func (e *Engine) checkXcode(ctx context.Context) (string, error) {
+	name := filepath.Base(e.Tools.Xcode)
+	if !filepath.IsAbs(e.Tools.Xcode) || (name != "Xcode.app" && name != "Xcode-beta.app") {
+		return "", domain.Err("invalid_profile", "uitest-27-v1 requires an absolute local Xcode.app or Xcode-beta.app source")
 	}
-	if _, err := os.Stat(filepath.Join(e.Tools.Xcode, "Contents/Developer/usr/bin/xcodebuild")); err != nil {
-		return domain.Err("image_dependency", "Configured Xcode.app is incomplete")
+	binary := filepath.Join(e.Tools.Xcode, "Contents/Developer/usr/bin/xcodebuild")
+	if _, err := os.Stat(binary); err != nil {
+		return "", domain.Err("image_dependency", "Configured Xcode.app is incomplete")
+	}
+	probe, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(probe, binary, "-version").Output()
+	if err != nil || !compatibleXcode(string(out)) {
+		return "", domain.Err("image_dependency", "macOS 27 UI-test tools require Xcode 27 or newer; choose a compatible image_tools.xcode source")
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+func compatibleXcode(version string) bool {
+	fields := strings.Fields(version)
+	if len(fields) < 2 || fields[0] != "Xcode" {
+		return false
+	}
+	major, err := strconv.Atoi(strings.Split(fields[1], ".")[0])
+	return err == nil && major >= 27
+}
+
+func (e *Engine) provision(ctx context.Context, l domain.Lease, p domain.ImageProfile, progress func(string) error) error {
+	if p.Provision != "uitest-27-v1" {
+		return domain.Err("invalid_profile", "Unknown guest provisioning recipe")
+	}
+	sourceVersion, err := e.checkXcode(ctx)
+	if err != nil {
+		return err
 	}
 	vm, err := e.boot(ctx, l)
 	if err != nil {
@@ -41,45 +70,64 @@ func (e *Engine) provision(ctx context.Context, l domain.Lease, p domain.ImagePr
 		return err
 	}
 	// This sudo policy is intentionally confined to the disposable UI-test guest.
-	bootstrap := `IFS= read -r password
+	bootstrap := `set -eu
+IFS= read -r password
 printf '%s\n' "$password" | sudo -S -p '' /bin/sh -c 'printf "lume ALL=(ALL) NOPASSWD:ALL\n" > /etc/sudoers.d/virfield-worker; chmod 440 /etc/sudoers.d/virfield-worker; /usr/sbin/visudo -cf /etc/sudoers.d/virfield-worker'
 mkdir -p /Users/lume/.virfield-xcode
 `
 	if _, err := g.Run(ctx, "/bin/bash -c "+shellQuote(bootstrap), c.Password+"\n"); err != nil {
 		return err
 	}
-	if err := progress("Copying local Xcode.app over authenticated SSH; no shared host directory is mounted"); err != nil {
-		return err
+	out, versionErr := g.Run(ctx, "/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -version", "")
+	reuseXcode := false
+	if versionErr == nil && strings.TrimSpace(out) == sourceVersion {
+		if err := progress("Checking the existing matching Xcode signature before reuse"); err != nil {
+			return err
+		}
+		_, signatureErr := g.RunReader(ctx, 5*time.Minute, "/usr/bin/codesign --verify --deep --strict /Applications/Xcode.app", nil)
+		reuseXcode = signatureErr == nil
 	}
-	transfer, stop := context.WithCancel(ctx)
-	defer stop()
-	cmd := exec.CommandContext(transfer, "/usr/bin/tar", "-C", filepath.Dir(e.Tools.Xcode), "-cf", "-", "Xcode.app")
-	pipe, err := cmd.StdoutPipe()
-	if err != nil {
-		return err
+	if !reuseXcode {
+		if err := progress("Copying local Xcode.app over authenticated SSH; no shared host directory is mounted"); err != nil {
+			return err
+		}
+		transfer, stop := context.WithCancel(ctx)
+		defer stop()
+		cmd := exec.CommandContext(transfer, "/usr/bin/tar", "-C", filepath.Dir(e.Tools.Xcode), "-cf", "-", filepath.Base(e.Tools.Xcode))
+		pipe, err := cmd.StdoutPipe()
+		if err != nil {
+			return err
+		}
+		cmd.Stderr = nil
+		cmd.WaitDelay = 5 * time.Second
+		if err := cmd.Start(); err != nil {
+			return err
+		}
+		out, copyErr := g.RunReader(transfer, time.Hour, "/usr/bin/tar -xpf - -C /Users/lume/.virfield-xcode", pipe)
+		if copyErr != nil {
+			stop()
+		}
+		waitErr := cmd.Wait()
+		if copyErr != nil || waitErr != nil {
+			_ = e.provisionLog(l, "transfer", out)
+			return domain.Err("xcode_transfer_failed", "Authenticated Xcode transfer failed; inspect image before retry")
+		}
+		if err := progress("Xcode transferred; installing developer components and completing first launch"); err != nil {
+			return err
+		}
+		move := "set -eu; sudo /bin/rm -rf /Applications/Xcode.app; /bin/mv " + shellQuote(filepath.Join("/Users/lume/.virfield-xcode", filepath.Base(e.Tools.Xcode))) + " /Applications/Xcode.app"
+		if _, err := g.Run(ctx, "/bin/bash -c "+shellQuote(move), ""); err != nil {
+			return err
+		}
 	}
-	cmd.Stderr = nil
-	cmd.WaitDelay = 5 * time.Second
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-	_, copyErr := g.RunReader(transfer, time.Hour, "/usr/bin/tar -xpf - -C /Users/lume/.virfield-xcode", pipe)
-	if copyErr != nil {
-		stop()
-	}
-	waitErr := cmd.Wait()
-	if copyErr != nil || waitErr != nil {
-		return domain.Err("xcode_transfer_failed", "Authenticated Xcode transfer failed; inspect image before retry")
-	}
+
 	install := `set -eu
-sudo /bin/rm -rf /Applications/Xcode.app
-/bin/mv /Users/lume/.virfield-xcode/Xcode.app /Applications/Xcode.app
 sudo /usr/bin/xcode-select -s /Applications/Xcode.app
 sudo /usr/bin/xcodebuild -license accept
 sudo /usr/bin/xcodebuild -runFirstLaunch
 /usr/bin/xcodebuild -version
 `
-	out, err := g.RunReader(ctx, 30*time.Minute, "/bin/bash -c "+shellQuote(install), nil)
+	out, err = g.RunReader(ctx, 30*time.Minute, "/bin/bash -c "+shellQuote(install), nil)
 	if err != nil {
 		e.provisionLog(l, "xcode", out)
 		return domain.Err("xcode_install_failed", "Guest Xcode first launch failed; inspect private stage log")

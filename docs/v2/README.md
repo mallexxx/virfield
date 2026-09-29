@@ -1,6 +1,6 @@
 # Virfield v2 — control-plane implementation
 
-**Branch:** `codex/virfield-v2`. **Status:** local Go replacement installed; system-service SSH, tunnels and restart acceptance passed; full UI-test image provisioning remains gated on guest-policy authorization.
+**Branch:** `codex/virfield-v2`. **Status:** local Go replacement installed; system-service SSH, tunnels and restart acceptance passed; automatic UI-test provisioning and two-clone Xcode/permissions/screenshot acceptance passed.
 
 This implements the first vertical slice of §13/§16 stage 2 in the
 2026-09-29 Balda/Callee/Prism plan. Broker, Runner and Balda integration remain
@@ -248,7 +248,7 @@ Private-secret API checks, capacity refusal, idempotency and cleanup passed.
 followed by a clean cached-media rebuild through Assistant, Recovery/SIP, SSH
 rotation and reboot verification; two clones and cleanup passed in 10m38s.
 See [the evidence and limitations](VERIFICATION.md).
-**Not yet accepted:** daemon crash injection during actual VM mutations and long-duration stability. SQLite full-disk rollback and backup integrity/retention are covered separately. Automated mock tests do not establish these claims.
+**Interrupted SSH preparation accepted:** a real daemon crash during credential preparation preserves the reservation, requires inspection and permits cleanup without replaying the mutation. **Not yet accepted:** remaining mutation crash points and long-duration stability. SQLite full-disk rollback and backup integrity/retention are covered separately. Automated mock tests do not establish these claims.
 
 ## Remaining planned modules and release gates
 
@@ -256,7 +256,7 @@ See [the evidence and limitations](VERIFICATION.md).
 |---|---|
 | Core lifecycle, API, CLI, stdio MCP, minimal UI | Implemented; two-VM live lifecycle passed |
 | Image Manager: download/pull/build/promote | Pinned download/build/verify/promotion implemented; registry pull pending |
-| Versioned provisioning jobs | Base pipeline accepted; versioned Xcode/tools/Gatekeeper/AMFI/TCC recipe implemented, live application awaits explicit guest-policy authorization |
+| Versioned provisioning jobs | Base pipeline and Xcode/tools/Gatekeeper/AMFI/TCC provisioning accepted; two clones passed Swift, permissions and real screenshot probes; configured new golden builds run the complete profile automatically |
 | Scoped SSH credentials, verified guest login, tunnels | Per-lease password, key and host-key isolation plus caller-owned keys implemented and live-tested; loopback SSH tunnels and installed-service crash/restart acceptance passed |
 | Resource quotas beyond two VM slots | CPU/RAM/disk admission implemented and tested; installed host quotas configured |
 | HTTP MCP, Broker-facing deployment | Authenticated HTTP MCP implemented and live-tested; TLS/container routing and scoped principals pending |

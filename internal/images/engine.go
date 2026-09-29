@@ -61,6 +61,11 @@ func (e *Engine) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile
 	ipsw := filepath.Join(e.Dir, "cache", p.SHA256+".ipsw")
 	switch step {
 	case "download":
+		if p.Provision != "" {
+			if _, err := e.checkXcode(ctx); err != nil {
+				return err
+			}
+		}
 		for _, path := range []string{e.Tools.Lume, e.Tools.Python, e.Tools.Tesseract, filepath.Join(e.Tools.VNCBin, "vncdotool")} {
 			st, err := os.Stat(path)
 			if err != nil || !st.Mode().IsRegular() || st.Mode().Perm()&0111 == 0 {
