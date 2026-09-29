@@ -1,11 +1,11 @@
-# Virfield v2 development
+# Virfield v2
 
 The Go rewrite lives on `codex/virfield-v2`. Start with the [v2 runbook and scope](docs/v2/README.md).
 Build with `make build`; verify with `make check`. The Go lifecycle core and pinned
 macOS 27 image pipeline have [live acceptance records](docs/v2/VERIFICATION.md).
-The complete production replacement for v1 still has explicit release gates.
+The local service and MCP replacement is installed and live-tested. Full UI-test golden provisioning and the remaining release gates are tracked in that record.
 
-The existing TypeScript application below remains available during migration.
+The TypeScript documentation below is retained as a legacy reference. The old service and MCP entrypoints are no longer running on the acceptance host.
 
 ---
 

@@ -1,12 +1,11 @@
 # Virfield v2 — control-plane implementation
 
-**Branch:** `codex/virfield-v2`. **Status:** local control plane and deployment hardening implemented; system-service acceptance and v1 cutover remain blocked on macOS authorization.
+**Branch:** `codex/virfield-v2`. **Status:** local Go replacement installed; system-service SSH, tunnels and restart acceptance passed; full UI-test image provisioning remains gated on guest-policy authorization.
 
 This implements the first vertical slice of §13/§16 stage 2 in the
 2026-09-29 Balda/Callee/Prism plan. Broker, Runner and Balda integration remain
 separate applications. The TypeScript application and existing VM data are
-preserved as migration references. No v1 service or MCP configuration is replaced
-by building v2.
+preserved as migration references. On the acceptance host, v1 service and MCP were replaced after live validation; simply building v2 does not perform that migration.
 
 ## Run locally
 
@@ -258,10 +257,10 @@ See [the evidence and limitations](VERIFICATION.md).
 | Core lifecycle, API, CLI, stdio MCP, minimal UI | Implemented; two-VM live lifecycle passed |
 | Image Manager: download/pull/build/promote | Pinned download/build/verify/promotion implemented; registry pull pending |
 | Versioned provisioning jobs | Base pipeline accepted; versioned Xcode/tools/Gatekeeper/AMFI/TCC recipe implemented, live application awaits explicit guest-policy authorization |
-| Scoped SSH credentials, verified guest login, tunnels | Per-lease password, key and host-key isolation plus caller-owned keys implemented and live-tested; loopback SSH tunnels implemented; installed-service acceptance pending |
+| Scoped SSH credentials, verified guest login, tunnels | Per-lease password, key and host-key isolation plus caller-owned keys implemented and live-tested; loopback SSH tunnels and installed-service crash/restart acceptance passed |
 | Resource quotas beyond two VM slots | CPU/RAM/disk admission implemented and tested; installed host quotas configured |
 | HTTP MCP, Broker-facing deployment | Authenticated HTTP MCP implemented and live-tested; TLS/container routing and scoped principals pending |
-| Production operations | Backup/restore integrity rehearsal and bounded logs implemented; system launchd/v1 cutover, prolonged soak and live mutation fault injection pending |
+| Production operations | Backup/restore integrity rehearsal, bounded logs, system launchd and v1 cutover accepted; prolonged soak and remaining live mutation fault injection pending |
 | Broker/Runner/Balda/Prism | Separate later stages; not part of this implementation |
 
 ### Why the old scripts are not automatically wired in

@@ -209,19 +209,71 @@ Automatic approval review rejected its live application without explicit consent
 to these exact guest security changes. The request for that consent is pending;
 its implementation must not be described as accepted or silently enabled.
 
+## System LaunchDaemon and v1 cutover — accepted
+
+After the user's macOS authorization, both `ai.virfield.virfieldd` and
+`ai.virfield.lume` were registered under `/Library/LaunchDaemons`. Both run as
+`admin:staff`, not root. The old GUI LaunchAgent plists were moved to the private
+migration backup. The system daemon successfully prepares and authenticates
+against guest SSH; the Local Network Privacy deployment failure is resolved.
+
+**PASS: `TestLiveLeaseSSH`, 75.80 seconds**, through the installed system service:
+
+- Leases `lease-58126c922d9f31541f961d9cc316b68c` and
+  `lease-1c03d438fceec87f53839ad4a0bf3fd2` both reached authenticated readiness.
+- Request three returned the explicit `Cannot run more than 2 macOS VMs` error;
+  acquire replay retained the original lease.
+- A real SIGKILL of the exact system daemon was recovered by launchd. After
+  fresh post-restart Lume inventory, both ready leases and pinned identities
+  were unchanged. Own keys and SSH tunnels authenticated; cross-lease and image
+  keys were rejected using the correct new host pins.
+- Finder and SIP probes passed. Both owned clones were deleted, their private
+  credential directories removed, and tunnel listeners closed. Pool returned 0/2.
+
+An earlier 122.39-second run resumed immediately when the daemon's HTTP listener
+returned, before its first inventory observation. Tunnel creation correctly
+returned `backend_unavailable`. Its clones were cleaned up. The passing run's
+restart coordinator waited for a successful observation newer than SIGKILL,
+with both running VMs, before releasing the test checkpoint. This was a
+coordinator ordering correction, not relaxed daemon admission.
+
+Only after that pass, the Eagle `/api/services/virfield` entry was deleted through
+its supervisor API, removing its old backend and autostart. Port 3000 is closed;
+Lume 7777 and v2 7780 remain open on loopback. All observed old TypeScript MCP
+processes were stopped by exact command/PID match; a subsequent scan found none.
+Eagle itself and unrelated services were not stopped.
+
+Codex `~/.codex/config.toml` and Claude `~/.claude.json`, `~/.claude/mcp.json`
+now point to `/Users/admin/.virfield-v2/bin/virfield-mcp` with the private token
+file argument. Existing application sessions may need restart to rediscover
+server tools. No token was placed in a command argument or configuration text.
+
+After cutover, `TestLiveInstalledMCP` passed in 0.54 seconds, desktop/mobile UI
+checks passed again, and backup `backup-edbc0c07da76c673c58e706420ae6b9d` completed.
+All current local implementation code was committed as `b8df85d`; publication
+was rejected by automatic approval review pending explicit remote-export consent.
+
+## Interrupted SSH preparation — accepted
+
+**PASS: 34.02 seconds**, lease `lease-25e3cceeb4503ac0634df6300a7cde82`.
+The exact v2 system daemon was SIGKILLed while its durable job was
+`ssh_dispatched`, after its private lease identity had been recorded. Launchd
+restarted it; the lease became `needs_attention` with `ssh_outcome_unknown`, no
+published SSH connection and its slot still reserved. The stage was not replayed.
+The ordinary API release then stopped/deleted only that owned clone, removed its
+private identity directory and restored 0/2 with no active jobs. This validates
+interruption of the SSH preparation stage, not arbitrary points in every guest
+shell operation. Private test harness is retained at
+`state/v2-live-20260929-a/ssh-stage-fault.py`.
+
 ## Not yet accepted / production release gates
 
-- System LaunchDaemon network/SSH acceptance, ready-lease restart through launchd,
-  installed-service SSH tunnel E2E, and actual v1 service/MCP cutover.
-- Full Xcode/tools/guest-security profile live application and verification.
-- Remote GitHub Actions execution, actual daemon crashes during VM mutations,
+- Full Xcode/tools/guest-security profile live application and verification;
+  the deployed golden is the accepted base macOS/SIP/SSH image.
+- Remote GitHub Actions execution, remaining VM-mutation crash scenarios,
   prolonged soak and VM-disk disaster recovery. Unit/mock coverage is separate.
 - Registry pull, other macOS builds, remote TLS/container routing and
   per-principal credentials. Broker/Runner/Balda integration is a later scope.
-
-V1 still runs under Eagle and client MCP entries still point to v1 at this
-checkpoint. Switching before system-service acceptance would knowingly replace a
-working service with one unable to prepare guests.
 
 The three unrelated VMs (`macos-15-golden`, `pdf-hud-macos27`,
 `uitest-26.4.1-golden`) were left stopped and untouched. Host SIP was not changed.
