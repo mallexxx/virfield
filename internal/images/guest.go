@@ -2,6 +2,7 @@ package images
 
 import (
 	"context"
+
 	"github.com/mallexxx/virfield/internal/domain"
 	"github.com/mallexxx/virfield/internal/guestssh"
 )

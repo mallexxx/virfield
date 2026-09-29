@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/mallexxx/virfield/internal/domain"
 	"golang.org/x/crypto/ssh"
@@ -39,10 +40,24 @@ func (e *Manager) Prepare(ctx context.Context, l domain.Lease) (domain.SSHConnec
 	if !inherited.Secured || len(inherited.HostKey) == 0 {
 		return result, domain.Err("image_credentials_missing", "Image credentials are not verified")
 	}
-	g, err := source.Connect(ctx, image, l.IP, false)
-	if err != nil {
-		return result, err
+	var g *Client
+	connectDeadline := time.Now().Add(90 * time.Second)
+	for {
+		g, err = source.Connect(ctx, image, l.IP, false)
+		if err == nil {
+			break
+		}
+		var failure *domain.Error
+		if !errors.As(err, &failure) || failure.Code != "guest_connect_failed" || time.Now().After(connectDeadline) {
+			return result, err
+		}
+		select {
+		case <-ctx.Done():
+			return result, ctx.Err()
+		case <-time.After(2 * time.Second):
+		}
 	}
+
 	defer g.Close()
 	scoped := &Manager{Dir: e.Dir, Scope: "leases", SSHPort: e.SSHPort}
 	if err := os.MkdirAll(scoped.Directory(l), 0700); err != nil {
@@ -149,3 +164,11 @@ printf '%s\n%s\n' "$management" "$client" > ~/.ssh/authorized_keys.next
 chmod 600 ~/.ssh/authorized_keys.next
 mv ~/.ssh/authorized_keys.next ~/.ssh/authorized_keys
 `
+
+// Forget removes only daemon-generated files of a confirmed absent disposable lease.
+func (e *Manager) Forget(l domain.Lease) error {
+	if !strings.HasPrefix(l.ID, "lease-") || !domain.ValidName(l.ID) || l.Purpose == "image" {
+		return domain.Err("invalid_request", "Not a disposable lease")
+	}
+	return os.RemoveAll(filepath.Join(e.Dir, "leases", l.ID))
+}

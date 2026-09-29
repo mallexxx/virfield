@@ -87,6 +87,11 @@ func (c *Client) Observe(ctx context.Context) (domain.Observation, error) {
 		return domain.Observation{}, fmt.Errorf("invalid or unhealthy Lume capacity response")
 	}
 	var raw []struct {
+		CPU    int   `json:"cpuCount"`
+		Memory int64 `json:"memorySize"`
+		Disk   struct {
+			Total int64 `json:"total"`
+		} `json:"diskSize"`
 		Name     string `json:"name"`
 		Location string `json:"locationName"`
 		OS       string `json:"os"`
@@ -106,7 +111,7 @@ func (c *Client) Observe(ctx context.Context) (domain.Observation, error) {
 		if !domain.ValidName(v.Name) || !domain.ValidName(v.Location) || v.Status == "" || v.OS == "" {
 			return o, fmt.Errorf("invalid Lume VM inventory")
 		}
-		vm := domain.VM{Name: v.Name, Location: v.Location, OS: v.OS, State: v.Status, IP: v.IP, SSHAvailable: v.SSH}
+		vm := domain.VM{Resources: domain.Resources{CPU: v.CPU, MemoryBytes: v.Memory, DiskBytes: v.Disk.Total}, Name: v.Name, Location: v.Location, OS: v.OS, State: v.Status, IP: v.IP, SSHAvailable: v.SSH}
 		if seen[vm.Key()] {
 			return o, fmt.Errorf("duplicate Lume VM identity")
 		}

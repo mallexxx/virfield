@@ -24,7 +24,16 @@ type Server struct {
 	log   *slog.Logger
 }
 
-func New(c *control.Controller, token string, log *slog.Logger) http.Handler {
+type Options struct {
+	MCP    http.Handler
+	Backup http.Handler
+}
+
+func New(c *control.Controller, token string, log *slog.Logger, options ...Options) http.Handler {
+	var extra Options
+	if len(options) > 0 {
+		extra = options[0]
+	}
 	s := &Server{c: c, token: sha256.Sum256([]byte(token)), log: log}
 	mux := http.NewServeMux()
 	static := web.Handler()
@@ -33,18 +42,27 @@ func New(c *control.Controller, token string, log *slog.Logger) http.Handler {
 	mux.Handle("GET /style.css", static)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { write(w, 200, map[string]string{"status": "alive"}) })
 	api := http.NewServeMux()
+	if extra.Backup != nil {
+		api.Handle("POST /api/v1/maintenance/backup", extra.Backup)
+	}
 	api.HandleFunc("GET /api/v1/status", s.status)
 	api.HandleFunc("POST /api/v1/images/{id}/delete", s.deleteImage)
 	api.HandleFunc("POST /api/v1/images/{id}/build", s.buildImage)
+	api.HandleFunc("POST /api/v1/images/{id}/provision", s.provisionImage)
 	api.HandleFunc("POST /api/v1/images/{id}/recover", s.recoverImage)
 	api.HandleFunc("POST /api/v1/leases", s.acquire)
 	api.HandleFunc("GET /api/v1/leases/{id}", s.lease)
+	api.HandleFunc("POST /api/v1/leases/{id}/tunnel", s.openTunnel)
+	api.HandleFunc("DELETE /api/v1/leases/{id}/tunnel", s.closeTunnel)
 	api.HandleFunc("POST /api/v1/leases/{id}/release", s.release)
 	api.HandleFunc("PUT /api/v1/leases/{id}/expiry", s.renew)
 	api.HandleFunc("POST /api/v1/leases/{id}/resolve", s.resolve)
 	api.HandleFunc("GET /api/v1/jobs/{id}", s.job)
 	api.HandleFunc("GET /api/v1/events", s.events)
 	mux.Handle("/api/", s.auth(api))
+	if extra.MCP != nil {
+		mux.Handle("/mcp", s.auth(http.MaxBytesHandler(extra.MCP, 64<<10)))
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
@@ -91,7 +109,7 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 		status = 403
 	case "not_found":
 		status = 404
-	case "ssh_key_in_use", "image_in_use", "image_exists", "capacity_exhausted", "idempotency_conflict", "operation_in_progress", "lease_expired", "lease_released", "outcome_unknown", "template_unavailable":
+	case "resource_exhausted", "resource_unknown", "resource_unavailable", "ssh_key_in_use", "image_in_use", "image_exists", "capacity_exhausted", "idempotency_conflict", "operation_in_progress", "lease_expired", "lease_released", "outcome_unknown", "template_unavailable":
 		status = 409
 	case "backend_unavailable":
 		status = 503
@@ -202,12 +220,19 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if r.URL.Query().Get("tail") == "true" {
+		if after != 0 {
+			s.fail(w, domain.Err("invalid_request", "tail and after cannot be combined"))
+			return
+		}
+		after = -1
+	}
 	es, err := s.c.Events(r.Context(), after, r.URL.Query().Get("lease_id"), limit)
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
-	cursor := after
+	cursor := max(after, 0)
 	if len(es) > 0 {
 		cursor = es[len(es)-1].ID
 	}
@@ -278,4 +303,36 @@ func (s *Server) recoverImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	write(w, 202, op)
+}
+
+func (s *Server) provisionImage(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ConfirmName string `json:"confirm_name"`
+	}
+	if err := decode(w, r, &req); err != nil {
+		s.fail(w, err)
+		return
+	}
+	op, err := s.c.ProvisionImage(r.Context(), r.PathValue("id"), r.Header.Get("Idempotency-Key"), req.ConfirmName)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	write(w, 202, op)
+}
+
+func (s *Server) openTunnel(w http.ResponseWriter, r *http.Request) {
+	t, err := s.c.OpenTunnel(r.Context(), r.PathValue("id"))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	write(w, 200, t)
+}
+func (s *Server) closeTunnel(w http.ResponseWriter, r *http.Request) {
+	if err := s.c.CloseTunnel(r.Context(), r.PathValue("id")); err != nil {
+		s.fail(w, err)
+		return
+	}
+	write(w, 200, map[string]bool{"closed": true})
 }

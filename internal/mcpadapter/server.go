@@ -67,5 +67,11 @@ func New(c *client.Client) *mcp.Server {
 	mcp.AddTool(s, &mcp.Tool{Name: "image_build", Annotations: &mcp.ToolAnnotations{IdempotentHint: true}, Description: "Build a NEW allowlisted golden image from its pinned Apple IPSW profile. Downloads and installs macOS, completes setup, applies the operator-configured guest SIP policy and verifies credentials. Requires no active leases. Never overwrites an existing VM. Use the same idempotency key on retries."}, func(ctx context.Context, _ *mcp.CallToolRequest, a releaseArgs) (*mcp.CallToolResult, any, error) {
 		return result(c.Do(ctx, "POST", "images/"+url.PathEscape(a.ID)+"/build", empty{}, a.Key))
 	})
+	mcp.AddTool(s, &mcp.Tool{Name: "vm_tunnel", Description: "Open or return an ephemeral loopback TCP tunnel to this ready lease's SSH port. SSH authentication and pinned host key remain mandatory. Reopen after daemon restart.", Annotations: &mcp.ToolAnnotations{IdempotentHint: true}}, func(ctx context.Context, _ *mcp.CallToolRequest, a idArgs) (*mcp.CallToolResult, any, error) {
+		return result(c.Do(ctx, "POST", "leases/"+url.PathEscape(a.ID)+"/tunnel", nil, ""))
+	})
+	mcp.AddTool(s, &mcp.Tool{Name: "vm_tunnel_close", Description: "Close this lease's loopback SSH tunnel and all its connections", Annotations: &mcp.ToolAnnotations{IdempotentHint: true}}, func(ctx context.Context, _ *mcp.CallToolRequest, a idArgs) (*mcp.CallToolResult, any, error) {
+		return result(c.Do(ctx, "DELETE", "leases/"+url.PathEscape(a.ID)+"/tunnel", nil, ""))
+	})
 	return s
 }

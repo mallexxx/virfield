@@ -52,16 +52,16 @@ func (s *Store) migrate() error {
 	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
 		return err
 	}
-	if version > 3 {
+	if version > 4 {
 		return fmt.Errorf("database schema %d is newer than this binary", version)
 	}
-	if version == 3 {
+	if version == 4 {
 		return nil
 	}
-	if version == 1 || version == 2 {
-		// Version 3 adds authenticated lease readiness and scoped SSH identities.
+	if version >= 1 && version <= 3 {
+		// Version 4 adds provisioning recipes and resource reservations.
 		// Older binaries must not publish leases without completing this phase.
-		_, err := s.db.Exec(`PRAGMA user_version=3`)
+		_, err := s.db.Exec(`PRAGMA user_version=4`)
 		return err
 	}
 	_, err := s.db.Exec(`BEGIN IMMEDIATE;
@@ -71,7 +71,7 @@ func (s *Store) migrate() error {
  CREATE TABLE events (id INTEGER PRIMARY KEY AUTOINCREMENT, lease_id TEXT NOT NULL REFERENCES leases(id), job_id TEXT NOT NULL, type TEXT NOT NULL, message TEXT NOT NULL, at TEXT NOT NULL);
  CREATE INDEX events_lease ON events(lease_id,id);
  CREATE INDEX jobs_state ON jobs(state);
- PRAGMA user_version=3;
+ PRAGMA user_version=4;
  COMMIT;`)
 	return err
 }
@@ -207,7 +207,11 @@ func (s *Store) Save(ctx context.Context, l domain.Lease, j *domain.Job, key, fp
 	return tx.Commit()
 }
 func (s *Store) Events(ctx context.Context, after int64, leaseID string, limit int) ([]domain.Event, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id,lease_id,job_id,type,message,at FROM events WHERE id>? AND (?='' OR lease_id=?) ORDER BY id LIMIT ?`, after, leaseID, leaseID, limit)
+	query := `SELECT id,lease_id,job_id,type,message,at FROM events WHERE id>? AND (?='' OR lease_id=?) ORDER BY id LIMIT ?`
+	if after == -1 {
+		query = `SELECT * FROM (SELECT id,lease_id,job_id,type,message,at FROM events WHERE id>? AND (?='' OR lease_id=?) ORDER BY id DESC LIMIT ?) ORDER BY id`
+	}
+	rows, err := s.db.QueryContext(ctx, query, after, leaseID, leaseID, limit)
 	if err != nil {
 		return nil, err
 	}

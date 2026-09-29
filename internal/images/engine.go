@@ -39,7 +39,7 @@ func New(dir string, b *lume.Client, t domain.ImageTools) (*Engine, error) {
 	return &Engine{Dir: dir, Backend: b, Tools: t, HTTP: client}, nil
 }
 func (e *Engine) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile, step string, progress func(string) error) error {
-	timeout, known := map[string]time.Duration{"download": 90 * time.Minute, "create": 45 * time.Minute, "setup": 15 * time.Minute, "assistant": 10 * time.Minute, "sip": 20 * time.Minute, "verify": 10 * time.Minute, "stop": 2 * time.Minute}[step]
+	timeout, known := map[string]time.Duration{"download": 90 * time.Minute, "create": 45 * time.Minute, "setup": 15 * time.Minute, "assistant": 10 * time.Minute, "sip": 20 * time.Minute, "provision": 2 * time.Hour, "verify": 10 * time.Minute, "stop": 2 * time.Minute}[step]
 	if !known {
 		return domain.Err("invalid_profile", "unsupported image pipeline stage")
 	}
@@ -136,6 +136,8 @@ func (e *Engine) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile
 			return progress("SIP kept enabled by image profile")
 		}
 		return e.sip27(ctx, l)
+	case "provision":
+		return e.provision(ctx, l, p, progress)
 	case "verify":
 		vm, err := e.boot(ctx, l)
 		if err != nil {
@@ -188,7 +190,12 @@ func (e *Engine) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile
 		if err := e.desktop(ctx, secured); err != nil {
 			return err
 		}
-		evidence, _ := json.MarshalIndent(map[string]any{"build": p.Build, "ipsw_sha256": p.SHA256, "sip": strings.TrimSpace(sip), "desktop": true, "scoped_image_ssh": true, "verified_at": time.Now().UTC()}, "", "  ")
+		if p.Provision != "" {
+			if err := e.verifyProvision(ctx, l, secured); err != nil {
+				return err
+			}
+		}
+		evidence, _ := json.MarshalIndent(map[string]any{"build": p.Build, "ipsw_sha256": p.SHA256, "sip": strings.TrimSpace(sip), "desktop": true, "scoped_image_ssh": true, "provision": p.Provision, "verified_at": time.Now().UTC()}, "", "  ")
 		return os.WriteFile(filepath.Join(folder, "verification.json"), evidence, 0600)
 	case "stop":
 		return e.stop(ctx, l)

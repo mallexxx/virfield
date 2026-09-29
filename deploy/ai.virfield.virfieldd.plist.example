@@ -6,6 +6,13 @@
     <string>/ABSOLUTE/PATH/virfield/bin/virfieldd</string>
     <string>-config</string><string>/ABSOLUTE/PATH/virfield-v2/config.json</string>
   </array>
+  <!-- Install in /Library/LaunchDaemons; use the existing VM owner, never root. -->
+  <key>UserName</key><string>VM_OWNER</string>
+  <key>GroupName</key><string>staff</string>
+  <key>EnvironmentVariables</key><dict>
+    <key>HOME</key><string>/Users/VM_OWNER</string>
+    <key>PATH</key><string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>ThrottleInterval</key><integer>10</integer>

@@ -55,6 +55,7 @@ func TestLiveLeaseSSH(t *testing.T) {
 		key     string
 	}
 	leases := []owned{}
+	tunnels := map[string]string{}
 	wait := func(ctx context.Context, id string) error {
 		for {
 			var j domain.Job
@@ -90,6 +91,16 @@ func TestLiveLeaseSSH(t *testing.T) {
 			}
 			if err := wait(cleanup, op.Job.ID); err != nil {
 				t.Error("cleanup", l.op.Lease.ID, err)
+			}
+			if address := tunnels[l.op.Lease.ID]; address != "" {
+				conn, err := net.DialTimeout("tcp", address, time.Second)
+				if err == nil {
+					conn.Close()
+					t.Error("released tunnel still open")
+				}
+			}
+			if _, err := os.Stat(filepath.Join(os.Getenv("VIRFIELD_LIVE_STATE_DIR"), "leases", l.op.Lease.ID, "credentials.json")); !os.IsNotExist(err) {
+				t.Error("released private credentials retained")
 			}
 		}
 		if err := read(cleanup, "status", &status); err != nil {
@@ -189,22 +200,25 @@ func TestLiveLeaseSSH(t *testing.T) {
 	if leases[0].ready.SSH.HostKey == leases[1].ready.SSH.HostKey {
 		t.Fatal("clones share host identity")
 	}
-	dial := func(l domain.Lease, signer ssh.Signer) (*ssh.Client, error) {
+	dialAt := func(l domain.Lease, signer ssh.Signer, address string) (*ssh.Client, error) {
 		host, _, _, _, err := ssh.ParseAuthorizedKey([]byte(l.SSH.HostKey))
 		if err != nil {
 			return nil, err
 		}
-		raw, err := net.DialTimeout("tcp", net.JoinHostPort(l.IP, "22"), 10*time.Second)
+		raw, err := net.DialTimeout("tcp", address, 10*time.Second)
 		if err != nil {
 			return nil, err
 		}
 		_ = raw.SetDeadline(time.Now().Add(20 * time.Second))
-		conn, ch, req, err := ssh.NewClientConn(raw, net.JoinHostPort(l.IP, "22"), &ssh.ClientConfig{User: "lume", Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)}, HostKeyAlgorithms: []string{ssh.KeyAlgoED25519}, HostKeyCallback: ssh.FixedHostKey(host)})
+		conn, ch, req, err := ssh.NewClientConn(raw, address, &ssh.ClientConfig{User: "lume", Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)}, HostKeyAlgorithms: []string{ssh.KeyAlgoED25519}, HostKeyCallback: ssh.FixedHostKey(host)})
 		if err != nil {
 			raw.Close()
 			return nil, err
 		}
 		return ssh.NewClient(conn, ch, req), nil
+	}
+	dial := func(l domain.Lease, signer ssh.Signer) (*ssh.Client, error) {
+		return dialAt(l, signer, net.JoinHostPort(l.IP, "22"))
 	}
 	deny := func(l domain.Lease, signer ssh.Signer) {
 		t.Helper()
@@ -233,6 +247,20 @@ func TestLiveLeaseSSH(t *testing.T) {
 		if err != nil || !strings.Contains(string(out), "VirtualMac") || !strings.Contains(string(out), "disabled") {
 			t.Fatal("guest probes failed", err)
 		}
+		response, err := c.Do(ctx, "POST", "leases/"+l.ready.ID+"/tunnel", nil, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var tunnel domain.Tunnel
+		if err := json.Unmarshal(response, &tunnel); err != nil {
+			t.Fatal(err)
+		}
+		tunnels[l.ready.ID] = tunnel.Address
+		tunneled, err := dialAt(l.ready, l.signer, tunnel.Address)
+		if err != nil {
+			t.Fatal("tunneled SSH authentication failed", err)
+		}
+		tunneled.Close()
 		deny(l.ready, leases[1-i].signer)
 		source, err := guestssh.LoadCredentials(filepath.Join(os.Getenv("VIRFIELD_LIVE_STATE_DIR"), "images", l.ready.ImageID, "credentials.json"))
 		if err != nil {

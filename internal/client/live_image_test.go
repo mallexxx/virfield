@@ -6,13 +6,13 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"errors"
-	"golang.org/x/crypto/ssh"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/mallexxx/virfield/internal/domain"
+	"golang.org/x/crypto/ssh"
 )
 
 // TestLiveImageRebuild exercises the deployed daemon, never Lume or its store.

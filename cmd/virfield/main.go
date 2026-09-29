@@ -79,6 +79,13 @@ func run() error {
 		method = "POST"
 		path = "images/" + args[1] + "/build"
 		body = struct{}{}
+	case "image-provision":
+		if len(args) != 3 || !domain.ValidName(args[1]) || *key == "" {
+			return errors.New("usage: -key STABLE_KEY image-provision TEMPLATE_ID EXACT_VM_NAME")
+		}
+		method = "POST"
+		path = "images/" + args[1] + "/provision"
+		body = map[string]string{"confirm_name": args[2]}
 	case "image-delete":
 		if len(args) != 3 || !domain.ValidName(args[1]) || *key == "" {
 			return errors.New("usage: -key STABLE_KEY image-delete IMAGE_ID EXACT_VM_NAME (permanently deletes the image)")
@@ -86,6 +93,12 @@ func run() error {
 		method = "POST"
 		path = "images/" + args[1] + "/delete"
 		body = map[string]string{"confirm_name": args[2]}
+	case "backup":
+		if len(args) != 1 {
+			return errors.New("usage: backup")
+		}
+		method = "POST"
+		path = "maintenance/backup"
 	case "status":
 		if len(args) != 1 {
 			return errors.New("usage: status")
@@ -127,6 +140,15 @@ func run() error {
 		}
 		fmt.Println(filepath.Join(args[2], "config"))
 		return nil
+	case "tunnel", "tunnel-close":
+		if len(args) != 2 || !domain.ValidName(args[1]) {
+			return errors.New("usage: tunnel|tunnel-close LEASE_ID")
+		}
+		method = "POST"
+		if args[0] == "tunnel-close" {
+			method = "DELETE"
+		}
+		path = "leases/" + args[1] + "/tunnel"
 	case "lease", "job":
 		if len(args) != 2 || !domain.ValidName(args[1]) {
 			return errors.New("valid ID required")

@@ -59,6 +59,7 @@ func (r AcquireRequest) Validate() error {
 
 // Lease holds capacity until cleanup is confirmed, including after expiry/failure.
 type Lease struct {
+	Resources      Resources      `json:"resources"`
 	Source         *Template      `json:"source,omitempty"`
 	ImageID        string         `json:"image_id,omitempty"`
 	SSHPublicKey   string         `json:"ssh_public_key,omitempty"`
@@ -109,12 +110,13 @@ type Operation struct {
 
 // VM is an observation, never an instruction or an ownership claim.
 type VM struct {
-	Name         string `json:"name"`
-	Location     string `json:"location"`
-	OS           string `json:"os"`
-	State        string `json:"state"`
-	IP           string `json:"ip,omitempty"`
-	SSHAvailable bool   `json:"ssh_available"`
+	Resources    Resources `json:"resources"`
+	Name         string    `json:"name"`
+	Location     string    `json:"location"`
+	OS           string    `json:"os"`
+	State        string    `json:"state"`
+	IP           string    `json:"ip,omitempty"`
+	SSHAvailable bool      `json:"ssh_available"`
 }
 
 func (v VM) Key() string    { return v.Location + "/" + v.Name }
@@ -139,9 +141,10 @@ func (c Capacity) FullError() *Error {
 }
 
 type Status struct {
-	Capacity    Capacity    `json:"capacity"`
-	Observation Observation `json:"observation"`
-	Leases      []Lease     `json:"leases"`
-	Jobs        []Job       `json:"jobs"`
-	Templates   []Template  `json:"templates"`
+	Resources   *ResourceStatus `json:"resources,omitempty"`
+	Capacity    Capacity        `json:"capacity"`
+	Observation Observation     `json:"observation"`
+	Leases      []Lease         `json:"leases"`
+	Jobs        []Job           `json:"jobs"`
+	Templates   []Template      `json:"templates"`
 }

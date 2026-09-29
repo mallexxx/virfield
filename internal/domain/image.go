@@ -9,6 +9,7 @@ import (
 // ImageProfile is operator configuration, never a free-form client command.
 // The digest and size identify one immutable Apple restore image.
 type ImageProfile struct {
+	Provision  string `json:"provision,omitempty"`
 	URL        string `json:"url"`
 	SHA256     string `json:"sha256"`
 	Size       int64  `json:"size"`
@@ -17,6 +18,9 @@ type ImageProfile struct {
 }
 
 func (p ImageProfile) Validate() error {
+	if p.Provision != "" && (p.Provision != "uitest-27-v1" || !p.DisableSIP) {
+		return Err("invalid_profile", "uitest-27-v1 requires disabled guest SIP")
+	}
 	u, err := url.Parse(p.URL)
 	if err != nil || u.Scheme != "https" || u.Host != "updates.cdn-apple.com" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || !strings.HasSuffix(u.Path, ".ipsw") {
 		return Err("invalid_profile", "IPSW must be a pinned HTTPS restore image from updates.cdn-apple.com")
@@ -30,6 +34,7 @@ func (p ImageProfile) Validate() error {
 
 // ImageTools are immutable operator-owned executable paths, never API input.
 type ImageTools struct {
+	Xcode     string `json:"xcode,omitempty"`
 	Lume      string `json:"lume"`
 	Python    string `json:"python"`
 	Tesseract string `json:"tesseract"`

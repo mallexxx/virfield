@@ -16,6 +16,7 @@ async function refresh() {
   el('capacity').textContent = `${state.capacity.used} / ${state.capacity.limit} slots occupied or reserved`;
   el('connection').textContent = state.observation.error ? 'Lume unavailable' : 'Connected';
   el('blockers').textContent = state.capacity.blockers.join(' · ');
+  el('resources').textContent = state.resources ? `CPU ${state.resources.reserved.cpu}/${state.resources.limits.cpu} · RAM ${(state.resources.reserved.memory_bytes / 2**30).toFixed(0)}/${(state.resources.limits.memory_bytes / 2**30).toFixed(0)} GiB reserved` + (state.resources.error ? ' · ' + state.resources.error : '') : '';
   el('backend').textContent = state.observation.error?.message || 'Inventory checked: ' + new Date(state.observation.at).toLocaleTimeString();
   const imageBusy = state.leases.some(l => l.purpose === 'image' && l.state !== 'image_ready');
   el('prepare').disabled = !!state.observation.error || state.capacity.available === 0 || imageBusy;
@@ -28,6 +29,7 @@ async function refresh() {
     if (l.ip) row.append(text('p', `Guest IP: ${l.ip}`));
     if (l.ssh) row.append(text('p', 'Client key: ' + l.ssh.client_key_fingerprint), text('code', 'Host key: ' + l.ssh.host_key));
     if (l.error) row.append(text('p', l.error.message));
+    if (l.state === 'ready' && l.ssh) {const open = text('button', 'Open SSH tunnel'); const endpoint = text('code', ''); open.addEventListener('click', async () => {try {const t = await api('leases/' + encodeURIComponent(l.id) + '/tunnel', 'POST'); endpoint.textContent = t.address + ' · use your lease SSH key and pinned host key';} catch(err) {report(err);}});row.append(open, endpoint);}
     const release = text('button', 'Release and delete VM');
     release.disabled = l.state === 'releasing' || l.state === 'quarantined';
     release.addEventListener('click', async () => {
@@ -52,7 +54,7 @@ async function refresh() {
     const vm = state.observation.vms.find(v => v.name === t.name && v.location === t.location);
     row.append(text('h3', t.id), text('p', `${t.name} · ${vm?.state || 'absent'}`));
     if (t.image) {
-      row.append(text('p', `Build ${t.image.build} · guest SIP ${t.image.disable_sip ? 'disabled' : 'enabled'}`));
+      row.append(text('p', `Build ${t.image.build} · guest SIP ${t.image.disable_sip ? 'disabled' : 'enabled'}`), text('p', t.image.provision ? 'Tools recipe: ' + t.image.provision : 'Base OS image · development tools not provisioned'));
       const build = text('button', 'Build image');
       build.disabled = !!vm || !!state.observation.error || state.capacity.used > 0 || imageBusy;
       build.addEventListener('click', async () => {
@@ -78,7 +80,7 @@ async function refresh() {
     row.append(remove);
     return row;
   }));
-  const page = await api('events?after=' + cursor);
+  const page = await api(cursor === 0 ? 'events?tail=true&limit=30' : 'events?after=' + cursor);
   for (const event of page.events) el('events').prepend(text('li', `${new Date(event.at).toLocaleTimeString()} · ${event.type}: ${event.message}`));
   cursor = page.next_cursor;
   while (el('events').children.length > 30) el('events').lastChild.remove();

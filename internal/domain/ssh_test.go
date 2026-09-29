@@ -3,9 +3,10 @@ package domain
 import (
 	"crypto/ed25519"
 	"crypto/rand"
-	"golang.org/x/crypto/ssh"
 	"strings"
 	"testing"
+
+	"golang.org/x/crypto/ssh"
 )
 
 func TestCanonicalPublicKey(t *testing.T) {

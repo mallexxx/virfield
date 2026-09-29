@@ -15,13 +15,15 @@ import (
 )
 
 type Config struct {
-	ImageTools *domain.ImageTools `json:"image_tools,omitempty"`
-	Listen     string             `json:"listen"`
-	LumeURL    string             `json:"lume_url"`
-	StateDir   string             `json:"state_dir"`
-	TokenFile  string             `json:"token_file"`
-	MaxVMs     int                `json:"max_vms"`
-	Templates  []domain.Template  `json:"templates"`
+	ResourceLimits *domain.ResourceLimits `json:"resource_limits,omitempty"`
+	StoragePaths   map[string]string      `json:"storage_paths,omitempty"`
+	ImageTools     *domain.ImageTools     `json:"image_tools,omitempty"`
+	Listen         string                 `json:"listen"`
+	LumeURL        string                 `json:"lume_url"`
+	StateDir       string                 `json:"state_dir"`
+	TokenFile      string                 `json:"token_file"`
+	MaxVMs         int                    `json:"max_vms"`
+	Templates      []domain.Template      `json:"templates"`
 }
 
 func Load(path string) (Config, error) {
@@ -53,6 +55,14 @@ func Load(path string) (Config, error) {
 	}
 	if c.MaxVMs < 1 || c.MaxVMs > 2 {
 		return c, errors.New("max_vms must be 1 or 2")
+	}
+	if c.ResourceLimits != nil && (c.ResourceLimits.CPU < 1 || c.ResourceLimits.MemoryBytes < 1 || c.ResourceLimits.DiskReserveBytes < 1) {
+		return c, errors.New("resource limits must be positive")
+	}
+	for name, path := range c.StoragePaths {
+		if !domain.ValidName(name) || !filepath.IsAbs(path) {
+			return c, errors.New("storage paths must map valid names to absolute directories")
+		}
 	}
 	return c, nil
 }

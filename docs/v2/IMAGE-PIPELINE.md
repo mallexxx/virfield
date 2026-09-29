@@ -3,8 +3,9 @@
 Image preparation is a durable job in `virfieldd`. CLI, UI and MCP submit the same
 API request. No client invokes Lume directly. Broker/Runner execution and the
 installation of Xcode/provider binaries are separate from this base-image build.
-The verified security policy here is SIP only; legacy Gatekeeper/AMFI/TCC
-provisioning is not silently applied or claimed as tested.
+The accepted base security policy is SIP only. The optional fixed `uitest-27-v1`
+recipe implements Gatekeeper/AMFI/TCC and Xcode/tools provisioning; live acceptance
+is pending. It must be explicitly selected and authorized for the guest image.
 
 ## Profile and dependencies
 
@@ -97,8 +98,7 @@ and checks the effective `sshd -T` configuration,
 creates a VM-local workspace, and checks guest build, canonical SIP status and
 Finder after a further reboot. Credentials remain in private 0600 files under
 the private state directory; they are never returned by status/job/events.
-**Image credentials are not yet per-lease Broker credentials.** Per-clone key
-rotation and credential delivery remain a separate release gate.
+Each disposable clone receives a distinct password, management key and SSH host key before readiness. Caller keys are supplied per lease; image/cross-lease keys are tested for rejection. See the [SSH contract](README.md).
 
 ## Recovery and deletion
 
@@ -112,7 +112,7 @@ operator to inspect the exact VM and confirm that no operation remains in flight
   image-recover IMAGE_RECORD_ID EXACT_VM_NAME retry CONFIRM-NO-OPERATION-IN-FLIGHT
 ```
 
-`retry` is limited to download, assistant, SIP and verify at their persisted
+`retry` is limited to download, assistant, SIP, provision and verify at their persisted
 failure stage. It cannot skip verification or change the VM identity. A failed
 create/setup requires inspection and `delete`, followed by a new build request.
 
@@ -171,3 +171,34 @@ Expect approximately 8–12 minutes with verified local media on the tested host
 network download time depends on throughput. Long deadlines bound installation,
 not a reason to repeat a dispatched operation. The test retains the daemon's
 journal and prints image/job IDs for exact inspection on failure.
+
+## Optional UI-test tool profile
+
+Set the operator-owned image profile `provision` to `uitest-27-v1` and
+`image_tools.xcode` to an absolute complete local `Xcode.app`. The recipe requires
+`disable_sip: true` and build `26A428`. It copies Xcode over pinned SSH without a
+host mount, completes Xcode first launch, installs the pinned Homebrew installer
+and tools, and configures guest-only Gatekeeper, AMFI, TCC and passwordless sudo.
+Homebrew packages are currently resolved from their taps at provisioning time;
+this is a versioned recipe, not a fully reproducible package lock.
+
+A new build adds `provision` between SIP and final verification. For an already
+verified stopped base image, after the guest policy is authorized:
+
+```sh
+./bin/virfield -token-file /absolute/state/token -key provision-macos27-001 \
+  image-provision macos27 macos-27-golden
+```
+
+This revokes publication immediately, reserves exclusive maintenance access and
+requires reboot verification before promotion. It verifies Swift execution,
+required binaries, passwordless sudo, Gatekeeper, AMFI boot arguments, Terminal
+TCC entries, System Events and actual local Peekaboo required permissions. A
+failure leaves the image unavailable; it never publishes based only on a shell
+script exit code. Provisioning is a CLI/operator operation, absent from MCP.
+
+The guest recipe is embedded and has VirtualMac/build guards. It does not import
+host SSH keys, reset guest credentials to `lume`, mount host folders or accept
+caller shell commands. Logs are private and bounded by the SSH transport. The
+2026-09-29 deployment still uses the accepted base profile until authorization
+and full live provisioning succeed.

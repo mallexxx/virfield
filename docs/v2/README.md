@@ -1,6 +1,6 @@
 # Virfield v2 — control-plane implementation
 
-**Branch:** `codex/virfield-v2`. **Status:** lifecycle core and pinned base-image pipeline implemented; production release gates remain.
+**Branch:** `codex/virfield-v2`. **Status:** local control plane and deployment hardening implemented; system-service acceptance and v1 cutover remain blocked on macOS authorization.
 
 This implements the first vertical slice of §13/§16 stage 2 in the
 2026-09-29 Balda/Callee/Prism plan. Broker, Runner and Balda integration remain
@@ -62,8 +62,7 @@ ssh -F "$PWD/.v2-state/story-42/config" virfield
 The export verifies that the local private key belongs to the lease, pins its
 Ed25519 host key, disables agent/password authentication and connection sharing,
 and refuses to overwrite existing files. These local identity files belong to
-the caller; remove them when no longer needed. Direct guest IP routing is required;
-managed tunnels and container routing are separate release gates.
+the caller; remove them when no longer needed. Direct guest IP routing is supported. `tunnel LEASE_ID` opens a loopback SSH forwarding endpoint; `tunnel-close LEASE_ID` closes it. Authenticate using the same lease key and pinned guest host key. Tunnels expire with the lease and close on release, drift or daemon shutdown; reopen them after restart. Container routing remains a separate integration.
 
 The expiry example must be replaced with a future RFC3339 timestamp within
 24 hours. Reusing an older deadline never shortens an active lease. Reusing an
@@ -94,7 +93,9 @@ images and arbitrary external VMs are never adopted by name.
 | `internal/lume` | Sole Lume HTTP/CLI adapter, fixed image commands, no blind mutation retries |
 | `internal/httpapi`, `internal/web` | Versioned authenticated API, embedded console |
 | `internal/client`, `cmd/virfield` | API-only CLI |
-| `internal/mcpadapter`, `cmd/virfield-mcp` | Official Go SDK stdio MCP adapter |
+| `internal/mcpadapter`, `cmd/virfield-mcp` | Official Go SDK stdio and authenticated HTTP MCP adapter |
+| `internal/hostresources`, `internal/logging` | CPU/RAM/storage admission and bounded service logs |
+| `cmd/virfield-lume` | Independent launchd entrypoint with bounded Lume logs |
 | `internal/config`, `internal/hostlock` | Validated config/token, single host owner |
 
 There is no personal SSH key discovery, host shell endpoint, PAT storage,
@@ -139,8 +140,8 @@ connection metadata and public keys.
 An interrupted SSH isolation is never replayed. The lease becomes
 `needs_attention`, remains reserved and can be released or expire normally:
 its clone ownership and completed start are already known. An IP change after
-verification requires a new lease. Schema version 3 prevents older binaries from
-skipping this readiness phase. Existing v2 leases without an SSH identity require
+verification requires a new lease. Schema version 4 prevents older binaries from
+skipping readiness, resource and provisioning contracts. Existing v2 leases without an SSH identity require
 release and reacquisition; the existing verified image remains usable.
 
 ### When a job needs attention
@@ -176,28 +177,60 @@ unavailable, leave the slot reserved and restore the service separately.
 ```
 
 Tools: `virfield_status`, `vm_acquire`, `vm_lease`, `vm_release`, `vm_renew`,
-`virfield_job`, `virfield_events`, `image_build`. A full pool returns `capacity_exhausted` with
+`virfield_job`, `virfield_events`, `image_build`, `vm_tunnel`, `vm_tunnel_close`. A full pool returns `capacity_exhausted` with
 an actionable message. **Queueing belongs to Broker**, not this host daemon.
 
 The daemon currently binds only to loopback. Container/Broker access needs an
 explicit TLS reverse proxy and network policy. The client rejects remote
-cleartext HTTP and never follows redirects with its bearer token. HTTP MCP
-hosting and per-principal credentials are not implemented yet.
+cleartext HTTP and never follows redirects with its bearer token. HTTP MCP is served at `/mcp` using the same owner bearer token. Per-principal credentials are not implemented.
 
 ## launchd
 
-`deploy/ai.virfield.virfieldd.plist.example` is a reviewed deployment template,
-not automatically installed. Replace all absolute-path placeholders, validate
-with `plutil -lint`, and use a dedicated private state directory. Lume is managed
-as its own service; Virfield never restarts or kills it. Arrange log rotation
-before production deployment. The token must be owner-only (0600) and state
-directory private (0700).
+Use a **system LaunchDaemon running as the VM-owning user**, not a GUI
+LaunchAgent. On current macOS, Local Network Privacy can deny guest SSH from
+an agent even while identical terminal code works. Apple's [TN3179](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy)
+documents automatic local-network access for launchd daemons. Do not change host
+TCC or run VM workers as root to work around this.
+
+`deploy/ai.virfield.virfieldd.plist.example` has explicit UserName, GroupName, HOME
+and PATH placeholders. Lume is a separate system job through `virfield-lume`;
+the controller never restarts it. Both services rotate logs at 10 MiB with three
+archives. Token permissions are 0600; state and credentials directories are 0700.
+Startup stderr remains a separate diagnostic log. System launchd registration
+requires macOS administrator authorization.
+
+The scripts in `deploy/install-local.py`, `install-launchdaemons.sh` and
+`switch-mcp.py` are the reviewed **admin/UID 501 host migration**, not a portable
+installer. Stage an idle consistent snapshot, install jobs, accept SSH through the
+system service, then remove the exact Eagle-managed v1 entry and switch MCP.
+Do not restart the Eagle Dashboard or unrelated services. Keep the private
+migration backup; never point v1 at the v2 database.
+
+### Quotas and backups
+
+`resource_limits` configures CPU count, RAM bytes and reserved host disk bytes;
+`storage_paths` maps Lume locations to absolute paths. Defaults reserve 25% of
+host CPU/RAM and 20 GiB free disk. Admission accounts for active external VMs and
+reserved leases. Unknown resources fail closed. Disk admission conservatively
+reserves full virtual disk growth, even for sparse/APFS-cloned disks.
+
+`virfield -token-file /absolute/state/token backup` requires an idle healthy pool
+and no unresolved jobs. It snapshots SQLite, config, token and active image
+identities into a new private directory under `backups/`, checks integrity, and
+keeps five completed snapshots. Failed partial copies are removed. **VM disks
+and the IPSW cache are not included.** These need a separate storage backup.
+
+To restore: stop the daemon, preserve the current directory, copy a complete
+snapshot into a new private state directory, adjust `state_dir` and `token_file`
+to that directory, and verify the corresponding stopped Lume image disks still
+exist. Start exactly one daemon with that configuration. Never restore old
+credentials against a VM whose SSH identity changed after the backup.
 
 ## Verification
 
 ```sh
 make check                       # formatting, vet, race tests; no live VM mutations
-make build                       # three Go binaries
+make build                       # four Go binaries
 VIRFIELD_LIVE_LUME_URL=http://127.0.0.1:7777 go test ./internal/lume -run TestLiveReadOnly -v
 ```
 
@@ -216,8 +249,7 @@ Private-secret API checks, capacity refusal, idempotency and cleanup passed.
 followed by a clean cached-media rebuild through Assistant, Recovery/SIP, SSH
 rotation and reboot verification; two clones and cleanup passed in 10m38s.
 See [the evidence and limitations](VERIFICATION.md).
-**Not yet accepted:** daemon crash injection during actual VM mutations; disk-full recovery;
-long-duration stability. Automated mock tests do not establish these claims.
+**Not yet accepted:** daemon crash injection during actual VM mutations and long-duration stability. SQLite full-disk rollback and backup integrity/retention are covered separately. Automated mock tests do not establish these claims.
 
 ## Remaining planned modules and release gates
 
@@ -225,11 +257,11 @@ long-duration stability. Automated mock tests do not establish these claims.
 |---|---|
 | Core lifecycle, API, CLI, stdio MCP, minimal UI | Implemented; two-VM live lifecycle passed |
 | Image Manager: download/pull/build/promote | Pinned download/build/verify/promotion implemented; registry pull pending |
-| Versioned provisioning jobs | Native Lume setup plus verified macOS 27 Assistant/Recovery drivers; full tool/Xcode provisioning pending |
-| Scoped SSH credentials, verified guest login, tunnels | Per-lease password, key and host-key isolation plus caller-owned keys implemented and live-tested; tunnels pending |
-| Resource quotas beyond two VM slots | CPU/RAM/disk admission still required |
-| HTTP MCP, Broker-facing deployment | HTTP API exists; TLS/container routing and scoped principals pending |
-| Production operations | Backup/restore rehearsal, retention/log rotation, soak/fault injection pending |
+| Versioned provisioning jobs | Base pipeline accepted; versioned Xcode/tools/Gatekeeper/AMFI/TCC recipe implemented, live application awaits explicit guest-policy authorization |
+| Scoped SSH credentials, verified guest login, tunnels | Per-lease password, key and host-key isolation plus caller-owned keys implemented and live-tested; loopback SSH tunnels implemented; installed-service acceptance pending |
+| Resource quotas beyond two VM slots | CPU/RAM/disk admission implemented and tested; installed host quotas configured |
+| HTTP MCP, Broker-facing deployment | Authenticated HTTP MCP implemented and live-tested; TLS/container routing and scoped principals pending |
+| Production operations | Backup/restore integrity rehearsal and bounded logs implemented; system launchd/v1 cutover, prolonged soak and live mutation fault injection pending |
 | Broker/Runner/Balda/Prism | Separate later stages; not part of this implementation |
 
 ### Why the old scripts are not automatically wired in

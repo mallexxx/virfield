@@ -61,7 +61,7 @@ func (c *Controller) BuildImage(ctx context.Context, id, key string) (domain.Ope
 	return domain.Operation{Lease: l, Job: j}, nil
 }
 
-var imageNext = map[string]string{"queued": "download", "download_dispatched": "download", "download_done": "create", "create_done": "setup", "setup_done": "assistant", "assistant_done": "sip", "sip_done": "verify", "verify_done": "stop"}
+var imageNext = map[string]string{"queued": "download", "download_dispatched": "download", "download_done": "create", "create_done": "setup", "setup_done": "assistant", "assistant_done": "sip", "sip_done": "verify", "verify_done": "stop", "provision_done": "verify"}
 
 func (c *Controller) advanceImageBuild(ctx context.Context, l domain.Lease, j domain.Job) error {
 	if j.Image == nil || c.imageBuilder == nil {
@@ -84,6 +84,9 @@ func (c *Controller) advanceImageBuild(ctx context.Context, l domain.Lease, j do
 	if !ok {
 		return nil
 	}
+	if j.Phase == "sip_done" && j.Image.Provision != "" {
+		step = "provision"
+	}
 	if step == "create" {
 		if _, exists := c.vm(l); exists {
 			return c.attention(ctx, l, j, "name_collision", "Image destination appeared before create; refusing to overwrite it", true)
@@ -91,7 +94,7 @@ func (c *Controller) advanceImageBuild(ctx context.Context, l domain.Lease, j do
 	}
 	j.Phase = step + "_dispatched"
 	j.State = "running"
-	j.Progress = map[string]string{"download": "Downloading and verifying Apple restore image", "create": "Installing macOS from the verified IPSW", "setup": "Preparing guest account, SSH and automatic login", "assistant": "Completing Setup Assistant and checking Finder", "sip": "Applying guest SIP policy through paired Recovery", "verify": "Verifying build, SIP, SSH credentials and desktop after reboot", "stop": "Stopping the verified image before publication"}[step]
+	j.Progress = map[string]string{"download": "Downloading and verifying Apple restore image", "create": "Installing macOS from the verified IPSW", "setup": "Preparing guest account, SSH and automatic login", "assistant": "Completing Setup Assistant and checking Finder", "sip": "Applying guest SIP policy through paired Recovery", "provision": "Installing Xcode and versioned UI automation tools", "verify": "Verifying build, SIP, SSH credentials and desktop after reboot", "stop": "Stopping the verified image before publication"}[step]
 	if err := c.save(ctx, l, j, "image.step_started", step); err != nil {
 		return err
 	}
@@ -185,7 +188,7 @@ func (c *Controller) RecoverImage(ctx context.Context, id, key, name, action str
 	}
 	switch action {
 	case "retry":
-		previous := map[string]string{"download_dispatched": "queued", "assistant_dispatched": "setup_done", "sip_dispatched": "assistant_done", "verify_dispatched": "sip_done"}
+		previous := map[string]string{"download_dispatched": "queued", "assistant_dispatched": "setup_done", "sip_dispatched": "assistant_done", "verify_dispatched": "provision_done", "provision_dispatched": "sip_done"}
 		phase, ok := previous[j.Phase]
 		if !ok || j.Kind != "image_build" {
 			return domain.Operation{}, domain.Err("unsafe_retry", "this interrupted stage cannot be retried; inspect and delete the incomplete image")
@@ -210,4 +213,52 @@ func (c *Controller) RecoverImage(ctx context.Context, id, key, name, action str
 		return domain.Operation{}, err
 	}
 	return domain.Operation{Lease: l, Job: j}, nil
+}
+
+// ProvisionImage upgrades an existing verified base under exclusive maintenance.
+// Publication is revoked until provisioning and all reboot probes succeed.
+func (c *Controller) ProvisionImage(ctx context.Context, id, key, name string) (domain.Operation, error) {
+	if err := validKey(key); err != nil {
+		return domain.Operation{}, err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	fp := fingerprint([]string{"image_provision", id, name})
+	if op, err := c.store.Replay(ctx, key, fp); err != nil {
+		return domain.Operation{}, err
+	} else if op != nil {
+		return *op, nil
+	}
+	if err := c.healthy(); err != nil {
+		return domain.Operation{}, err
+	}
+	t, ok := c.templates[id]
+	if !ok || t.Image == nil || t.Image.Provision == "" || t.Name != name || c.imageBuilder == nil {
+		return domain.Operation{}, domain.Err("invalid_profile", "Confirm the exact configured image with a provisioning recipe")
+	}
+	ls, err := c.store.Leases(ctx)
+	if err != nil {
+		return domain.Operation{}, err
+	}
+	if c.capacity(ls).Used != 0 {
+		return domain.Operation{}, domain.Err("image_in_use", "Release all leases before provisioning an image")
+	}
+	for _, l := range ls {
+		if l.Purpose == "image" && l.Key() == t.Location+"/"+t.Name && l.State == "image_ready" {
+			v, exists := c.vm(l)
+			if !exists || v.State != "stopped" {
+				break
+			}
+			now := c.now()
+			p := *t.Image
+			l.State = "image_building"
+			l.UpdatedAt = now
+			j := domain.Job{ID: domain.NewID("job-"), LeaseID: l.ID, Kind: "image_build", Image: &p, Phase: "sip_done", State: "queued", CreatedAt: now, UpdatedAt: now, Deadline: now.Add(3 * time.Hour)}
+			if err := c.store.Save(ctx, l, &j, key, fp, "image.provision_accepted", "Exclusive image provisioning accepted; publication revoked until verification"); err != nil {
+				return domain.Operation{}, err
+			}
+			return domain.Operation{Lease: l, Job: j}, nil
+		}
+	}
+	return domain.Operation{}, domain.Err("template_unavailable", "A stopped verified base image is required")
 }

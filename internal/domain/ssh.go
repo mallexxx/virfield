@@ -25,3 +25,8 @@ type SSHConnection struct {
 	HostKey              string `json:"host_key"`
 	ClientKeyFingerprint string `json:"client_key_fingerprint"`
 }
+
+type Tunnel struct {
+	LeaseID string `json:"lease_id"`
+	Address string `json:"address"`
+}

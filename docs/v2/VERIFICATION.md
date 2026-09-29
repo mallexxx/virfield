@@ -166,18 +166,62 @@ When the test creates that file, restart only its test daemon, wait for successf
 reconciliation, then create `<marker>.resume` within two minutes. The harness
 never kills an external process itself.
 
+## Installed-service hardening — 2026-09-29 17:00 UTC checkpoint
+
+The replacement is staged at `/Users/admin/.virfield-v2`, independently of the
+checkout: four Go binaries, schema 4 database, private token/image identities,
+APFS-cloned IPSW cache, pinned isolated Python VNC dependencies and migration
+backups. Host quotas are 12 CPUs, 48 GiB RAM and 20 GiB disk reserve. The base
+image profile remains unchanged; full UI-test provisioning was **not applied**.
+
+Accepted on the installed daemon:
+
+- HTTP and stdio MCP discover ten tools and return status; anonymous HTTP MCP
+  returns 401. Latest `TestLiveInstalledMCP` completed in 0.48 seconds.
+- Headless Chromium desktop 1280×1000 and mobile 390×844 login/render checks:
+  token field clears, 0/2 pool renders, no horizontal overflow or console errors.
+  Private screenshots: `state/v2-live-20260929-a/ui-{desktop,mobile}.png`.
+- API backup `backup-b6ee05eada6d4d9d1b54e928dc1febac` restored into an isolated
+  temporary directory. SQLite integrity, retained image identities/verification,
+  token equality and 0600 database permissions passed. This is a control-state
+  restore rehearsal, **not** a VM disk disaster-recovery test.
+- Automated CPU/RAM/disk fail-closed admission, lease tunnel revocation,
+  incomplete-backup cleanup, five-snapshot retention, SQLite real
+  `max_page_count` disk-full rollback, and bounded log rotation/recovery tests.
+  Daemon and Lume normal output rotate at 10 MiB with three archives; released
+  lease private credentials are deleted only after confirmed VM absence.
+- `make check`, four-binary build, Staticcheck, Linux cross-build and govulncheck
+  passed. Govulncheck still reports zero reachable/imported-package
+  vulnerabilities and one advisory in an unused required-module package.
+
+**LaunchAgent SSH acceptance failed twice and is not counted as passed.** Lume
+reported SSH available, but the installed agent received `no route to host` for
+both guest IPs; direct terminal TCP probes immediately reached OpenSSH. Both
+failed runs cleaned up their own disposable VMs. The diagnosed deployment issue
+is macOS Local Network Privacy: Apple's TN3179 distinguishes GUI agents from
+system daemons. A system LaunchDaemon running as `admin` is prepared, with a
+separate Lume service. The macOS administrator dialog is still pending at this
+checkpoint. No host TCC/SIP database or global network policy was modified.
+
+The fixed `uitest-27-v1` guest profile adds Xcode transfer/first launch, tools,
+Gatekeeper/AMFI/TCC, sudo policy and post-reboot Swift/Peekaboo permission probes.
+Automatic approval review rejected its live application without explicit consent
+to these exact guest security changes. The request for that consent is pending;
+its implementation must not be described as accepted or silently enabled.
+
 ## Not yet accepted / production release gates
 
-- Browser interaction/visual QA and remote GitHub Actions execution.
-- Managed tunnels and Broker/container routing. Per-lease SSH isolation and
-  caller-owned key delivery are accepted, but are not the full Broker integration.
-- Image registry pull, full legacy tool/Xcode/provider provisioning (including
-  Gatekeeper/AMFI/TCC recipe migration), CPU/RAM quotas beyond the
-  two-VM cap, and support for macOS builds other than the pinned `26A428` recipe.
-- Actual daemon crashes during clone/install/delete, disk-full recovery,
-  backup/restore rehearsal, log/artifact retention and prolonged soak testing.
-- Production cutover from v1, launchd installation, network/TLS policy and
-  per-principal HTTP MCP access. Existing v1 services/configuration were not replaced.
+- System LaunchDaemon network/SSH acceptance, ready-lease restart through launchd,
+  installed-service SSH tunnel E2E, and actual v1 service/MCP cutover.
+- Full Xcode/tools/guest-security profile live application and verification.
+- Remote GitHub Actions execution, actual daemon crashes during VM mutations,
+  prolonged soak and VM-disk disaster recovery. Unit/mock coverage is separate.
+- Registry pull, other macOS builds, remote TLS/container routing and
+  per-principal credentials. Broker/Runner/Balda integration is a later scope.
+
+V1 still runs under Eagle and client MCP entries still point to v1 at this
+checkpoint. Switching before system-service acceptance would knowingly replace a
+working service with one unable to prepare guests.
 
 The three unrelated VMs (`macos-15-golden`, `pdf-hud-macos27`,
 `uitest-26.4.1-golden`) were left stopped and untouched. Host SIP was not changed.

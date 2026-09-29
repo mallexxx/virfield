@@ -210,3 +210,36 @@ func TestAcquireRequiresMatchingVerifiedImageManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestProvisionRevokesPublicationAndVerifiesBeforePromotion(t *testing.T) {
+	c, _ := imageController(t)
+	ctx := context.Background()
+	if _, err := c.BuildImage(ctx, "test", "provision-base"); err != nil {
+		t.Fatal(err)
+	}
+	for range 8 {
+		tick(t, c)
+	}
+	template := c.templates["test"]
+	profile := *template.Image
+	profile.DisableSIP = true
+	profile.Provision = "uitest-27-v1"
+	template.Image = &profile
+	c.templates["test"] = template
+	op, err := c.ProvisionImage(ctx, "test", "provision-upgrade", "golden")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if op.Lease.State == "image_ready" {
+		t.Fatal("image remained published")
+	}
+	_, err = c.Acquire(ctx, "provision-blocked", domain.AcquireRequest{Template: "test", TTLSeconds: 3600})
+	code(t, err, "image_in_use")
+	for range 4 {
+		tick(t, c)
+	}
+	l, err := c.Lease(ctx, op.Lease.ID)
+	if err != nil || l.State != "image_ready" || l.ImageManifest != fingerprint(&profile) {
+		t.Fatal("provisioned image not verified", err)
+	}
+}

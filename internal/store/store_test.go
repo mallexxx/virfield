@@ -3,8 +3,10 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -146,7 +148,59 @@ func TestUpgradeImageJournalKeepsExistingRecords(t *testing.T) {
 		t.Fatal(events, err)
 	}
 	var version int
-	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 3 {
+	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 4 {
 		t.Fatal(version, err)
+	}
+}
+
+func TestRecentEventsStartsAtTail(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+	l := domain.Lease{ID: "lease-tail", State: "pending"}
+	for range 8 {
+		if err := s.Save(ctx, l, nil, "", "", "progress", "message"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	events, err := s.Events(ctx, -1, "", 3)
+	if err != nil || len(events) != 3 || events[0].ID != 6 || events[2].ID != 8 {
+		t.Fatal(events, err)
+	}
+}
+
+func TestDiskFullDoesNotPublishUncommittedTransition(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "limited.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+	l := domain.Lease{ID: "lease-disk-full", State: "pending"}
+	if err := s.Save(ctx, l, nil, "", "", "accepted", "durable"); err != nil {
+		t.Fatal(err)
+	}
+	var pages int
+	if err := s.db.QueryRow("PRAGMA page_count").Scan(&pages); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(fmt.Sprintf("PRAGMA max_page_count=%d", pages)); err != nil {
+		t.Fatal(err)
+	}
+	l.State = "ready"
+	l.Error = domain.Err("large", strings.Repeat("x", 1<<20))
+	if err := s.Save(ctx, l, nil, "", "", "ready", "must rollback"); err == nil {
+		t.Fatal("expected SQLITE_FULL")
+	}
+	got, err := s.Lease(ctx, l.ID)
+	if err != nil || got.State != "pending" {
+		t.Fatal("disk-full transition leaked", err)
+	}
+	events, err := s.Events(ctx, 0, l.ID, 100)
+	if err != nil || len(events) != 1 {
+		t.Fatal("disk-full event leaked", err)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -144,7 +145,8 @@ func (e *Manager) connectCredentials(ctx context.Context, l domain.Lease, ip str
 	dialer := net.Dialer{Timeout: 10 * time.Second}
 	raw, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(ip, port))
 	if err != nil {
-		return nil, domain.Err("guest_ssh_failed", "Cannot connect to the image SSH endpoint")
+		_ = os.WriteFile(filepath.Join(e.Directory(l), "ssh-connect.log"), []byte(err.Error()+"\n"), 0600)
+		return nil, domain.Err("guest_connect_failed", "Cannot connect to the guest SSH endpoint; inspect private ssh-connect.log")
 	}
 	handshakeDeadline := time.Now().Add(15 * time.Second)
 	if d, ok := ctx.Deadline(); ok && d.Before(handshakeDeadline) {
@@ -171,7 +173,11 @@ func (e *Manager) connectCredentials(ctx context.Context, l domain.Lease, ip str
 	return g, nil
 }
 func (g *Client) Run(ctx context.Context, command, input string) (string, error) {
-	deadline := time.Now().Add(60 * time.Second)
+	return g.RunReader(ctx, time.Minute, command, strings.NewReader(input))
+}
+
+func (g *Client) RunReader(ctx context.Context, timeout time.Duration, command string, input io.Reader) (string, error) {
+	deadline := time.Now().Add(timeout)
 	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
 		deadline = d
 	}
@@ -182,7 +188,7 @@ func (g *Client) Run(ctx context.Context, command, input string) (string, error)
 		return "", domain.Err("guest_command_failed", "Cannot open guest SSH session")
 	}
 	defer session.Close()
-	session.Stdin = strings.NewReader(input)
+	session.Stdin = input
 	// Fixed commands return only short probes. Bound even a compromised guest's output.
 	var out boundedOutput
 	session.Stdout = &out

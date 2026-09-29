@@ -29,18 +29,23 @@ type Backend interface {
 	Delete(context.Context, domain.Lease) error
 }
 type Controller struct {
-	imageBuilder  ImageBuilder
-	leasePreparer LeasePreparer
-	mu            sync.Mutex
-	store         *store.Store
-	backend       Backend
-	templates     map[string]domain.Template
-	observation   domain.Observation
-	limit         int
-	now           func() time.Time
-	active        map[string]bool
-	wg            sync.WaitGroup
-	log           *slog.Logger
+	tunnels        map[string]*tunnel
+	resourceLimits *domain.ResourceLimits
+	resourceProbe  ResourceProbe
+	diskAvailable  map[string]int64
+	resourceError  string
+	imageBuilder   ImageBuilder
+	leasePreparer  LeasePreparer
+	mu             sync.Mutex
+	store          *store.Store
+	backend        Backend
+	templates      map[string]domain.Template
+	observation    domain.Observation
+	limit          int
+	now            func() time.Time
+	active         map[string]bool
+	wg             sync.WaitGroup
+	log            *slog.Logger
 }
 
 func New(s *store.Store, b Backend, templates []domain.Template, limit int, log *slog.Logger) (*Controller, error) {
@@ -154,7 +159,16 @@ func (c *Controller) Status(ctx context.Context) (domain.Status, error) {
 		capacity.Available = 0
 		capacity.Blockers = append(capacity.Blockers, "Lume inventory is unverified; admission paused")
 	}
-	return domain.Status{Capacity: capacity, Observation: o, Leases: ls, Jobs: js, Templates: ts}, nil
+	var resources *domain.ResourceStatus
+	if c.resourceLimits != nil {
+		sum, _, resourceErr := c.resources(ls)
+		message := c.resourceError
+		if resourceErr != nil {
+			message = resourceErr.Error()
+		}
+		resources = &domain.ResourceStatus{Limits: *c.resourceLimits, Reserved: sum, DiskAvailable: c.diskAvailable, Error: message}
+	}
+	return domain.Status{Resources: resources, Capacity: capacity, Observation: o, Leases: ls, Jobs: js, Templates: ts}, nil
 }
 func (c *Controller) Acquire(ctx context.Context, key string, r domain.AcquireRequest) (domain.Operation, error) {
 	if err := validKey(key); err != nil {
@@ -234,9 +248,13 @@ func (c *Controller) Acquire(ctx context.Context, key string, r domain.AcquireRe
 	if cap.Available == 0 {
 		return domain.Operation{}, cap.FullError()
 	}
+	reservation, err := c.admitResources(ls, t)
+	if err != nil {
+		return domain.Operation{}, err
+	}
 	now := c.now()
 	id := domain.NewID("lease-")
-	l := domain.Lease{Source: &t, ImageID: imageID, SSHPublicKey: r.SSHPublicKey, ID: id, VMName: "vf-" + id[6:], Location: t.Location, Template: t.ID, State: "pending", ExpiresAt: now.Add(time.Duration(r.TTLSeconds) * time.Second), CreatedAt: now, UpdatedAt: now}
+	l := domain.Lease{Resources: reservation, Source: &t, ImageID: imageID, SSHPublicKey: r.SSHPublicKey, ID: id, VMName: "vf-" + id[6:], Location: t.Location, Template: t.ID, State: "pending", ExpiresAt: now.Add(time.Duration(r.TTLSeconds) * time.Second), CreatedAt: now, UpdatedAt: now}
 	j := domain.Job{ID: domain.NewID("job-"), LeaseID: id, Kind: "prepare", Phase: "queued", State: "queued", CreatedAt: now, UpdatedAt: now, Deadline: now.Add(10 * time.Minute)}
 	if err := c.store.Save(ctx, l, &j, key, fp, "lease.accepted", "Slot reserved; VM preparation queued"); err != nil {
 		return domain.Operation{}, err
@@ -283,6 +301,10 @@ func (c *Controller) Release(ctx context.Context, id, key string) (domain.Operat
 	return c.queueCleanup(ctx, l, key, fp)
 }
 func (c *Controller) queueCleanup(ctx context.Context, l domain.Lease, key, fp string) (domain.Operation, error) {
+	if t := c.tunnels[l.ID]; t != nil {
+		t.close()
+		delete(c.tunnels, l.ID)
+	}
 	now := c.now()
 	l.State = "releasing"
 	l.UpdatedAt = now
@@ -378,6 +400,7 @@ func (c *Controller) Run(ctx context.Context) error {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	defer c.wg.Wait()
+	defer c.closeTunnels()
 	for {
 		if err := c.Tick(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			c.log.Error("reconciliation failed", "error", err)
@@ -391,6 +414,11 @@ func (c *Controller) Run(ctx context.Context) error {
 }
 func (c *Controller) Tick(ctx context.Context) error {
 	snapshotStarted := c.now()
+	var disk map[string]int64
+	var resourceErr error
+	if c.resourceProbe != nil {
+		disk, resourceErr = c.resourceProbe()
+	}
 	readCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	o, obsErr := c.backend.Observe(readCtx)
 	cancel()
@@ -411,6 +439,11 @@ func (c *Controller) Tick(ctx context.Context) error {
 	}
 	o.At = snapshotStarted
 	c.observation = o
+	c.diskAvailable = disk
+	c.resourceError = ""
+	if resourceErr != nil {
+		c.resourceError = "Cannot verify storage free space; admission paused"
+	}
 	ls, err := c.store.Leases(ctx)
 	if err != nil {
 		return err
@@ -444,6 +477,7 @@ func (c *Controller) Tick(ctx context.Context) error {
 			}
 		}
 	}
+	c.reconcileTunnels(ls)
 	// Reload because expiry may have changed jobs and leases.
 	js, err = c.store.Jobs(ctx)
 	if err != nil {
@@ -541,6 +575,13 @@ func (c *Controller) advance(ctx context.Context, l domain.Lease, j domain.Job) 
 		if cap.Used > cap.Limit || c.observation.HostUsed >= cap.Limit {
 			return nil
 		}
+		if c.resourceLimits != nil {
+			sum, _, err := c.resources(ls)
+			if err != nil || c.resourceError != "" || sum.CPU > c.resourceLimits.CPU || sum.MemoryBytes > c.resourceLimits.MemoryBytes {
+				return nil
+			}
+		}
+
 		return c.dispatch(ctx, l, j, "start_dispatched", func(ctx context.Context) error { return c.backend.Start(ctx, l) })
 	case "start_dispatched", "waiting_ready", "ssh_configured":
 		if exists && v.State == "running" && net.ParseIP(v.IP) != nil && v.SSHAvailable {
@@ -579,6 +620,11 @@ func (c *Controller) cleanup(ctx context.Context, l domain.Lease, j domain.Job, 
 		l.StartPending = false
 	}
 	if !exists {
+		if disposer, ok := c.leasePreparer.(interface{ Forget(domain.Lease) error }); ok {
+			if err := disposer.Forget(l); err != nil {
+				return domain.Err("credential_cleanup_failed", "VM deleted; private credential cleanup must finish before releasing reservation")
+			}
+		}
 		l.State = "released"
 		l.IP = ""
 		l.Error = nil
