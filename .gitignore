@@ -16,3 +16,13 @@ server/console.db
 
 # Claude Code project files
 .claude/
+
+# Go v2 build outputs and local runtime state
+bin/
+.v2-state/
+coverage.out
+*.db-shm
+*.db-wal
+.DS_Store
+logs/
+state/

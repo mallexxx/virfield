@@ -1,0 +1,978 @@
+{
+  "base_path" : "\/lume",
+  "description" : "HTTP API for managing macOS and Linux virtual machines",
+  "endpoints" : [
+    {
+      "category" : "VM Management",
+      "description" : "List all virtual machines",
+      "method" : "GET",
+      "path" : "\/lume\/vms",
+      "path_parameters" : [
+
+      ],
+      "query_parameters" : [
+        {
+          "description" : "Filter by storage location name",
+          "name" : "storage",
+          "required" : false,
+          "type" : "string"
+        }
+      ],
+      "response_body" : {
+        "content_type" : "application\/json",
+        "description" : "Array of VM details objects"
+      },
+      "status_codes" : [
+        {
+          "code" : 200,
+          "description" : "Success"
+        },
+        {
+          "code" : 400,
+          "description" : "Bad request"
+        }
+      ]
+    },
+    {
+      "category" : "VM Management",
+      "description" : "Get detailed information about a specific virtual machine",
+      "method" : "GET",
+      "path" : "\/lume\/vms\/:name",
+      "path_parameters" : [
+        {
+          "description" : "Name of the VM",
+          "name" : "name",
+          "required" : true,
+          "type" : "string"
+        }
+      ],
+      "query_parameters" : [
+        {
+          "description" : "VM storage location to use",
+          "name" : "storage",
+          "required" : false,
+          "type" : "string"
+        }
+      ],
+      "response_body" : {
+        "content_type" : "application\/json",
+        "description" : "VM details object with name, os, cpuCount, memorySize, diskSize, display, status, vncUrl, ipAddress, locationName",
+        "fields" : [
+          {
+            "description" : "VM name",
+            "name" : "name",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "description" : "Operating system (macOS or linux)",
+            "name" : "os",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "description" : "Number of CPU cores",
+            "name" : "cpuCount",
+            "required" : true,
+            "type" : "integer"
+          },
+          {
+            "description" : "Memory size in bytes",
+            "name" : "memorySize",
+            "required" : true,
+            "type" : "integer"
+          },
+          {
+            "description" : "Disk size with allocated and total",
+            "name" : "diskSize",
+            "required" : true,
+            "type" : "object"
+          },
+          {
+            "description" : "Display resolution (WIDTHxHEIGHT)",
+            "name" : "display",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "description" : "VM status (running, stopped)",
+            "name" : "status",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "description" : "VNC URL if running",
+            "name" : "vncUrl",
+            "required" : false,
+            "type" : "string"
+          },
+          {
+            "description" : "IP address if running",
+            "name" : "ipAddress",
+            "required" : false,
+            "type" : "string"
+          },
+          {
+            "description" : "Storage location name",
+            "name" : "locationName",
+            "required" : true,
+            "type" : "string"
+          }
+        ]
+      },
+      "status_codes" : [
+        {
+          "code" : 200,
+          "description" : "Success"
+        },
+        {
+          "code" : 400,
+          "description" : "VM not found or invalid request"
+        }
+      ]
+    },
+    {
+      "category" : "VM Management",
+      "description" : "Create a new virtual machine",
+      "method" : "POST",
+      "path" : "\/lume\/vms",
+      "path_parameters" : [
+
+      ],
+      "query_parameters" : [
+
+      ],
+      "request_body" : {
+        "content_type" : "application\/json",
+        "description" : "VM creation parameters",
+        "fields" : [
+          {
+            "description" : "Name for the virtual machine",
+            "name" : "name",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "description" : "Operating system to install (macOS or linux)",
+            "name" : "os",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "description" : "Number of CPU cores",
+            "name" : "cpu",
+            "required" : true,
+            "type" : "integer"
+          },
+          {
+            "description" : "Memory size (e.g., 8GB)",
+            "name" : "memory",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "description" : "Disk size (e.g., 50GB)",
+            "name" : "diskSize",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "description" : "Display resolution (e.g., 1024x768)",
+            "name" : "display",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "description" : "Path to IPSW file or 'latest' for macOS VMs",
+            "name" : "ipsw",
+            "required" : false,
+            "type" : "string"
+          },
+          {
+            "description" : "VM storage location to use",
+            "name" : "storage",
+            "required" : false,
+            "type" : "string"
+          }
+        ]
+      },
+      "response_body" : {
+        "content_type" : "application\/json",
+        "description" : "Success message with VM name"
+      },
+      "status_codes" : [
+        {
+          "code" : 200,
+          "description" : "VM created successfully"
+        },
+        {
+          "code" : 400,
+          "description" : "Invalid request body or VM creation failed"
+        }
+      ]
+    },
+    {
+      "category" : "VM Management",
+      "description" : "Delete a virtual machine and its associated files",
+      "method" : "DELETE",
+      "path" : "\/lume\/vms\/:name",
+      "path_parameters" : [
+        {
+          "description" : "Name of the VM to delete",
+          "name" : "name",
+          "required" : true,
+          "type" : "string"
+        }
+      ],
+      "query_parameters" : [
+        {
+          "description" : "VM storage location",
+          "name" : "storage",
+          "required" : false,
+          "type" : "string"
+        }
+      ],
+      "response_body" : {
+        "content_type" : "application\/json",
+        "description" : "Empty response on success"
+      },
+      "status_codes" : [
+        {
+          "code" : 200,
+          "description" : "VM deleted successfully"
+        },
+        {
+          "code" : 400,
+          "description" : "VM not found or deletion failed"
+        }
+      ]
+    },
+    {
+      "category" : "VM Management",
+      "description" : "Create a copy of an existing virtual machine",
+      "method" : "POST",
+      "path" : "\/lume\/vms\/clone",
+      "path_parameters" : [
+
+      ],
+      "query_parameters" : [
+
+      ],
+      "request_body" : {
+        "content_type" : "application\/json",
+        "description" : "Clone parameters",
+        "fields" : [
+          {
+            "description" : "Name of the source VM",
+            "name" : "name",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "description" : "Name for the cloned VM",
+            "name" : "newName",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "description" : "Source VM storage location",
+            "name" : "sourceLocation",
+            "required" : false,
+            "type" : "string"
+          },
+          {
+            "description" : "Destination VM storage location",
+            "name" : "destLocation",
+            "required" : false,
+            "type" : "string"
+          }
+        ]
+      },
+      "response_body" : {
+        "content_type" : "application\/json",
+        "description" : "Success message with source and destination names"
+      },
+      "status_codes" : [
+        {
+          "code" : 200,
+          "description" : "VM cloned successfully"
+        },
+        {
+          "code" : 400,
+          "description" : "Clone operation failed"
+        }
+      ]
+    },
+    {
+      "category" : "VM Management",
+      "description" : "Update virtual machine configuration settings",
+      "method" : "PATCH",
+      "path" : "\/lume\/vms\/:name",
+      "path_parameters" : [
+        {
+          "description" : "Name of the VM to update",
+          "name" : "name",
+          "required" : true,
+          "type" : "string"
+        }
+      ],
+      "query_parameters" : [
+
+      ],
+      "request_body" : {
+        "content_type" : "application\/json",
+        "description" : "Settings to update (all fields optional)",
+        "fields" : [
+          {
+            "description" : "New number of CPU cores",
+            "name" : "cpu",
+            "required" : false,
+            "type" : "integer"
+          },
+          {
+            "description" : "New memory size (e.g., 16GB)",
+            "name" : "memory",
+            "required" : false,
+            "type" : "string"
+          },
+          {
+            "description" : "New total disk size (increase only)",
+            "name" : "diskSize",
+            "required" : false,
+            "type" : "string"
+          },
+          {
+            "description" : "New display resolution",
+            "name" : "display",
+            "required" : false,
+            "type" : "string"
+          },
+          {
+            "description" : "VM storage location",
+            "name" : "storage",
+            "required" : false,
+            "type" : "string"
+          },
+          {
+            "default_value" : "false",
+            "description" : "Skip the macOS rollback backup",
+            "name" : "noBackup",
+            "required" : false,
+            "type" : "boolean"
+          },
+          {
+            "default_value" : "false",
+            "description" : "Keep rollback files after success",
+            "name" : "keepBackup",
+            "required" : false,
+            "type" : "boolean"
+          },
+          {
+            "default_value" : "false",
+            "description" : "Validate the resize plan without modifying the disk",
+            "name" : "dryRun",
+            "required" : false,
+            "type" : "boolean"
+          }
+        ]
+      },
+      "response_body" : {
+        "content_type" : "application\/json",
+        "description" : "Success message"
+      },
+      "status_codes" : [
+        {
+          "code" : 200,
+          "description" : "Settings updated successfully"
+        },
+        {
+          "code" : 400,
+          "description" : "Invalid settings or update failed"
+        }
+      ]
+    },
+    {
+      "category" : "VM Management",
+      "description" : "Start a virtual machine",
+      "method" : "POST",
+      "path" : "\/lume\/vms\/:name\/run",
+      "path_parameters" : [
+        {
+          "description" : "Name of the VM to start",
+          "name" : "name",
+          "required" : true,
+          "type" : "string"
+        }
+      ],
+      "query_parameters" : [
+
+      ],
+      "request_body" : {
+        "content_type" : "application\/json",
+        "description" : "Run options (all fields optional)",
+        "fields" : [
+          {
+            "default_value" : "false",
+            "description" : "Run without VNC display",
+            "name" : "noDisplay",
+            "required" : false,
+            "type" : "boolean"
+          },
+          {
+            "description" : "Directories to share with the VM",
+            "name" : "sharedDirectories",
+            "required" : false,
+            "type" : "array"
+          },
+          {
+            "default_value" : "false",
+            "description" : "Boot macOS VM in recovery mode",
+            "name" : "recoveryMode",
+            "required" : false,
+            "type" : "boolean"
+          },
+          {
+            "description" : "VM storage location",
+            "name" : "storage",
+            "required" : false,
+            "type" : "string"
+          },
+          {
+            "default_value" : "false",
+            "description" : "Enable bidirectional clipboard sync via SSH (experimental)",
+            "name" : "clipboard",
+            "required" : false,
+            "type" : "boolean"
+          }
+        ]
+      },
+      "response_body" : {
+        "content_type" : "application\/json",
+        "description" : "Message indicating VM start was initiated"
+      },
+      "status_codes" : [
+        {
+          "code" : 202,
+          "description" : "VM start initiated (async operation)"
+        },
+        {
+          "code" : 400,
+          "description" : "Invalid request or VM not found"
+        }
+      ]
+    },
+    {
+      "category" : "VM Management",
+      "description" : "Stop a running virtual machine",
+      "method" : "POST",
+      "path" : "\/lume\/vms\/:name\/stop",
+      "path_parameters" : [
+        {
+          "description" : "Name of the VM to stop",
+          "name" : "name",
+          "required" : true,
+          "type" : "string"
+        }
+      ],
+      "query_parameters" : [
+
+      ],
+      "request_body" : {
+        "content_type" : "application\/json",
+        "description" : "Stop options (optional)",
+        "fields" : [
+          {
+            "description" : "VM storage location",
+            "name" : "storage",
+            "required" : false,
+            "type" : "string"
+          }
+        ]
+      },
+      "response_body" : {
+        "content_type" : "application\/json",
+        "description" : "Success message"
+      },
+      "status_codes" : [
+        {
+          "code" : 200,
+          "description" : "VM stopped successfully"
+        },
+        {
+          "code" : 400,
+          "description" : "Stop operation failed"
+        }
+      ]
+    },
+    {
+      "category" : "Image Management",
+      "description" : "List available images from local cache",
+      "method" : "GET",
+      "path" : "\/lume\/images",
+      "path_parameters" : [
+
+      ],
+      "query_parameters" : [
+        {
+          "description" : "Organization to list images for (default: trycua)",
+          "name" : "organization",
+          "required" : false,
+          "type" : "string"
+        }
+      ],
+      "response_body" : {
+        "content_type" : "application\/json",
+        "description" : "Array of image objects with repository and imageId"
+      },
+      "status_codes" : [
+        {
+          "code" : 200,
+          "description" : "Success"
+        },
+        {
+          "code" : 400,
+          "description" : "Failed to list images"
+        }
+      ]
+    },
+    {
+      "category" : "Image Management",
+      "description" : "Get the latest macOS restore image (IPSW) URL",
+      "method" : "GET",
+      "path" : "\/lume\/ipsw",
+      "path_parameters" : [
+
+      ],
+      "query_parameters" : [
+
+      ],
+      "response_body" : {
+        "content_type" : "application\/json",
+        "description" : "Object with url field containing the IPSW download URL"
+      },
+      "status_codes" : [
+        {
+          "code" : 200,
+          "description" : "Success"
+        },
+        {
+          "code" : 400,
+          "description" : "Failed to get IPSW URL"
+        }
+      ]
+    },
+    {
+      "category" : "Image Management",
+      "description" : "Pull a VM image from a container registry",
+      "method" : "POST",
+      "path" : "\/lume\/pull",
+      "path_parameters" : [
+
+      ],
+      "query_parameters" : [
+
+      ],
+      "request_body" : {
+        "content_type" : "application\/json",
+        "description" : "Pull parameters",
+        "fields" : [
+          {
+            "description" : "Image to pull (format: name:tag)",
+            "name" : "image",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "description" : "Name for the resulting VM",
+            "name" : "name",
+            "required" : false,
+            "type" : "string"
+          },
+          {
+            "default_value" : "ghcr.io",
+            "description" : "Container registry URL",
+            "name" : "registry",
+            "required" : false,
+            "type" : "string"
+          },
+          {
+            "default_value" : "trycua",
+            "description" : "Organization to pull from",
+            "name" : "organization",
+            "required" : false,
+            "type" : "string"
+          },
+          {
+            "description" : "VM storage location",
+            "name" : "storage",
+            "required" : false,
+            "type" : "string"
+          }
+        ]
+      },
+      "response_body" : {
+        "content_type" : "application\/json",
+        "description" : "Success message with image and name"
+      },
+      "status_codes" : [
+        {
+          "code" : 200,
+          "description" : "Image pulled successfully"
+        },
+        {
+          "code" : 400,
+          "description" : "Pull operation failed"
+        }
+      ]
+    },
+    {
+      "category" : "Image Management",
+      "description" : "Push a VM image to a container registry",
+      "method" : "POST",
+      "path" : "\/lume\/vms\/push",
+      "path_parameters" : [
+
+      ],
+      "query_parameters" : [
+
+      ],
+      "request_body" : {
+        "content_type" : "application\/json",
+        "description" : "Push parameters",
+        "fields" : [
+          {
+            "description" : "Name of the local VM to push",
+            "name" : "name",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "description" : "Base name for the image in the registry",
+            "name" : "imageName",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "description" : "List of tags to push",
+            "name" : "tags",
+            "required" : true,
+            "type" : "array"
+          },
+          {
+            "default_value" : "ghcr.io",
+            "description" : "Container registry URL",
+            "name" : "registry",
+            "required" : false,
+            "type" : "string"
+          },
+          {
+            "default_value" : "trycua",
+            "description" : "Organization to push to",
+            "name" : "organization",
+            "required" : false,
+            "type" : "string"
+          },
+          {
+            "description" : "VM storage location",
+            "name" : "storage",
+            "required" : false,
+            "type" : "string"
+          },
+          {
+            "default_value" : "512",
+            "description" : "Chunk size for upload in MB",
+            "name" : "chunkSizeMb",
+            "required" : false,
+            "type" : "integer"
+          }
+        ]
+      },
+      "response_body" : {
+        "content_type" : "application\/json",
+        "description" : "Message indicating push was initiated"
+      },
+      "status_codes" : [
+        {
+          "code" : 202,
+          "description" : "Push initiated (async operation)"
+        },
+        {
+          "code" : 400,
+          "description" : "Invalid request"
+        }
+      ]
+    },
+    {
+      "category" : "Image Management",
+      "description" : "Remove cached images to free up disk space",
+      "method" : "POST",
+      "path" : "\/lume\/prune",
+      "path_parameters" : [
+
+      ],
+      "query_parameters" : [
+
+      ],
+      "response_body" : {
+        "content_type" : "application\/json",
+        "description" : "Success message"
+      },
+      "status_codes" : [
+        {
+          "code" : 200,
+          "description" : "Images pruned successfully"
+        },
+        {
+          "code" : 400,
+          "description" : "Prune operation failed"
+        }
+      ]
+    },
+    {
+      "category" : "Configuration",
+      "description" : "Get current Lume configuration settings",
+      "method" : "GET",
+      "path" : "\/lume\/config",
+      "path_parameters" : [
+
+      ],
+      "query_parameters" : [
+
+      ],
+      "response_body" : {
+        "content_type" : "application\/json",
+        "description" : "Configuration object with vmLocations, defaultLocationName, cacheDirectory, cachingEnabled"
+      },
+      "status_codes" : [
+        {
+          "code" : 200,
+          "description" : "Success"
+        },
+        {
+          "code" : 400,
+          "description" : "Failed to get config"
+        }
+      ]
+    },
+    {
+      "category" : "Configuration",
+      "description" : "Update Lume configuration settings",
+      "method" : "POST",
+      "path" : "\/lume\/config",
+      "path_parameters" : [
+
+      ],
+      "query_parameters" : [
+
+      ],
+      "request_body" : {
+        "content_type" : "application\/json",
+        "description" : "Configuration fields to update (all optional)",
+        "fields" : [
+          {
+            "description" : "VM home directory path",
+            "name" : "homeDirectory",
+            "required" : false,
+            "type" : "string"
+          },
+          {
+            "description" : "Cache directory path",
+            "name" : "cacheDirectory",
+            "required" : false,
+            "type" : "string"
+          },
+          {
+            "description" : "Enable or disable image caching",
+            "name" : "cachingEnabled",
+            "required" : false,
+            "type" : "boolean"
+          }
+        ]
+      },
+      "response_body" : {
+        "content_type" : "application\/json",
+        "description" : "Success message"
+      },
+      "status_codes" : [
+        {
+          "code" : 200,
+          "description" : "Configuration updated successfully"
+        },
+        {
+          "code" : 400,
+          "description" : "Invalid request"
+        }
+      ]
+    },
+    {
+      "category" : "Configuration",
+      "description" : "List all VM storage locations",
+      "method" : "GET",
+      "path" : "\/lume\/config\/locations",
+      "path_parameters" : [
+
+      ],
+      "query_parameters" : [
+
+      ],
+      "response_body" : {
+        "content_type" : "application\/json",
+        "description" : "Array of location objects with name and path"
+      },
+      "status_codes" : [
+        {
+          "code" : 200,
+          "description" : "Success"
+        },
+        {
+          "code" : 400,
+          "description" : "Failed to get locations"
+        }
+      ]
+    },
+    {
+      "category" : "Configuration",
+      "description" : "Add a new VM storage location",
+      "method" : "POST",
+      "path" : "\/lume\/config\/locations",
+      "path_parameters" : [
+
+      ],
+      "query_parameters" : [
+
+      ],
+      "request_body" : {
+        "content_type" : "application\/json",
+        "description" : "Location details",
+        "fields" : [
+          {
+            "description" : "Storage location name",
+            "name" : "name",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "description" : "Path to storage directory",
+            "name" : "path",
+            "required" : true,
+            "type" : "string"
+          }
+        ]
+      },
+      "response_body" : {
+        "content_type" : "application\/json",
+        "description" : "Success message with name and path"
+      },
+      "status_codes" : [
+        {
+          "code" : 200,
+          "description" : "Location added successfully"
+        },
+        {
+          "code" : 400,
+          "description" : "Invalid request or location already exists"
+        }
+      ]
+    },
+    {
+      "category" : "Configuration",
+      "description" : "Remove a VM storage location",
+      "method" : "DELETE",
+      "path" : "\/lume\/config\/locations\/:name",
+      "path_parameters" : [
+        {
+          "description" : "Name of the location to remove",
+          "name" : "name",
+          "required" : true,
+          "type" : "string"
+        }
+      ],
+      "query_parameters" : [
+
+      ],
+      "response_body" : {
+        "content_type" : "application\/json",
+        "description" : "Success message"
+      },
+      "status_codes" : [
+        {
+          "code" : 200,
+          "description" : "Location removed successfully"
+        },
+        {
+          "code" : 400,
+          "description" : "Location not found or cannot be removed"
+        }
+      ]
+    },
+    {
+      "category" : "Configuration",
+      "description" : "Set the default VM storage location",
+      "method" : "POST",
+      "path" : "\/lume\/config\/locations\/default\/:name",
+      "path_parameters" : [
+        {
+          "description" : "Name of the location to set as default",
+          "name" : "name",
+          "required" : true,
+          "type" : "string"
+        }
+      ],
+      "query_parameters" : [
+
+      ],
+      "response_body" : {
+        "content_type" : "application\/json",
+        "description" : "Success message"
+      },
+      "status_codes" : [
+        {
+          "code" : 200,
+          "description" : "Default location set successfully"
+        },
+        {
+          "code" : 400,
+          "description" : "Location not found"
+        }
+      ]
+    },
+    {
+      "category" : "Logs",
+      "description" : "Retrieve Lume server logs",
+      "method" : "GET",
+      "path" : "\/lume\/logs",
+      "path_parameters" : [
+
+      ],
+      "query_parameters" : [
+        {
+          "description" : "Log type: 'info', 'error', or 'all' (default: all)",
+          "name" : "type",
+          "required" : false,
+          "type" : "string"
+        },
+        {
+          "description" : "Number of lines to return from end of log",
+          "name" : "lines",
+          "required" : false,
+          "type" : "integer"
+        }
+      ],
+      "response_body" : {
+        "content_type" : "application\/json",
+        "description" : "Object with 'info' and\/or 'error' fields containing log content"
+      },
+      "status_codes" : [
+        {
+          "code" : 200,
+          "description" : "Success"
+        },
+        {
+          "code" : 400,
+          "description" : "Failed to read logs"
+        }
+      ]
+    }
+  ],
+  "version" : "0.5.3"
+}

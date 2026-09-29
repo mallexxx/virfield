@@ -1,3 +1,13 @@
+# Virfield v2 development
+
+The Go rewrite lives on `codex/virfield-v2`. Start with the [v2 runbook and scope](docs/v2/README.md).
+Build with `make build`; verify with `make check`. This is a tested lifecycle core,
+not yet a complete or production-accepted replacement for v1.
+
+The existing TypeScript application below remains available during migration.
+
+---
+
 # 🧚‍♀️ virfield
 
 macOS VM lifecycle console and MCP server for AI-driven test automation.
