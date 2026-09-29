@@ -75,6 +75,27 @@ func TestAuthEveryAPIRouteAndNoCrossOrigin(t *testing.T) {
 		t.Fatal(w.Code)
 	}
 }
+
+func TestStatusBeforeFirstBackendObservation(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	c, err := control.New(s, backend{}, []domain.Template{{ID: "test", Name: "golden", Location: "home"}}, 2, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := request(New(c, token, log), "GET", "/api/v1/status", "", "", true)
+	var status domain.Status
+	if err := json.Unmarshal(w.Body.Bytes(), &status); err != nil {
+		t.Fatal(err)
+	}
+	if w.Code != 200 || status.Observation.VMs == nil || status.Observation.Error == nil || status.Capacity.Available != 0 {
+		t.Fatal("cold-start status must be renderable and refuse admission", w.Code, w.Body.String())
+	}
+}
 func TestAcquireReplayCapacityAndStrictJSON(t *testing.T) {
 	h := handler(t)
 	body := `{"template":"test","ttl_seconds":3600}`

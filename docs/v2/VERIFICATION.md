@@ -341,6 +341,13 @@ The repeated review found and corrected these concrete defects:
   address survives refresh until the lease is no longer ready. Isolated Playwright
   checks passed for those behaviors, duplicate events and 390-pixel mobile layout.
 
+Installed-console verification then exposed a cold-start failure: before the first
+successful Lume observation, `vms: null` made rendering throw and prevented login.
+The API now emits an empty inventory array, and the console also tolerates older
+null responses. A dedicated API regression and browser checks confirm the console
+remains accessible with admission blocked. A recovered poll clears its temporary
+connection error without clearing errors from user actions.
+
 `make check` (Python, gofmt, vet, race tests), the additional deletion-guard race
 test and Staticcheck passed. This is code/browser verification, not a completed
 fresh golden acceptance. The Lume system-service update is still awaiting macOS

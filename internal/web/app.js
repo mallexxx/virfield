@@ -1,6 +1,7 @@
 'use strict';
 let token = '', cursor = 0, pendingAcquire = null;
 let refreshInFlight = null;
+let pollError = '';
 const releaseKeys = new Map();
 const imageKeys = new Map();
 const tunnelAddresses = new Map();
@@ -12,7 +13,7 @@ async function api(path, method = 'GET', body, key) {
   return data;
 }
 function text(tag, value) { const node = document.createElement(tag); node.textContent = value; return node; }
-function report(err) { el('error').textContent = err.message; }
+function report(err) { pollError = ''; el('error').textContent = err.message; }
 function refresh() {
   // Polls and action callbacks share one refresh so event cursors cannot race.
   return refreshInFlight ||= refreshState().finally(() => {refreshInFlight = null;});
@@ -72,7 +73,7 @@ async function refreshState() {
   if (!state.jobs.length) el('jobs').append(text('p', 'No active jobs.'));
   el('images').replaceChildren(...state.templates.map(t => {
     const row = document.createElement('article');
-    const vm = state.observation.vms.find(v => v.name === t.name && v.location === t.location);
+    const vm = (state.observation.vms || []).find(v => v.name === t.name && v.location === t.location);
     row.append(text('h3', t.id), text('p', `${t.name} · ${vm?.state || 'absent'}`));
     if (t.image) {
       row.append(text('p', `Build ${t.image.build} · guest SIP ${t.image.disable_sip ? 'disabled' : 'enabled'}`), text('p', t.image.provision ? 'Tools recipe: ' + t.image.provision : 'Base OS image · development tools not provisioned'));
@@ -106,7 +107,16 @@ async function refreshState() {
   cursor = page.next_cursor;
   while (el('events').children.length > 30) el('events').lastChild.remove();
 }
-async function poll() { try { await refresh(); } catch(err) {report(err);el('connection').textContent='Connection lost';el('prepare').disabled=true;} finally {setTimeout(poll, 3000);} }
+async function poll() {
+  try {
+    await refresh();
+    if (pollError && el('error').textContent === pollError) el('error').textContent = '';
+    pollError = '';
+  } catch(err) {
+    report(err); pollError = err.message;
+    el('connection').textContent = 'Connection lost'; el('prepare').disabled = true;
+  } finally {setTimeout(poll, 3000);}
+}
 el('connect').addEventListener('submit', async event => {
   event.preventDefault(); token = el('token').value;
   try {await refresh();el('token').value='';el('login').hidden=true;el('console').hidden=false;el('error').textContent='';setTimeout(poll,3000);} catch(err) {report(err);}

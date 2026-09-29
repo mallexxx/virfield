@@ -73,7 +73,7 @@ func New(s *store.Store, b Backend, templates []domain.Template, limit int, log 
 		}
 		tm[t.ID] = t
 	}
-	return &Controller{store: s, backend: b, templates: tm, limit: limit, now: func() time.Time { return time.Now().UTC() }, active: map[string]bool{}, log: log, observation: domain.Observation{Error: domain.Err("backend_unavailable", "Lume inventory has not been checked yet")}}, nil
+	return &Controller{store: s, backend: b, templates: tm, limit: limit, now: func() time.Time { return time.Now().UTC() }, active: map[string]bool{}, log: log, observation: domain.Observation{VMs: []domain.VM{}, Error: domain.Err("backend_unavailable", "Lume inventory has not been checked yet")}}, nil
 }
 func fingerprint(v any) string {
 	b, _ := json.Marshal(v)
