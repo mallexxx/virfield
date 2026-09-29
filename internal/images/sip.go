@@ -26,7 +26,7 @@ func (e *Engine) sip27(ctx context.Context, l domain.Lease) error {
 	if err != nil {
 		return err
 	}
-	status, err := guest.run(ctx, "/usr/bin/csrutil status", "")
+	status, err := guest.Run(ctx, "/usr/bin/csrutil status", "")
 	guest.Close()
 	if err != nil {
 		return err

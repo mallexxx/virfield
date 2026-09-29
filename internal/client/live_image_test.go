@@ -2,8 +2,11 @@ package client
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
+	"golang.org/x/crypto/ssh"
 	"os"
 	"strings"
 	"testing"
@@ -165,13 +168,26 @@ func TestLiveImageRebuild(t *testing.T) {
 		}
 		t.Logf("maximum API read latency during live run: %s", maxRead)
 	}()
-	request := domain.AcquireRequest{Template: id, TTLSeconds: 3600}
+	newRequest := func() domain.AcquireRequest {
+		pub, _, err := ed25519.GenerateKey(rand.Reader)
+		if err != nil {
+			t.Fatal(err)
+		}
+		k, err := ssh.NewPublicKey(pub)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return domain.AcquireRequest{Template: id, TTLSeconds: 3600, SSHPublicKey: string(ssh.MarshalAuthorizedKey(k))}
+	}
+	request := newRequest()
+	firstRequest := request
 	for _, suffix := range []string{"-first", "-second"} {
 		op, err := mutate(ctx, "leases", request, prefix+suffix)
 		if err != nil {
 			t.Fatal(err)
 		}
 		leases = append(leases, op)
+		request = newRequest()
 	}
 	third, err := mutate(ctx, "leases", request, prefix+"-third")
 	if err == nil {
@@ -188,7 +204,7 @@ func TestLiveImageRebuild(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	replay, err := mutate(ctx, "leases", request, prefix+"-first")
+	replay, err := mutate(ctx, "leases", firstRequest, prefix+"-first")
 	if err != nil || !replay.Replayed || replay.Lease.ID != leases[0].Lease.ID {
 		t.Fatal("acquire idempotency failed", err)
 	}

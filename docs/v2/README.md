@@ -21,6 +21,10 @@ make build
 ./bin/virfieldd -config "$PWD/.v2-state/config.json"
 ```
 
+The initial configuration is a skeleton. Add the pinned image profile and image
+tool paths from [Image Manager](IMAGE-PIPELINE.md), then build and verify the image
+through v2 before acquiring leases. An unverified existing golden is refused.
+
 In another terminal:
 
 ```sh
@@ -34,12 +38,32 @@ last reconciler observation; polling clients do not repeatedly call Lume.
 ### Acquire, inspect and renew
 
 ```sh
-./bin/virfield -token-file "$PWD/.v2-state/token" -key story-42-attempt-1 acquire macos27 3600
+./bin/virfield keygen "$PWD/.v2-state/story-42"
+./bin/virfield -token-file "$PWD/.v2-state/token" -key story-42-attempt-1 \
+  acquire macos27 3600 "$PWD/.v2-state/story-42/id_ed25519.pub"
 ./bin/virfield -token-file "$PWD/.v2-state/token" lease LEASE_ID
 ./bin/virfield -token-file "$PWD/.v2-state/token" job JOB_ID
 ./bin/virfield -token-file "$PWD/.v2-state/token" events 0
 ./bin/virfield -token-file "$PWD/.v2-state/token" renew LEASE_ID 2026-09-29T18:00:00Z
 ```
+
+Each lease requires a fresh plain Ed25519 public key. The CLI generates its private
+key locally in a new 0700 directory; it never uploads it. MCP/UI accept only the
+public key. A key already used by an active lease returns `ssh_key_in_use`.
+The same key and idempotency key remain valid for retries of the same acquisition.
+
+After the lease reaches `ready`, export a connection bound to its host key:
+
+```sh
+./bin/virfield -token-file "$PWD/.v2-state/token" ssh-config LEASE_ID "$PWD/.v2-state/story-42"
+ssh -F "$PWD/.v2-state/story-42/config" virfield
+```
+
+The export verifies that the local private key belongs to the lease, pins its
+Ed25519 host key, disables agent/password authentication and connection sharing,
+and refuses to overwrite existing files. These local identity files belong to
+the caller; remove them when no longer needed. Direct guest IP routing is required;
+managed tunnels and container routing are separate release gates.
 
 The expiry example must be replaced with a future RFC3339 timestamp within
 24 hours. Reusing an older deadline never shortens an active lease. Reusing an
@@ -64,6 +88,7 @@ images and arbitrary external VMs are never adopted by name.
 |---|---|
 | `cmd/virfieldd` | Configuration, host singleton lock, HTTP server, shutdown |
 | `internal/control` | Admission, leases, durable job phases, reconciliation, cleanup |
+| `internal/guestssh` | Bounded pinned SSH, image bootstrap, per-lease credential isolation |
 | `internal/images` | Pinned IPSW downloads, versioned guest provisioning, image verification |
 | `internal/store` | SQLite schema, atomic state + event transactions, idempotency |
 | `internal/lume` | Sole Lume HTTP/CLI adapter, fixed image commands, no blind mutation retries |
@@ -102,8 +127,21 @@ different ports/databases. External Lume callers remain outside that lock:
 production operation requires that v1 and other writers do not manage these VMs.
 Lume/Virtualization.framework remains the final hardware admission authority.
 
-`ready` means running + valid guest IP + **Lume-reported** SSH availability.
-It does not prove that Broker's future scoped SSH credential authenticates.
+`ready` requires a running VM, valid guest IP and successful authentication
+against its new host key after per-lease credential isolation. Each clone receives
+a distinct administrator password, daemon management key and Ed25519 host key.
+Its `authorized_keys` contains only its management key and caller public key;
+the image key is explicitly tested for authentication rejection. Effective sshd
+policy must disable password, keyboard-interactive and root login, and agent
+forwarding. Private material stays in owner-only daemon files; API/MCP expose only
+connection metadata and public keys.
+
+An interrupted SSH isolation is never replayed. The lease becomes
+`needs_attention`, remains reserved and can be released or expire normally:
+its clone ownership and completed start are already known. An IP change after
+verification requires a new lease. Schema version 3 prevents older binaries from
+skipping this readiness phase. Existing v2 leases without an SSH identity require
+release and reacquisition; the existing verified image remains usable.
 
 ### When a job needs attention
 
@@ -171,6 +209,9 @@ read-only check validates only host status and inventory.
 
 **Live lifecycle accepted:** two real clones reached Lume SSH readiness, a third
 request was refused, SQLite reopen preserved leases, and both clones were deleted.
+**Scoped SSH accepted:** two real clones rejected each other’s keys and the image
+key; own keys and exported OpenSSH configs worked after a hard daemon restart.
+Private-secret API checks, capacity refusal, idempotency and cleanup passed.
 **Base-image acceptance passed:** a real Apple download with resume and SHA-256,
 followed by a clean cached-media rebuild through Assistant, Recovery/SIP, SSH
 rotation and reboot verification; two clones and cleanup passed in 10m38s.
@@ -185,7 +226,7 @@ long-duration stability. Automated mock tests do not establish these claims.
 | Core lifecycle, API, CLI, stdio MCP, minimal UI | Implemented; two-VM live lifecycle passed |
 | Image Manager: download/pull/build/promote | Pinned download/build/verify/promotion implemented; registry pull pending |
 | Versioned provisioning jobs | Native Lume setup plus verified macOS 27 Assistant/Recovery drivers; full tool/Xcode provisioning pending |
-| Scoped SSH credentials, verified guest login, tunnels | Image-specific credentials implemented; per-lease rotation/delivery and tunnels pending |
+| Scoped SSH credentials, verified guest login, tunnels | Per-lease password, key and host-key isolation plus caller-owned keys implemented and live-tested; tunnels pending |
 | Resource quotas beyond two VM slots | CPU/RAM/disk admission still required |
 | HTTP MCP, Broker-facing deployment | HTTP API exists; TLS/container routing and scoped principals pending |
 | Production operations | Backup/restore rehearsal, retention/log rotation, soak/fault injection pending |

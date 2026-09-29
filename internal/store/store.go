@@ -52,16 +52,16 @@ func (s *Store) migrate() error {
 	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
 		return err
 	}
-	if version > 2 {
+	if version > 3 {
 		return fmt.Errorf("database schema %d is newer than this binary", version)
 	}
-	if version == 2 {
+	if version == 3 {
 		return nil
 	}
-	if version == 1 {
-		// Version 2 introduces permanent image records in the JSON journal. Older
-		// daemons must refuse these records rather than expire them as ordinary leases.
-		_, err := s.db.Exec(`PRAGMA user_version=2`)
+	if version == 1 || version == 2 {
+		// Version 3 adds authenticated lease readiness and scoped SSH identities.
+		// Older binaries must not publish leases without completing this phase.
+		_, err := s.db.Exec(`PRAGMA user_version=3`)
 		return err
 	}
 	_, err := s.db.Exec(`BEGIN IMMEDIATE;
@@ -71,7 +71,7 @@ func (s *Store) migrate() error {
  CREATE TABLE events (id INTEGER PRIMARY KEY AUTOINCREMENT, lease_id TEXT NOT NULL REFERENCES leases(id), job_id TEXT NOT NULL, type TEXT NOT NULL, message TEXT NOT NULL, at TEXT NOT NULL);
  CREATE INDEX events_lease ON events(lease_id,id);
  CREATE INDEX jobs_state ON jobs(state);
- PRAGMA user_version=2;
+ PRAGMA user_version=3;
  COMMIT;`)
 	return err
 }

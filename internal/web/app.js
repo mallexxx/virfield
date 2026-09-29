@@ -26,6 +26,7 @@ async function refresh() {
     const row = document.createElement('article');
     row.append(text('h3', l.vm_name), text('p', `${l.state} · expires ${new Date(l.expires_at).toLocaleString()}`), text('code', l.id));
     if (l.ip) row.append(text('p', `Guest IP: ${l.ip}`));
+    if (l.ssh) row.append(text('p', 'Client key: ' + l.ssh.client_key_fingerprint), text('code', 'Host key: ' + l.ssh.host_key));
     if (l.error) row.append(text('p', l.error.message));
     const release = text('button', 'Release and delete VM');
     release.disabled = l.state === 'releasing' || l.state === 'quarantined';
@@ -91,7 +92,7 @@ el('acquire').addEventListener('submit', async event => {
   event.preventDefault(); el('prepare').disabled = true; el('error').textContent = '';
   // Preserve the exact payload and key on transport failure: a lost HTTP response
   // must not cause another lease when the user retries.
-  pendingAcquire ||= {key:crypto.randomUUID(),body:{template:el('template').value,ttl_seconds:Number(el('ttl').value)}};
-  try {await api('leases','POST',pendingAcquire.body,pendingAcquire.key);pendingAcquire=null;await refresh();}
+  pendingAcquire ||= {key:crypto.randomUUID(),body:{template:el('template').value,ttl_seconds:Number(el('ttl').value),ssh_public_key:el('ssh-key').value}};
+  try {await api('leases','POST',pendingAcquire.body,pendingAcquire.key);pendingAcquire=null;el('ssh-key').value='';await refresh();}
   catch(err) {report(err); if (err.code && err.code !== 'internal_error') pendingAcquire=null;}
 });

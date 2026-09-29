@@ -117,11 +117,60 @@ The foreground v2 test daemon is stopped after acceptance; this is not a launchd
 production deployment. Its private journal/configuration are retained under
 `state/v2-live-20260929-a`. Lume remains an independently managed process.
 
+## Scoped lease SSH acceptance
+
+**2026-09-29, PASS:** `TestLiveLeaseSSH` against the retained verified golden.
+The first run completed in **72.63 seconds**. The expanded run completed in
+**99.69 seconds**, including a real SIGKILL/restart of the foreground v2 daemon
+while both disposable clones were ready. Expanded run leases:
+
+- `lease-46da81dcb9c66d8d31a8a16fd6b8e604`.
+- `lease-5327d42fe8275dff74bf76a4bfb40ccc`.
+
+The expanded test proved:
+
+- Distinct per-lease Ed25519 host keys, successful own-key authentication,
+  rejected cross-lease keys, and rejected inherited image keys. Negative probes
+  use the correct NEW host pin and require an authentication refusal; a network
+  failure or changed host pin cannot count as a successful denial.
+- Administrator password and management key differ from the image credentials;
+  status/events/lease API responses do not contain the inspected private secrets.
+- A hard daemon restart preserves both ready records and exact SSH metadata.
+  Own-key authentication and the generated strict OpenSSH configurations work
+  after restart. Finder, disabled SIP, virtual hardware and workspace probes pass.
+- Third admission returns `capacity_exhausted`; acquire retry returns the original
+  lease; API release stops/deletes both test-owned VMs and restores 0/2 slots.
+
+The SSH implementation also checks exact authorized keys and effective sshd
+policy before publishing readiness. Automated controller tests cover a blocked
+SSH worker, concurrent renewal, expiry, failure and interrupted-stage recovery
+without replaying credential mutation. Schema 3 rejects older readers. Race tests,
+vet and Staticcheck passed. Govulncheck found zero reachable/imported-package
+vulnerabilities; one advisory remains in an unused part of a required module.
+
+The hard crash above happened after readiness. It does **not** establish crash
+safety during clone, install, SSH mutation or delete; those live fault-injection
+gates remain. Private daemon diagnostic/credential retention still needs a policy.
+
+```sh
+VIRFIELD_LIVE_LEASE_SSH=I_APPROVE_TEMPORARY_VM_DELETION \
+VIRFIELD_LIVE_TEMPLATE_ID=live-test \
+VIRFIELD_LIVE_TOKEN_FILE="$PWD/state/v2-live-20260929-a/token" \
+VIRFIELD_LIVE_STATE_DIR="$PWD/state/v2-live-20260929-a" \
+  go test -v ./internal/client -run '^TestLiveLeaseSSH$' -count=1 -timeout=17m
+```
+
+The test requires an idle already-running v2 daemon and leaves the golden intact.
+For the restart variant, set `VIRFIELD_LIVE_RESTART_MARKER` to a NEW local path.
+When the test creates that file, restart only its test daemon, wait for successful
+reconciliation, then create `<marker>.resume` within two minutes. The harness
+never kills an external process itself.
+
 ## Not yet accepted / production release gates
 
 - Browser interaction/visual QA and remote GitHub Actions execution.
-- Per-lease SSH credential rotation/delivery and tunnels. Image credentials are
-  private and image-specific; clones still inherit them and are not Broker-ready.
+- Managed tunnels and Broker/container routing. Per-lease SSH isolation and
+  caller-owned key delivery are accepted, but are not the full Broker integration.
 - Image registry pull, full legacy tool/Xcode/provider provisioning (including
   Gatekeeper/AMFI/TCC recipe migration), CPU/RAM quotas beyond the
   two-VM cap, and support for macOS builds other than the pinned `26A428` recipe.

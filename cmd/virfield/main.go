@@ -29,7 +29,7 @@ func run() error {
 	tokenFile := flag.String("token-file", "", "owner-only API token file")
 	key := flag.String("key", "", "stable idempotency key; required for acquire/release")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Usage: virfield [flags] status | image-build IMAGE_ID | image-delete IMAGE_ID EXACT_VM_NAME | acquire TEMPLATE TTL_SECONDS | lease ID | job ID | events [AFTER] | release ID | renew ID RFC3339 | resolve ID VM CONFIRM-NO-OPERATION-IN-FLIGHT | init DIRECTORY TEMPLATE VM LOCATION")
+		fmt.Fprintln(os.Stderr, "Usage: virfield [flags] status | image-build IMAGE_ID | image-delete IMAGE_ID EXACT_VM_NAME | acquire TEMPLATE TTL_SECONDS PUBLIC_KEY_FILE | keygen DIRECTORY | ssh-config LEASE_ID IDENTITY_DIRECTORY | lease ID | job ID | events [AFTER] | release ID | renew ID RFC3339 | resolve ID VM CONFIRM-NO-OPERATION-IN-FLIGHT | init DIRECTORY TEMPLATE VM LOCATION")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -37,6 +37,16 @@ func run() error {
 	if len(args) == 0 {
 		flag.Usage()
 		return errors.New("command required")
+	}
+	if args[0] == "keygen" {
+		if len(args) != 2 {
+			return errors.New("usage: keygen NEW_DIRECTORY")
+		}
+		if err := client.GenerateIdentity(args[1]); err != nil {
+			return err
+		}
+		fmt.Println(filepath.Join(args[1], "id_ed25519.pub"))
+		return nil
 	}
 	if args[0] == "init" {
 		if len(args) != 5 {
@@ -82,8 +92,8 @@ func run() error {
 		}
 		path = "status"
 	case "acquire":
-		if len(args) != 3 || *key == "" {
-			return errors.New("usage: -key STABLE_KEY acquire TEMPLATE TTL_SECONDS")
+		if len(args) != 4 || *key == "" {
+			return errors.New("usage: -key STABLE_KEY acquire TEMPLATE TTL_SECONDS PUBLIC_KEY_FILE")
 		}
 		ttl, err := strconv.Atoi(args[2])
 		if err != nil {
@@ -91,7 +101,32 @@ func run() error {
 		}
 		method = "POST"
 		path = "leases"
-		body = domain.AcquireRequest{Template: args[1], TTLSeconds: ttl}
+		pub, err := os.ReadFile(args[3])
+		if err != nil {
+			return err
+		}
+		canonical, err := domain.CanonicalPublicKey(string(pub))
+		if err != nil {
+			return err
+		}
+		body = domain.AcquireRequest{Template: args[1], TTLSeconds: ttl, SSHPublicKey: canonical}
+	case "ssh-config":
+		if len(args) != 3 || !domain.ValidName(args[1]) {
+			return errors.New("usage: ssh-config LEASE_ID IDENTITY_DIRECTORY")
+		}
+		b, err := c.Do(context.Background(), "GET", "leases/"+args[1], nil, "")
+		if err != nil {
+			return err
+		}
+		var l domain.Lease
+		if err := json.Unmarshal(b, &l); err != nil {
+			return err
+		}
+		if err := client.WriteSSHConfig(args[2], l); err != nil {
+			return err
+		}
+		fmt.Println(filepath.Join(args[2], "config"))
+		return nil
 	case "lease", "job":
 		if len(args) != 2 || !domain.ValidName(args[1]) {
 			return errors.New("valid ID required")
@@ -178,6 +213,7 @@ func initialize(dir, id, name, location string) error {
 		return err
 	}
 	fmt.Println("Created", path)
+	fmt.Println("Configure a pinned image profile and image tools before acquiring leases; see docs/v2/IMAGE-PIPELINE.md")
 	fmt.Println("Start: virfieldd -config", path)
 	return nil
 }

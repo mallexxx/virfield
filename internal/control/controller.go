@@ -29,17 +29,18 @@ type Backend interface {
 	Delete(context.Context, domain.Lease) error
 }
 type Controller struct {
-	imageBuilder ImageBuilder
-	mu           sync.Mutex
-	store        *store.Store
-	backend      Backend
-	templates    map[string]domain.Template
-	observation  domain.Observation
-	limit        int
-	now          func() time.Time
-	active       map[string]bool
-	wg           sync.WaitGroup
-	log          *slog.Logger
+	imageBuilder  ImageBuilder
+	leasePreparer LeasePreparer
+	mu            sync.Mutex
+	store         *store.Store
+	backend       Backend
+	templates     map[string]domain.Template
+	observation   domain.Observation
+	limit         int
+	now           func() time.Time
+	active        map[string]bool
+	wg            sync.WaitGroup
+	log           *slog.Logger
 }
 
 func New(s *store.Store, b Backend, templates []domain.Template, limit int, log *slog.Logger) (*Controller, error) {
@@ -159,6 +160,13 @@ func (c *Controller) Acquire(ctx context.Context, key string, r domain.AcquireRe
 	if err := validKey(key); err != nil {
 		return domain.Operation{}, err
 	}
+	if r.SSHPublicKey != "" {
+		canonical, err := domain.CanonicalPublicKey(r.SSHPublicKey)
+		if err != nil {
+			return domain.Operation{}, err
+		}
+		r.SSHPublicKey = canonical
+	}
 	if err := r.Validate(); err != nil {
 		return domain.Operation{}, err
 	}
@@ -201,11 +209,21 @@ func (c *Controller) Acquire(ctx context.Context, key string, r domain.AcquireRe
 			return domain.Operation{}, domain.Err("image_in_use", "image operation is in progress")
 		}
 	}
+	imageID := ""
+	if c.leasePreparer != nil && (t.Image == nil || r.SSHPublicKey == "") {
+		return domain.Operation{}, domain.Err("ssh_profile_missing", "A verified image profile and a fresh ssh_public_key are required for each lease")
+	}
+	for _, active := range ls {
+		if r.SSHPublicKey != "" && active.SSHPublicKey == r.SSHPublicKey {
+			return domain.Operation{}, domain.Err("ssh_key_in_use", "Use a distinct client SSH key for each active lease")
+		}
+	}
 	if t.Image != nil {
 		verified := false
 		for _, l := range ls {
 			if l.Purpose == "image" && l.Key() == t.Location+"/"+t.Name && l.State == "image_ready" && l.ImageManifest == fingerprint(t.Image) {
 				verified = true
+				imageID = l.ID
 			}
 		}
 		if !verified {
@@ -218,7 +236,7 @@ func (c *Controller) Acquire(ctx context.Context, key string, r domain.AcquireRe
 	}
 	now := c.now()
 	id := domain.NewID("lease-")
-	l := domain.Lease{ID: id, VMName: "vf-" + id[6:], Location: t.Location, Template: t.ID, State: "pending", ExpiresAt: now.Add(time.Duration(r.TTLSeconds) * time.Second), CreatedAt: now, UpdatedAt: now}
+	l := domain.Lease{Source: &t, ImageID: imageID, SSHPublicKey: r.SSHPublicKey, ID: id, VMName: "vf-" + id[6:], Location: t.Location, Template: t.ID, State: "pending", ExpiresAt: now.Add(time.Duration(r.TTLSeconds) * time.Second), CreatedAt: now, UpdatedAt: now}
 	j := domain.Job{ID: domain.NewID("job-"), LeaseID: id, Kind: "prepare", Phase: "queued", State: "queued", CreatedAt: now, UpdatedAt: now, Deadline: now.Add(10 * time.Minute)}
 	if err := c.store.Save(ctx, l, &j, key, fp, "lease.accepted", "Slot reserved; VM preparation queued"); err != nil {
 		return domain.Operation{}, err
@@ -331,6 +349,16 @@ func (c *Controller) Recover(ctx context.Context) error {
 			}
 			continue
 		}
+		if j.Phase == "ssh_dispatched" {
+			l, err := c.store.Lease(ctx, j.LeaseID)
+			if err != nil {
+				return err
+			}
+			if err := c.attention(ctx, l, j, "ssh_outcome_unknown", "Daemon restarted during credential isolation; release the lease; isolation will not be replayed", false); err != nil {
+				return err
+			}
+			continue
+		}
 		if j.Phase == "clone_dispatched" {
 			l, err := c.store.Lease(ctx, j.LeaseID)
 			if err != nil {
@@ -394,10 +422,10 @@ func (c *Controller) Tick(ctx context.Context) error {
 	for _, l := range ls {
 		if l.State == "ready" && !l.UpdatedAt.After(snapshotStarted) {
 			vm, exists := c.vm(l)
-			if !exists || vm.State != "running" {
+			if !exists || vm.State != "running" || (c.leasePreparer != nil && (l.SSH == nil || vm.IP != l.IP)) {
 				l.State = "needs_attention"
 				l.IP = ""
-				l.Error = domain.Err("vm_drift", "Ready VM stopped or disappeared outside Virfield; inspect and release the lease")
+				l.Error = domain.Err("vm_drift", "Ready VM identity, address or running state changed; release the lease")
 				l.UpdatedAt = c.now()
 				if err := c.store.Save(ctx, l, nil, "", "", "lease.drift", l.Error.Message); err != nil {
 					return err
@@ -479,6 +507,10 @@ func (c *Controller) advance(ctx context.Context, l domain.Lease, j domain.Job) 
 			return c.attention(ctx, l, j, "name_collision", "Generated VM name already exists; refusing to adopt or delete it.", true)
 		}
 		t, ok := c.templates[l.Template]
+		if l.Source != nil {
+			t = *l.Source
+			ok = true
+		}
 		if !ok {
 			return c.attention(ctx, l, j, "template_unavailable", "Template removed from configuration", false)
 		}
@@ -510,8 +542,16 @@ func (c *Controller) advance(ctx context.Context, l domain.Lease, j domain.Job) 
 			return nil
 		}
 		return c.dispatch(ctx, l, j, "start_dispatched", func(ctx context.Context) error { return c.backend.Start(ctx, l) })
-	case "start_dispatched", "waiting_ready":
+	case "start_dispatched", "waiting_ready", "ssh_configured":
 		if exists && v.State == "running" && net.ParseIP(v.IP) != nil && v.SSHAvailable {
+			if c.leasePreparer != nil && j.Phase != "ssh_configured" {
+				l.StartPending = false
+				l.IP = v.IP
+				return c.prepareSSH(ctx, l, j)
+			}
+			if j.Phase == "ssh_configured" && (l.IP != v.IP || l.SSH == nil) {
+				return c.attention(ctx, l, j, "guest_identity_failed", "Guest address changed after SSH verification; release this lease", false)
+			}
 			l.State = "ready"
 			l.StartPending = false
 			l.IP = v.IP
@@ -519,7 +559,12 @@ func (c *Controller) advance(ctx context.Context, l domain.Lease, j domain.Job) 
 			j.Phase = "ready"
 			j.State = "succeeded"
 			j.Error = nil
-			return c.save(ctx, l, j, "lease.ready", "VM is running; Lume reports an IP address and SSH availability")
+			return c.save(ctx, l, j, "lease.ready", func() string {
+				if l.SSH != nil {
+					return "VM lease SSH identity is isolated and authenticated"
+				}
+				return "VM is running; Lume reports an IP address and SSH availability"
+			}())
 		}
 	}
 	return nil

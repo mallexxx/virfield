@@ -42,8 +42,9 @@ type Template struct {
 
 // AcquireRequest reserves a slot immediately. Queueing belongs to Execution Broker.
 type AcquireRequest struct {
-	Template   string `json:"template"`
-	TTLSeconds int    `json:"ttl_seconds"`
+	SSHPublicKey string `json:"ssh_public_key,omitempty"`
+	Template     string `json:"template"`
+	TTLSeconds   int    `json:"ttl_seconds"`
 }
 
 func (r AcquireRequest) Validate() error {
@@ -58,20 +59,24 @@ func (r AcquireRequest) Validate() error {
 
 // Lease holds capacity until cleanup is confirmed, including after expiry/failure.
 type Lease struct {
-	ImageManifest  string    `json:"image_manifest,omitempty"`
-	Purpose        string    `json:"purpose,omitempty"`
-	ID             string    `json:"id"`
-	VMName         string    `json:"vm_name"`
-	Location       string    `json:"location"`
-	Template       string    `json:"template"`
-	State          string    `json:"state"`
-	CloneConfirmed bool      `json:"clone_confirmed"`
-	StartPending   bool      `json:"start_pending"`
-	IP             string    `json:"ip,omitempty"`
-	ExpiresAt      time.Time `json:"expires_at"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
-	Error          *Error    `json:"error,omitempty"`
+	Source         *Template      `json:"source,omitempty"`
+	ImageID        string         `json:"image_id,omitempty"`
+	SSHPublicKey   string         `json:"ssh_public_key,omitempty"`
+	SSH            *SSHConnection `json:"ssh,omitempty"`
+	ImageManifest  string         `json:"image_manifest,omitempty"`
+	Purpose        string         `json:"purpose,omitempty"`
+	ID             string         `json:"id"`
+	VMName         string         `json:"vm_name"`
+	Location       string         `json:"location"`
+	Template       string         `json:"template"`
+	State          string         `json:"state"`
+	CloneConfirmed bool           `json:"clone_confirmed"`
+	StartPending   bool           `json:"start_pending"`
+	IP             string         `json:"ip,omitempty"`
+	ExpiresAt      time.Time      `json:"expires_at"`
+	CreatedAt      time.Time      `json:"created_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
+	Error          *Error         `json:"error,omitempty"`
 }
 
 // Job is a persisted state machine. Phase is written before each external effect.

@@ -91,7 +91,7 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 		status = 403
 	case "not_found":
 		status = 404
-	case "image_in_use", "image_exists", "capacity_exhausted", "idempotency_conflict", "operation_in_progress", "lease_expired", "lease_released", "outcome_unknown", "template_unavailable":
+	case "ssh_key_in_use", "image_in_use", "image_exists", "capacity_exhausted", "idempotency_conflict", "operation_in_progress", "lease_expired", "lease_released", "outcome_unknown", "template_unavailable":
 		status = 409
 	case "backend_unavailable":
 		status = 503

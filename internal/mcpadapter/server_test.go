@@ -27,7 +27,7 @@ func TestMCPProxiesToAPIAndPreservesIdempotency(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Error(err)
 		}
-		if len(body) != 2 || body["template"] != "golden" {
+		if len(body) != 3 || body["ssh_public_key"] != "test-public-key" || body["template"] != "golden" {
 			t.Error(body)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -64,7 +64,7 @@ func TestMCPProxiesToAPIAndPreservesIdempotency(t *testing.T) {
 			t.Fatal("unsafe tool exposed", tool.Name)
 		}
 	}
-	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "vm_acquire", Arguments: map[string]any{"template": "golden", "ttl_seconds": 3600, "idempotency_key": "request-one"}})
+	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "vm_acquire", Arguments: map[string]any{"template": "golden", "ttl_seconds": 3600, "idempotency_key": "request-one", "ssh_public_key": "test-public-key"}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -14,9 +14,10 @@ import (
 
 type empty struct{}
 type acquireArgs struct {
-	Template   string `json:"template"`
-	TTLSeconds int    `json:"ttl_seconds"`
-	Key        string `json:"idempotency_key"`
+	SSHPublicKey string `json:"ssh_public_key" jsonschema:"Fresh Ed25519 public key for this lease. Never submit a private key."`
+	Template     string `json:"template"`
+	TTLSeconds   int    `json:"ttl_seconds"`
+	Key          string `json:"idempotency_key"`
 }
 type idArgs struct {
 	ID string `json:"id"`
@@ -45,8 +46,8 @@ func New(c *client.Client) *mcp.Server {
 	mcp.AddTool(s, &mcp.Tool{Name: "virfield_status", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}, Description: "Show Lume health, VM slot usage, active leases and durable jobs"}, func(ctx context.Context, _ *mcp.CallToolRequest, _ empty) (*mcp.CallToolResult, any, error) {
 		return result(c.Do(ctx, "GET", "status", nil, ""))
 	})
-	mcp.AddTool(s, &mcp.Tool{Name: "vm_acquire", Annotations: &mcp.ToolAnnotations{IdempotentHint: true}, Description: "Reserve one of at most two VM slots and asynchronously clone/start an allowlisted golden image. Use the SAME idempotency key on retries. Returns capacity_exhausted when full."}, func(ctx context.Context, _ *mcp.CallToolRequest, a acquireArgs) (*mcp.CallToolResult, any, error) {
-		return result(c.Do(ctx, "POST", "leases", map[string]any{"template": a.Template, "ttl_seconds": a.TTLSeconds}, a.Key))
+	mcp.AddTool(s, &mcp.Tool{Name: "vm_acquire", Annotations: &mcp.ToolAnnotations{IdempotentHint: true}, Description: "Reserve one of at most two VM slots and asynchronously clone/start an allowlisted golden image. Supply a fresh per-lease Ed25519 public key; keep its private key local. Use the SAME idempotency key on retries. Returns capacity_exhausted when full."}, func(ctx context.Context, _ *mcp.CallToolRequest, a acquireArgs) (*mcp.CallToolResult, any, error) {
+		return result(c.Do(ctx, "POST", "leases", map[string]any{"template": a.Template, "ttl_seconds": a.TTLSeconds, "ssh_public_key": a.SSHPublicKey}, a.Key))
 	})
 	mcp.AddTool(s, &mcp.Tool{Name: "vm_lease", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}, Description: "Read a durable lease, readiness and error"}, func(ctx context.Context, _ *mcp.CallToolRequest, a idArgs) (*mcp.CallToolResult, any, error) {
 		return result(c.Do(ctx, "GET", "leases/"+url.PathEscape(a.ID), nil, ""))

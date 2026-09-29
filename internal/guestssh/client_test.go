@@ -1,4 +1,4 @@
-package images
+package guestssh
 
 import (
 	"context"
@@ -93,9 +93,9 @@ func sshServer(t *testing.T, model string) (string, ssh.Signer) {
 	_, port, _ := net.SplitHostPort(ln.Addr().String())
 	return port, signer
 }
-func testImageGuest(t *testing.T, port string) (*Engine, domain.Lease) {
+func testImageGuest(t *testing.T, port string) (*Manager, domain.Lease) {
 	t.Helper()
-	e := &Engine{Dir: t.TempDir(), sshPort: port}
+	e := &Manager{Dir: t.TempDir(), SSHPort: port}
 	l := domain.Lease{ID: "image-test", VMName: "golden", Location: "home", Purpose: "image"}
 	if err := os.MkdirAll(filepath.Join(e.Dir, "images", l.ID), 0700); err != nil {
 		t.Fatal(err)
@@ -106,39 +106,58 @@ func TestGuestPinsKeyBoundsOutputAndCancels(t *testing.T) {
 	port, _ := sshServer(t, "VirtualMac2,1")
 	e, l := testImageGuest(t, port)
 	ctx := context.Background()
-	g, err := e.connect(ctx, l, "127.0.0.1", true)
+	g, err := e.Connect(ctx, l, "127.0.0.1", true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer g.Close()
-	out, err := g.run(ctx, "large", "")
+	out, err := g.Run(ctx, "large", "")
 	if err != nil || len(out) != 65536 {
 		t.Fatal(len(out), err)
 	}
-	c, err := e.credentials(l)
+	c, err := e.CredentialsFor(l)
 	if err != nil || len(c.HostKey) == 0 {
 		t.Fatal(c, err)
 	}
-	info, err := os.Stat(e.credentialPath(l))
+	info, err := os.Stat(e.CredentialPath(l))
 	if err != nil || info.Mode().Perm() != 0600 {
 		t.Fatal(info, err)
 	}
 	cancelCtx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
 	defer cancel()
 	started := time.Now()
-	if _, err := g.run(cancelCtx, "block", ""); err == nil || time.Since(started) > time.Second {
+	if _, err := g.Run(cancelCtx, "block", ""); err == nil || time.Since(started) > time.Second {
 		t.Fatal("SSH cancellation is not bounded", err)
 	}
 	otherPort, _ := sshServer(t, "VirtualMac2,1")
-	e.sshPort = otherPort
-	if _, err := e.connect(ctx, l, "127.0.0.1", true); err == nil {
+	e.SSHPort = otherPort
+	if _, err := e.Connect(ctx, l, "127.0.0.1", true); err == nil {
 		t.Fatal("accepted different guest host key")
 	}
 }
 func TestGuestRefusesPhysicalMac(t *testing.T) {
 	port, _ := sshServer(t, "Mac15,14")
 	e, l := testImageGuest(t, port)
-	if _, err := e.connect(context.Background(), l, "127.0.0.1", true); err == nil {
+	if _, err := e.Connect(context.Background(), l, "127.0.0.1", true); err == nil {
 		t.Fatal("accepted host hardware for privileged image provisioning")
+	}
+}
+
+func TestVerifiedConnectionNeverCreatesMissingCredentials(t *testing.T) {
+	e, l := testImageGuest(t, "22")
+	if _, err := e.Connect(context.Background(), l, "127.0.0.1", false); err == nil {
+		t.Fatal("missing credential accepted")
+	}
+	if _, err := os.Stat(e.CredentialPath(l)); !os.IsNotExist(err) {
+		t.Fatal("verified connection created credentials", err)
+	}
+	if _, err := e.CredentialsFor(l); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(e.CredentialPath(l), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.Connect(context.Background(), l, "127.0.0.1", false); err == nil {
+		t.Fatal("publicly readable credential accepted")
 	}
 }

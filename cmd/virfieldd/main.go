@@ -16,6 +16,7 @@ import (
 
 	"github.com/mallexxx/virfield/internal/config"
 	"github.com/mallexxx/virfield/internal/control"
+	"github.com/mallexxx/virfield/internal/guestssh"
 	"github.com/mallexxx/virfield/internal/hostlock"
 	"github.com/mallexxx/virfield/internal/httpapi"
 	"github.com/mallexxx/virfield/internal/images"
@@ -72,6 +73,7 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	manager.SetLeasePreparer(&guestssh.Manager{Dir: cfg.StateDir})
 	if cfg.ImageTools != nil {
 		builder, err := images.New(cfg.StateDir, backend, *cfg.ImageTools)
 		if err != nil {

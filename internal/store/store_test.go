@@ -146,7 +146,7 @@ func TestUpgradeImageJournalKeepsExistingRecords(t *testing.T) {
 		t.Fatal(events, err)
 	}
 	var version int
-	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 2 {
+	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 3 {
 		t.Fatal(version, err)
 	}
 }

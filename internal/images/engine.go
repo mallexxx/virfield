@@ -22,7 +22,6 @@ import (
 var assistantScript string
 
 type Engine struct {
-	sshPort string
 	Dir     string
 	Backend *lume.Client
 	Tools   domain.ImageTools
@@ -147,14 +146,14 @@ func (e *Engine) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile
 			return err
 		}
 		defer guest.Close()
-		build, err := guest.run(ctx, "/usr/bin/sw_vers -buildVersion", "")
+		build, err := guest.Run(ctx, "/usr/bin/sw_vers -buildVersion", "")
 		if err != nil {
 			return err
 		}
 		if strings.TrimSpace(build) != p.Build {
 			return domain.Err("guest_build_mismatch", "Guest macOS build differs from the image manifest")
 		}
-		sip, err := guest.run(ctx, "/usr/bin/csrutil status", "")
+		sip, err := guest.Run(ctx, "/usr/bin/csrutil status", "")
 		if err != nil {
 			return err
 		}
@@ -276,7 +275,7 @@ func (e *Engine) waitDesktopState(ctx context.Context, g *guest) (string, error)
 	wait, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	for {
-		out, err := g.run(wait, "if /usr/bin/pgrep -x 'Setup Assistant' >/dev/null; then echo assistant; elif test -f /var/db/.AppleSetupDone && /usr/bin/pgrep -x Finder >/dev/null; then echo desktop; else echo waiting; fi", "")
+		out, err := g.Run(wait, "if /usr/bin/pgrep -x 'Setup Assistant' >/dev/null; then echo assistant; elif test -f /var/db/.AppleSetupDone && /usr/bin/pgrep -x Finder >/dev/null; then echo desktop; else echo waiting; fi", "")
 		if err != nil {
 			return "", err
 		}
