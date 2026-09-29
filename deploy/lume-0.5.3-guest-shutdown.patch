@@ -1,0 +1,11 @@
+--- a/src/LumeController.swift
++++ b/src/LumeController.swift
+@@ -1172,6 +1172,8 @@
+             vm.telemetryTransport = telemetryTransport
+ 
+             SharedVM.shared.setVM(name: normalizedName, vm: vm)
++            // run() returns after guest shutdown and session cleanup, not after boot.
++            defer { SharedVM.shared.removeVM(name: normalizedName) }
+             try await vm.run(
+                 displayMode: effectiveDisplayMode,
+                 sharedDirectories: sharedDirectories,

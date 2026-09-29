@@ -9,7 +9,7 @@ preserved as migration references. On the acceptance host, v1 service and MCP we
 
 ## Run locally
 
-Requires Go 1.26.8 or newer (automatically selected from `go.mod`) and the independently running Lume 0.5.3 service.
+Requires Go 1.26.8 or newer (automatically selected from `go.mod`) and the independently running Lume 0.5.3 service with the [guest-shutdown dependency patch](IMAGE-PIPELINE.md). The patch and pinned build recipe are in `deploy/`; unpatched Lume retains stale running entries after guest shutdown.
 Use a **new** state directory; do not point v2 at `~/.virfield/state.db`.
 
 ```sh

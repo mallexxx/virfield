@@ -322,6 +322,17 @@ but package resolution is not a complete reproducible dependency lock.
 
 ## Not yet accepted / production release gates
 
+- Uninterrupted fresh `uitest-27-v1` build remains a release gate. The accepted
+  profile upgrade and clone checks above do not substitute for this test.
+  Fresh attempts exposed account-password persistence after forced shutdown,
+  and then upstream Lume's stale running cache after a successful guest shutdown.
+  Credentials now initialize before Recovery, golden stops are graceful, and
+  final verification checks the password again after reboot. The pinned Lume
+  patch removes a completed guest from its running cache. Its focused regression
+  and six detached/guest-power tests pass; ten upstream controller/power tests
+  pass. The archive-to-signed-binary build recipe also passed. Installation and
+  a clean real-VM rerun are still required before closing this gate.
+
 - Remote GitHub Actions execution, remaining VM-mutation crash scenarios,
   prolonged soak and VM-disk disaster recovery. Unit/mock coverage is separate.
 - Registry pull, other macOS builds, remote TLS/container routing and

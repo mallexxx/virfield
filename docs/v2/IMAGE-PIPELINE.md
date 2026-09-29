@@ -92,6 +92,19 @@ normal persistence boundary for freshly written guest account/TCC state. Final
 verification authenticates the image password again after a clean reboot, in
 addition to key-only SSH. Disposable-VM deletion uses the separate cleanup path.
 
+The service requires the local `0.5.3 + guest-shutdown` dependency patch in
+`deploy/lume-0.5.3-guest-shutdown.patch`. Upstream `runVM` leaves a successfully
+completed guest in `SharedVM`, so `/lume/vms` and `/lume/host/status` keep reporting
+it as running after a normal shutdown. The patch removes that entry when `run`
+returns. Do not work around stale inventory by force-stopping the guest or by
+ignoring the capacity response. `deploy/build-lume.sh NEW_ABSOLUTE_OUTPUT_DIR`
+verifies the source archive SHA-256, uses the upstream `Package.resolved`, applies
+only this patch, and signs a NAT-only binary with the virtualization entitlement.
+It does not install or restart services. Configure both the Lume service's
+`-binary` and `image_tools.lume` to the resulting binary. The staged source also
+contains `guestShutdownReleasesRunningCache`, runnable with
+`swift test -c release --disable-automatic-resolution --filter guestShutdownReleasesRunningCache`.
+
 Lume subprocesses have fixed argv, bounded private logs, context deadlines and
 an owned process group. Cancellation never uses `pkill`, process-name searches,
 or kills the Lume service. No raw process output or VNC password enters events.
