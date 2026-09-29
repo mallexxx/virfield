@@ -1,7 +1,9 @@
 'use strict';
 let token = '', cursor = 0, pendingAcquire = null;
+let refreshInFlight = null;
 const releaseKeys = new Map();
 const imageKeys = new Map();
+const tunnelAddresses = new Map();
 const el = id => document.getElementById(id);
 async function api(path, method = 'GET', body, key) {
   const res = await fetch('/api/v1/' + path, { method, headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', ...(key ? {'Idempotency-Key': key} : {}) }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(8000) });
@@ -11,8 +13,15 @@ async function api(path, method = 'GET', body, key) {
 }
 function text(tag, value) { const node = document.createElement(tag); node.textContent = value; return node; }
 function report(err) { el('error').textContent = err.message; }
-async function refresh() {
+function refresh() {
+  // Polls and action callbacks share one refresh so event cursors cannot race.
+  return refreshInFlight ||= refreshState().finally(() => {refreshInFlight = null;});
+}
+async function refreshState() {
   const state = await api('status');
+  for (const id of tunnelAddresses.keys()) {
+    if (!state.leases.some(l => l.id === id && l.state === 'ready')) tunnelAddresses.delete(id);
+  }
   el('capacity').textContent = `${state.capacity.used} / ${state.capacity.limit} slots occupied or reserved`;
   el('connection').textContent = state.observation.error ? 'Lume unavailable' : 'Connected';
   el('blockers').textContent = state.capacity.blockers.join(' · ');
@@ -29,7 +38,19 @@ async function refresh() {
     if (l.ip) row.append(text('p', `Guest IP: ${l.ip}`));
     if (l.ssh) row.append(text('p', 'Client key: ' + l.ssh.client_key_fingerprint), text('code', 'Host key: ' + l.ssh.host_key));
     if (l.error) row.append(text('p', l.error.message));
-    if (l.state === 'ready' && l.ssh) {const open = text('button', 'Open SSH tunnel'); const endpoint = text('code', ''); open.addEventListener('click', async () => {try {const t = await api('leases/' + encodeURIComponent(l.id) + '/tunnel', 'POST'); endpoint.textContent = t.address + ' · use your lease SSH key and pinned host key';} catch(err) {report(err);}});row.append(open, endpoint);}
+    if (l.state === 'ready' && l.ssh) {
+      const open = text('button', 'Open SSH tunnel');
+      const label = address => address ? address + ' · use your lease SSH key and pinned host key; reopen after daemon restart' : '';
+      const endpoint = text('code', label(tunnelAddresses.get(l.id)));
+      open.addEventListener('click', async () => {
+        try {
+          const t = await api('leases/' + encodeURIComponent(l.id) + '/tunnel', 'POST');
+          tunnelAddresses.set(l.id, t.address);
+          endpoint.textContent = label(t.address);
+        } catch(err) {report(err);}
+      });
+      row.append(open, endpoint);
+    }
     const release = text('button', 'Release and delete VM');
     release.disabled = l.state === 'releasing' || l.state === 'quarantined';
     release.addEventListener('click', async () => {

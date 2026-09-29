@@ -2,11 +2,70 @@ package control
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/mallexxx/virfield/internal/domain"
 )
+
+type imageCleanupPreparer struct {
+	blockingPreparer
+	err   error
+	calls int
+}
+
+func TestImageDeletionProtectsPersistedSourceAfterTemplateRename(t *testing.T) {
+	c, _, backend := setup(t)
+	op := acquire(t, c, "rename-source-lease")
+	ready(t, c, op)
+	template := c.templates["test"]
+	delete(c.templates, "test")
+	template.ID = "renamed"
+	c.templates[template.ID] = template
+	_, err := c.DeleteImage(context.Background(), template.ID, "renamed-image-delete", template.Name)
+	code(t, err, "image_in_use")
+	if backend.count("delete") != 0 {
+		t.Fatal("deleted source of an active lease")
+	}
+}
+
+func (p *imageCleanupPreparer) ForgetImage(domain.Lease) error {
+	p.calls++
+	return p.err
+}
+
+func TestImageDeletionWaitsForPrivateDataCleanup(t *testing.T) {
+	c, _ := imageController(t)
+	ctx := context.Background()
+	op, err := c.BuildImage(ctx, "test", "image-cleanup-build")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 8 {
+		tick(t, c)
+	}
+	p := &imageCleanupPreparer{err: errors.New("private directory not writable")}
+	c.SetLeasePreparer(p)
+	if _, err := c.DeleteImage(ctx, "test", "image-cleanup-delete", "golden"); err != nil {
+		t.Fatal(err)
+	}
+	tick(t, c)
+	if p.calls != 0 {
+		t.Fatal("removed credentials before VM absence")
+	}
+	code(t, c.Tick(ctx), "credential_cleanup_failed")
+	l, err := c.Lease(ctx, op.Lease.ID)
+	if err != nil || l.State == "released" {
+		t.Fatal("released before private cleanup", err)
+	}
+	p.err = nil
+	tick(t, c)
+	l, err = c.Lease(ctx, op.Lease.ID)
+	if err != nil || l.State != "released" || p.calls != 2 {
+		t.Fatal(l.State, p.calls, err)
+	}
+}
 
 type fakeImageBuilder struct {
 	backend *fakeBackend

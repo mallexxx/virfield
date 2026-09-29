@@ -11,7 +11,12 @@ import (
 	"github.com/mallexxx/virfield/internal/domain"
 )
 
-func (c *Controller) Backup(ctx context.Context, stateDir string) (string, error) {
+func (c *Controller) Backup(ctx context.Context, stateDir, configPath, tokenPath string) (string, error) {
+	for _, path := range []string{stateDir, configPath, tokenPath} {
+		if !filepath.IsAbs(path) {
+			return "", domain.Err("invalid_request", "Backup source paths must be absolute")
+		}
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if err := c.healthy(); err != nil {
@@ -73,8 +78,8 @@ func (c *Controller) Backup(ctx context.Context, stateDir string) (string, error
 			}
 		}
 	}
-	for _, name := range []string{"config.json", "token"} {
-		b, err := os.ReadFile(filepath.Join(stateDir, name))
+	for name, path := range map[string]string{"config.json": configPath, "token": tokenPath} {
+		b, err := os.ReadFile(path)
 		if err != nil {
 			return "", err
 		}

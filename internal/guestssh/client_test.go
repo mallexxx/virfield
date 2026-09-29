@@ -161,3 +161,31 @@ func TestVerifiedConnectionNeverCreatesMissingCredentials(t *testing.T) {
 		t.Fatal("publicly readable credential accepted")
 	}
 }
+
+func TestForgetImageScopesDeletionAndIsIdempotent(t *testing.T) {
+	m := &Manager{Dir: t.TempDir()}
+	l := domain.Lease{ID: "image-deleted", Purpose: "image"}
+	folder := filepath.Join(m.Dir, "images", l.ID)
+	if err := os.MkdirAll(folder, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.CredentialsFor(l); err != nil {
+		t.Fatal(err)
+	}
+	for _, invalid := range []domain.Lease{{ID: "image-deleted"}, {ID: "../images", Purpose: "image"}, {ID: "lease-other", Purpose: "image"}} {
+		if err := m.ForgetImage(invalid); err == nil {
+			t.Fatal("accepted invalid image identity")
+		}
+	}
+	if _, err := os.Stat(m.CredentialPath(l)); err != nil {
+		t.Fatal("invalid request deleted credentials", err)
+	}
+	for range 2 {
+		if err := m.ForgetImage(l); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := os.Stat(folder); !os.IsNotExist(err) {
+		t.Fatal("image data retained", err)
+	}
+}

@@ -320,6 +320,32 @@ Private verification and stage logs are in the installed state's image directory
 Homebrew packages resolve from their taps at build time: the recipe is versioned,
 but package resolution is not a complete reproducible dependency lock.
 
+## Final review follow-up — code verified, clean VM acceptance still pending
+
+The repeated review found and corrected these concrete defects:
+
+- Tunnels could survive lease expiry while Lume observation failed, and observed
+  VM drift revoked them one tick late. Expiry revocation now precedes backend I/O;
+  drift closes the tunnel in the same reconciliation. VM deletion still requires
+  verified inventory. Regression tests exercise real loopback listeners.
+- Backup assumed `state_dir/config.json` and `state_dir/token`, despite configurable
+  source paths. It now snapshots the actual configuration and token paths; a test
+  with a stale token in the state directory proves the correct secret is backed up.
+- Image deletion left its private credentials and diagnostic files behind. They
+  are now removed only after confirmed VM absence; a cleanup failure retains the
+  reservation until a later successful cleanup. Identity-scope and retry tests pass.
+- Renaming a template ID could bypass the active-lease deletion guard. The guard
+  now checks each lease's persisted source VM identity as well as the template ID.
+- Console refresh discarded the displayed tunnel address, and overlapping refreshes
+  could race the event cursor. Refreshes now share one request sequence, and the
+  address survives refresh until the lease is no longer ready. Isolated Playwright
+  checks passed for those behaviors, duplicate events and 390-pixel mobile layout.
+
+`make check` (Python, gofmt, vet, race tests), the additional deletion-guard race
+test and Staticcheck passed. This is code/browser verification, not a completed
+fresh golden acceptance. The Lume system-service update is still awaiting macOS
+administrator authorization; the incomplete test image is retained for inspection.
+
 ## Not yet accepted / production release gates
 
 - Uninterrupted fresh `uitest-27-v1` build remains a release gate. The accepted

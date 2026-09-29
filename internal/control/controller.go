@@ -413,6 +413,17 @@ func (c *Controller) Run(ctx context.Context) error {
 	}
 }
 func (c *Controller) Tick(ctx context.Context) error {
+	// Lease expiry must revoke tunnels even when Lume cannot be observed.
+	// Do this before any backend I/O; VM cleanup still requires fresh inventory.
+	c.mu.Lock()
+	ls, err := c.store.Leases(ctx)
+	if err == nil {
+		c.reconcileTunnels(ls)
+	}
+	c.mu.Unlock()
+	if err != nil {
+		return err
+	}
 	snapshotStarted := c.now()
 	var disk map[string]int64
 	var resourceErr error
@@ -444,7 +455,7 @@ func (c *Controller) Tick(ctx context.Context) error {
 	if resourceErr != nil {
 		c.resourceError = "Cannot verify storage free space; admission paused"
 	}
-	ls, err := c.store.Leases(ctx)
+	ls, err = c.store.Leases(ctx)
 	if err != nil {
 		return err
 	}
@@ -452,7 +463,7 @@ func (c *Controller) Tick(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	for _, l := range ls {
+	for i, l := range ls {
 		if l.State == "ready" && !l.UpdatedAt.After(snapshotStarted) {
 			vm, exists := c.vm(l)
 			if !exists || vm.State != "running" || (c.leasePreparer != nil && (l.SSH == nil || vm.IP != l.IP)) {
@@ -463,6 +474,7 @@ func (c *Controller) Tick(ctx context.Context) error {
 				if err := c.store.Save(ctx, l, nil, "", "", "lease.drift", l.Error.Message); err != nil {
 					return err
 				}
+				ls[i] = l
 			}
 		}
 		hasCleanup := false

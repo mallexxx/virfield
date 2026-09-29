@@ -126,7 +126,12 @@ func run() error {
 	mcpServer := mcpadapter.New(apiClient)
 	mcpHTTP := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return mcpServer }, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
 	backupHTTP := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id, err := manager.Backup(r.Context(), cfg.StateDir)
+		configPath, err := filepath.Abs(*path)
+		if err != nil {
+			http.Error(w, "Cannot resolve configuration path", http.StatusInternalServerError)
+			return
+		}
+		id, err := manager.Backup(r.Context(), cfg.StateDir, configPath, cfg.TokenFile)
 		w.Header().Set("Content-Type", "application/json")
 		if err != nil {
 			w.WriteHeader(409)

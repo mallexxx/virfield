@@ -41,7 +41,10 @@ func (c *Controller) DeleteImage(ctx context.Context, id, key, confirmName strin
 			copy := l
 			existing = &copy
 		}
-		if (l.Template == id && l.Purpose != "image") || (l.Key() == tm.Location+"/"+tm.Name && l.State != "image_ready") {
+		// A template ID can be renamed while durable leases still refer to the
+		// old ID. Protect their persisted source VM identity as well.
+		usesImage := l.Purpose != "image" && (l.Template == id || (l.Source != nil && l.Source.Location == tm.Location && l.Source.Name == tm.Name))
+		if usesImage || (l.Key() == tm.Location+"/"+tm.Name && l.State != "image_ready") {
 			return domain.Operation{}, domain.Err("image_in_use", "image has active leases or an image operation; finish them first")
 		}
 	}
@@ -72,6 +75,11 @@ func (c *Controller) DeleteImage(ctx context.Context, id, key, confirmName strin
 func (c *Controller) advanceImageDelete(ctx context.Context, l domain.Lease, j domain.Job) error {
 	v, exists := c.vm(l)
 	if !exists {
+		if disposer, ok := c.leasePreparer.(interface{ ForgetImage(domain.Lease) error }); ok {
+			if err := disposer.ForgetImage(l); err != nil {
+				return domain.Err("credential_cleanup_failed", "Image deleted; private image data cleanup must finish before releasing reservation")
+			}
+		}
 		l.State = "released"
 		j.State = "succeeded"
 		j.Phase = "done"
