@@ -1,6 +1,6 @@
 # Virfield v2 — control-plane implementation
 
-**Branch:** `codex/virfield-v2`. **Status:** local Go replacement installed; system-service SSH, tunnels and restart acceptance passed; automatic UI-test provisioning and two-clone Xcode/permissions/screenshot acceptance passed.
+**Branch:** `codex/virfield-v2`. **Status:** local Go replacement installed; uninterrupted fresh UI-test golden build and two-clone lifecycle acceptance passed; system-service SSH, tunnels and restart acceptance passed. Detailed evidence and limits are in [VERIFICATION.md](VERIFICATION.md).
 
 This implements the first vertical slice of §13/§16 stage 2 in the
 2026-09-29 Balda/Callee/Prism plan. Broker, Runner and Balda integration remain
@@ -247,6 +247,9 @@ Private-secret API checks, capacity refusal, idempotency and cleanup passed.
 **Base-image acceptance passed:** a real Apple download with resume and SHA-256,
 followed by a clean cached-media rebuild through Assistant, Recovery/SIP, SSH
 rotation and reboot verification; two clones and cleanup passed in 10m38s.
+**Full-profile clean build passed:** `uitest-27-v1`, including Xcode, guest permissions,
+native credentials, Recovery and reboot checks, plus two ready clones and cleanup,
+completed without recovery actions in 21m18s. Maximum API read latency was 17.1 ms.
 See [the evidence and limitations](VERIFICATION.md).
 **Interrupted SSH preparation accepted:** a real daemon crash during credential preparation preserves the reservation, requires inspection and permits cleanup without replaying the mutation. **Not yet accepted:** remaining mutation crash points and long-duration stability. SQLite full-disk rollback and backup integrity/retention are covered separately. Automated mock tests do not establish these claims.
 

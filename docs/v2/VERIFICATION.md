@@ -320,7 +320,7 @@ Private verification and stage logs are in the installed state's image directory
 Homebrew packages resolve from their taps at build time: the recipe is versioned,
 but package resolution is not a complete reproducible dependency lock.
 
-## Final review follow-up — code verified, clean VM acceptance still pending
+## Final review findings and follow-up
 
 The repeated review found and corrected these concrete defects:
 
@@ -372,8 +372,9 @@ The image was not published. Its explicitly authorized cleanup completed as
 Source inspection found a second forced power-off inside Lume's successful offline
 setup, immediately after account/preboot finalization. The dependency patch now
 requests a guest shutdown there and waits for VM.run lifecycle completion. This
-is a persistence fix; its effect on the observed password error still requires a
-clean real-VM rerun. No account-repair shortcut or weakened password check is used.
+is a persistence fix; the subsequent clean real-VM rerun below passed password
+rotation and reboot verification. No account-repair shortcut or weakened password
+check is used.
 
 A stale client respawned a v1 TypeScript MCP process despite migrated client
 configuration. The v1 HTTP, MCP and direct database entrypoints now load a
@@ -382,18 +383,38 @@ entrypoints were executed: each exited 1, wrote only migration guidance to stder
 and source runs created no database directory. TypeScript compilation passed.
 The exact three-process legacy MCP tree was stopped; no Lume process was touched.
 
-## Not yet accepted / production release gates
+## Uninterrupted full-profile build — PASS, 2026-09-30
 
-- Uninterrupted fresh `uitest-27-v1` build remains a release gate. The accepted
-  profile upgrade and clone checks above do not substitute for this test.
-  Fresh attempts exposed account-password persistence after forced shutdown,
-  and then upstream Lume's stale running cache after a successful guest shutdown.
-  Credentials now initialize before Recovery, golden stops are graceful, and
-  final verification checks the password again after reboot. The pinned Lume
-  patch removes a completed guest from its running cache. Its focused regression
-  and six detached/guest-power tests pass; ten upstream controller/power tests
-  pass. The archive-to-signed-binary build recipe also passed. Installation and
-  a clean real-VM rerun are still required before closing this gate.
+`TestLiveImageRebuild` passed in **1277.65 seconds (21m18s)** against the installed
+system daemon, with no recovery action or mutation retry during this build:
+
+- Image `image-93604e81b7b84976aa96a86173072f2d`, build job
+  `job-da632cf1a2dffeacb8076ccde6e4fd38`, profile `uitest-27-v1`.
+- Verified cached Apple IPSW, fresh macOS installation, unattended setup with
+  confirmed guest shutdown, remaining Assistant screens, native password rotation,
+  Recovery/SIP, Xcode 27.2 beta and the complete guest provisioning recipe.
+- Reboot verification passed for credentials, desktop, SIP, Swift, guest tools,
+  passwordless sudo, Gatekeeper, AMFI, TCC, System Events and Peekaboo permissions.
+  The image was published only after its final confirmed shutdown.
+- Two clones reached ready with scoped SSH. The third acquisition was refused
+  with the explicit 2/2 capacity message; idempotent acquisition passed.
+  Both temporary clones were deleted and reservations released.
+- Maximum measured API read latency throughout the test: **17.1005 ms**.
+
+The dependency patch's cache-release and setup-shutdown regressions both passed.
+Applying the patch with zero fuzz to the pinned archive reproduces the built Swift
+sources exactly. Private verification manifests and the test summary were retained
+under `state/v2-live-20260929-a/fresh-profile-20260930/`, without credential files.
+
+The expanded `TestLiveLeaseSSH` then passed in **88.32 seconds** against that fresh
+image. Leases `lease-23a7ccc51bce7bcf74a1f7c931fb7e36` and
+`lease-e222d3c84415c1d221a2ad6f9f74819c` each executed Swift, verified the security
+profile and required UI permissions, controlled System Events and produced a
+nonempty screenshot. Own-key SSH and tunnels worked; cross-lease and inherited
+image keys were rejected against the new host pins. Capacity refusal, idempotency,
+and cleanup of both VMs, credentials and tunnel listeners passed.
+
+## Not yet accepted / additional deployment scope
 
 - Remote GitHub Actions execution, remaining VM-mutation crash scenarios,
   prolonged soak and VM-disk disaster recovery. Unit/mock coverage is separate.
