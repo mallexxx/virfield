@@ -3,6 +3,7 @@ on:
   push:
     branches: [main, 'codex/**']
   pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
@@ -14,6 +15,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
@@ -21,3 +24,7 @@ jobs:
       - run: make check
       - run: make build
       - run: go run honnef.co/go/tools/cmd/staticcheck@v0.7.0 ./...
+      - run: go mod verify
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
+      - if: runner.os == 'Linux'
+        run: go run github.com/zricethezav/gitleaks/v8@v8.30.1 git --redact --log-opts=--all

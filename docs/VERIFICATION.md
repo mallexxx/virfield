@@ -68,10 +68,13 @@ Run from the repository root:
 make check
 make build
 go run honnef.co/go/tools/cmd/staticcheck@v0.7.0 ./...
+go mod verify
+go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
+go run github.com/zricethezav/gitleaks/v8@v8.30.1 git --redact --log-opts=--all
 ```
 
 `make check` includes documentation links, Python Assistant/Recovery regressions,
-gofmt, `go vet` and `go test -race ./...`. Live tests skip without explicit opt-in.
+deployment path/port/permission checks, gofmt, `go vet` and `go test -race ./...`. Live tests skip without explicit opt-in.
 Fixture tests need permission to bind loopback sockets. Tests cover concurrent
 admission, external/unknown capacity, journal rollback/reopen, ambiguous effects,
 delayed starts, expiry, cleanup/drift, authentication, strict input, SDK tools,
@@ -140,3 +143,17 @@ go test ./internal/control -run '^TestLiveLifecycle$' -count=1 -v -timeout=26m
 - Broker, Runner, Callee/provider installation, Balda and Prism integration.
   The complete task → VM → execution → result → cleanup workflow from Balda
   has not passed end-to-end acceptance.
+
+## Release procedure
+
+After checks pass on a clean committed tree, build an archive with
+`python3 tools/release.py v2.0.0 --output /absolute/new/release-directory`.
+The packager uses only committed source and freshly built macOS/arm64 binaries;
+it includes dependency notices, binary hashes and the exact Git revision. It
+refuses dirty source, a mismatching existing version tag or existing outputs.
+Inspect/extract the archive, scan it for secrets, verify its checksum and smoke-test
+CLI initialization and service preparation outside the original checkout.
+
+Push only the intended branches; require successful GitHub Actions checks for the
+exact main commit before creating the release tag and publishing the archive plus
+`SHA256SUMS`. Never include private deployment state or local acceptance logs.

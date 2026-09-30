@@ -6,6 +6,7 @@ test:
 check:
 	python3 tools/check-docs.py
 	python3 -m unittest discover -s internal/images -p '*_test.py'
+	python3 -m unittest discover -s deploy -p '*_test.py'
 	@test -z "$$(gofmt -l cmd internal)" || (gofmt -l cmd internal; exit 1)
 	go vet ./...
 	go test -race ./...

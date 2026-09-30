@@ -9,6 +9,8 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -22,11 +24,12 @@ func main() {
 	}
 }
 func run() error {
-	binary := flag.String("binary", "/opt/homebrew/bin/lume", "fixed Lume binary")
+	binary := flag.String("binary", "", "absolute path to the patched Lume binary (required)")
 	path := flag.String("log", "", "private bounded log path")
+	port := flag.Int("port", 7777, "loopback Lume API port")
 	flag.Parse()
-	if *path == "" {
-		return fmt.Errorf("log path required")
+	if !filepath.IsAbs(*binary) || !filepath.IsAbs(*path) || *port < 1 || *port > 65535 {
+		return fmt.Errorf("absolute -binary and -log paths and a port between 1 and 65535 are required")
 	}
 	w, err := logging.Open(*path, 10<<20)
 	if err != nil {
@@ -35,7 +38,7 @@ func run() error {
 	defer w.Close()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	cmd := exec.CommandContext(ctx, *binary, "serve", "--port", "7777")
+	cmd := exec.CommandContext(ctx, *binary, "serve", "--port", strconv.Itoa(*port))
 	cmd.Stdout = w
 	cmd.Stderr = w
 	cmd.Cancel = func() error {

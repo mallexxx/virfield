@@ -21,6 +21,14 @@ These documents describe the current implementation. Installation instructions
 belong in Operations; acceptance claims belong in Verification. Do not maintain
 separate version-specific README copies or a second set of setup instructions.
 
+## Install
+
+Download the macOS/arm64 archive and checksums from
+[GitHub Releases](https://github.com/mallexxx/virfield/releases), or build below.
+Follow [Operations](docs/OPERATIONS.md#prerequisites) for host requirements and
+installation. A different username, HOME or private deployment directory is
+supported; no personal checkout paths are required.
+
 ## Build
 
 Go is the only control-plane build toolchain. The minimum version and dependencies
@@ -33,7 +41,7 @@ make build
 ./bin/virfield -help
 ```
 
-`make check` runs documentation link checks, Python image-driver tests, gofmt,
+`make check` runs documentation link checks, Python image-driver/deployment tests, gofmt,
 Go vet and race tests. It does not create or delete real VMs. The host image
 pipeline additionally needs the patched Lume dependency, Python/VNC tools,
 Tesseract and, for the UI-test profile, a compatible Xcode bundle; see

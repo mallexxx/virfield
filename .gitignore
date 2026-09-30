@@ -1,5 +1,6 @@
 # Local build outputs
 /bin/
+/dist/
 coverage.out
 
 # Private runtime/development files
@@ -12,7 +13,20 @@ logs/
 *.db-shm
 *.db-wal
 .env
+.env.*
 mcp.json
+config.json
+token
+credentials.json
+id_ed25519*
+*.key
+*.pem
+*.p12
+*.pfx
+*.ipsw
+*.img
+*.dmg
+recordings/
 
 # Local editor/agent state
 .claude/

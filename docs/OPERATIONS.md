@@ -3,7 +3,9 @@
 This is the single runbook for installing and operating the Go implementation.
 Commands below run from the repository root unless an installed binary path is
 shown. VM operations require an Apple Silicon macOS host and a separate Lume
-service. Tests and compilation also run on Linux.
+service. Tests and compilation also run on Linux. VM hosting requires Apple Silicon; Intel
+Macs, Linux and Windows are not supported VM hosts. The accepted image recipe
+is macOS 27 build 26A428; see the tested scope in [Verification](VERIFICATION.md).
 
 ## Paths and configuration
 
@@ -31,12 +33,36 @@ same deployed binaries, config and token. Lume owns its separate VM storage
 Directories containing state or secrets must be mode 0700; token, database and
 credential files must be 0600. Do not store these files in Git.
 
+## Prerequisites
+
+For a source build, install Git, make, Go at least the patch pinned in `go.mod`,
+and Python 3.10 or newer for repository checks. Go may download its pinned
+toolchain. Access to GitHub, the Go module proxy/checksum database, Apple restore
+media and the image-tool package repositories is required during setup.
+
+For VM hosting, use an Apple Silicon Mac, a non-root administrator account that
+owns the VMs, and full Xcode with its license/first-launch setup completed. The
+image dependency recipe uses Swift from Xcode, Python 3.14 with its pinned VNC
+environment, and Tesseract with English OCR data. The optional UI-test profile
+also needs a local Xcode 27 or newer bundle. Allow at least 100 GiB free for the
+initial image/download plus space for Xcode and clones; admission enforces the
+actual configured disk/CPU/RAM reserve. Two simultaneous 4-CPU/8-GiB guests need
+at least 12 logical host CPUs and 32 GiB RAM under the default 25% reserve.
+
+The release archive includes four prebuilt macOS/arm64 binaries, source, docs,
+deployment tools, dependency license notices and a revision manifest. Verify its
+`SHA256SUMS` before extraction. These are Go/ad-hoc-signed binaries, not an Apple
+notarized installer. Lume, Python packages, Tesseract, Xcode and IPSW media are
+installed separately; none are taken from the release author's machine.
+
 ## New installation
 
-1. Run `make check` and `make build`. Initialize a new directory and install the
+1. Run `make check` and `make build` from a source checkout, or use `bin/` from
+   the verified release archive. Initialize a new directory and install the
    binaries independently of the checkout:
 
    ```sh
+   mkdir -p "$(dirname "$VIRFIELD_HOME")"
    ./bin/virfield init "$VIRFIELD_HOME" macos27 macos-27-golden home
    mkdir -m 700 "$VIRFIELD_HOME/bin"
    install -m 755 bin/virfield bin/virfieldd bin/virfield-mcp bin/virfield-lume "$VIRFIELD_HOME/bin/"
@@ -48,10 +74,16 @@ credential files must be 0600. Do not store these files in Git.
    paths. `init` creates a skeleton, not a verified image. For the full UI-test
    profile, configure `provision: uitest-27-v1` and a compatible Xcode source.
 
-3. Configure both [manager](../deploy/ai.virfield.virfieldd.plist.example) and
-   [Lume](../deploy/ai.virfield.lume.plist.example) service examples as described
-   below. Register Lume first, then the manager. Never start another daemon
-   beside an existing installation; a per-user kernel lock also prevents this.
+3. Generate the service and MCP files from the completed configuration, running
+   as the VM owner without sudo:
+
+   ```sh
+   python3 deploy/prepare-services.py "$VIRFIELD_HOME"
+   ```
+
+   Review the generated files and register Lume first, then the manager as below.
+   Never start another daemon beside an existing installation; a per-user kernel
+   lock also prevents this.
 
 4. Use the installed CLI to build the configured golden, inspect its job, and
    wait for `image_ready` before acquiring leases:
@@ -75,11 +107,17 @@ when the same terminal command works. See Apple's
 [TN3179](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy).
 Host SIP, Gatekeeper and TCC do not need to be weakened.
 
-Copy the two example plists to `"$VIRFIELD_HOME/launchd/"`, remove `.example`
-from their names and replace every `VM_OWNER` and `/ABSOLUTE/DEPLOYMENT`
-placeholder. Use absolute paths: launchd does not expand shell variables or `~`.
-The Lume service’s `-binary` path must match `image_tools.lume` in the manager
-configuration. Check each with `plutil -lint` before registration.
+`deploy/prepare-services.py` renders the [manager](../deploy/ai.virfield.virfieldd.plist.example)
+and [Lume](../deploy/ai.virfield.lume.plist.example) templates into the private
+`launchd/` directory. It uses the invoking user's account, group and actual HOME,
+the configured tool paths and ports, and refuses existing output or insecure
+config/token permissions. Paths with spaces are preserved as individual arguments.
+It starts no services and never copies a token value into MCP configuration.
+
+Use absolute paths: launchd does not expand shell variables or `~`. The managed
+Lume endpoint is `http://127.0.0.1:PORT`; its wrapper requires explicit `-binary`
+and `-log` paths and accepts `-port`. Check both generated plists with
+`plutil -lint` before registration.
 
 For a **new installation only**, administrator authorization is required:
 
@@ -146,8 +184,9 @@ external running VMs and reserved leases count. A full pool returns an explicit
 
 ## MCP and remote access
 
-Use [deploy/mcp.json.example](../deploy/mcp.json.example), replacing the deployment
-placeholder with an absolute path. Configure the client entry as `virfield` and
+Use the generated `"$VIRFIELD_HOME/launchd/mcp.json"`; it includes the configured
+daemon URL and token-file path. The [generic example](../deploy/mcp.json.example)
+is also available for clients using the default port. Configure the client entry as `virfield` and
 restart/reconnect the client after changing its command. No npm/tsx entrypoint
 is supported. The stdio adapter calls the same authenticated daemon API.
 
