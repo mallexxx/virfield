@@ -135,8 +135,7 @@ go test ./internal/control -run '^TestLiveLifecycle$' -count=1 -v -timeout=26m
 
 ## Not yet accepted
 
-- Remote CI execution, remaining VM-mutation crash points, prolonged soak and
-  VM-disk disaster recovery. Unit/mock checks and state snapshots do not replace
+- Remaining VM-mutation crash points, prolonged soak and VM-disk disaster recovery. Unit/mock checks and state snapshots do not replace
   these exercises.
 - Registry pull and macOS builds other than `26A428`.
 - Container-facing routing/TLS and per-principal authentication.
@@ -144,9 +143,33 @@ go test ./internal/control -run '^TestLiveLifecycle$' -count=1 -v -timeout=26m
   The complete task → VM → execution → result → cleanup workflow from Balda
   has not passed end-to-end acceptance.
 
+## Portable release checks (2026-09-30)
+
+The source archive passed `make check`, `make build` and `go mod verify` with an
+empty HOME and separate empty Go module/build caches. A fresh Python 3.14 VNC
+environment installed the pinned requirements and passed imports and `pip check`.
+Deployment tests cover a different account/HOME, paths with spaces, custom ports,
+insecure token refusal and missing tools. Archive smoke checks also exercised
+initialization, plist/MCP generation, refusal to overwrite and the Lume wrapper's
+configured port, without starting a real VM service.
+
+Gitleaks 8.30.1 found no secrets in the complete reachable Git history or extracted
+release contents. An additional local comparison against current deployment
+credentials found no matching Git blobs. Go vulnerability checks found no
+reachable or imported-package vulnerabilities. Archive checks verified binary
+hashes, ad-hoc signatures and absence of the author's HOME path in all four
+binaries. Secret scanning is evidence, not a guarantee; `.gitignore` and the CI
+scan guard future changes as well.
+
+GitHub [Checks](https://github.com/mallexxx/virfield/actions/workflows/check.yml)
+runs the Linux/macOS matrix; publication requires both jobs to pass for the exact
+release commit. This portability check does not claim a full VM image build on
+a second physical Mac. The image acceptance above remains tied to its stated
+hardware/OS/tool versions.
+
 ## Release procedure
 
-After checks pass on a clean committed tree, build an archive with
+Using Python 3.12 or newer, after checks pass on a clean committed tree, build an archive with
 `python3 tools/release.py v2.0.0 --output /absolute/new/release-directory`.
 The packager uses only committed source and freshly built macOS/arm64 binaries;
 it includes dependency notices, binary hashes and the exact Git revision. It
