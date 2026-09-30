@@ -360,8 +360,18 @@ all VM configuration locks were acquired before unloading the service. The incom
 test image is retained for inspection; its quarantined job reserves maintenance
 access until explicit recovery. The full `make check` passed again after this switch.
 Installed HTTP/stdio MCP discovery, status and anonymous-request rejection passed
-against the restored service. The incomplete temporary image deletion was blocked
-by automatic approval review pending explicit authorization for that exact VM.
+against the restored service. The installed browser console passed login, token
+clearing, zero browser errors and 390-pixel layout checks. After explicit approval
+for the temporary VM, deletion job `job-4cb54b01dadf3cee5978cb1325015b97` succeeded;
+its credentials and private diagnostics were also removed. A new uninterrupted
+full-profile build is running as `job-b556a48b83c424a401b1905b300a6fa7`.
+
+A stale client respawned a v1 TypeScript MCP process despite migrated client
+configuration. The v1 HTTP, MCP and direct database entrypoints now load a
+retirement guard before any legacy initialization. Both source and compiled
+entrypoints were executed: each exited 1, wrote only migration guidance to stderr,
+and source runs created no database directory. TypeScript compilation passed.
+The exact three-process legacy MCP tree was stopped; no Lume process was touched.
 
 ## Not yet accepted / production release gates
 

@@ -4,6 +4,7 @@
  * Starts lume serve as a managed subprocess.
  */
 
+import './retired.js';
 import express, { Request, Response, NextFunction } from 'express';
 import expressWs from 'express-ws';
 import { join, dirname } from 'path';

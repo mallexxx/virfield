@@ -5,7 +5,7 @@ Build with `make build`; verify with `make check`. The Go lifecycle core and pin
 macOS 27 image pipeline have [live acceptance records](docs/v2/VERIFICATION.md).
 The local service and MCP replacement is installed and live-tested. Full UI-test golden provisioning and the remaining release gates are tracked in that record.
 
-The TypeScript documentation below is retained as a legacy reference. The old service and MCP entrypoints are no longer running on the acceptance host.
+The TypeScript documentation below is retained as a legacy reference. The old service, MCP and database entrypoints now exit immediately with migration instructions, before initializing any database or VM operations. Existing clients must use the Go v2 MCP command from the runbook.
 
 ---
 

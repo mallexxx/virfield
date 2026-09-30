@@ -13,6 +13,7 @@
  * Shares the same SQLite DB as the web console.
  */
 
+import './retired.js';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {

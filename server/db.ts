@@ -5,6 +5,7 @@
  * Database file: ~/.virfield/state.db
  */
 
+import './retired.js';
 import Database from 'better-sqlite3';
 import { homedir } from 'os';
 import { mkdirSync } from 'fs';
