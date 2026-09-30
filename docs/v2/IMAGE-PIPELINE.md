@@ -97,7 +97,7 @@ The service requires the local `0.5.3 + guest-shutdown` dependency patch in
 completed guest in `SharedVM`, so `/lume/vms` and `/lume/host/status` keep reporting
 it as running after a normal shutdown. The patch removes that entry when `run`
 returns. Do not work around stale inventory by force-stopping the guest or by
-ignoring the capacity response. `deploy/build-lume.sh NEW_ABSOLUTE_OUTPUT_DIR`
+ignoring the capacity response. `bash deploy/build-lume.sh NEW_ABSOLUTE_OUTPUT_DIR`
 verifies the source archive SHA-256, uses the upstream `Package.resolved`, applies
 only this patch, and signs a NAT-only binary with the virtualization entitlement.
 It does not install or restart services. Configure both the Lume service's

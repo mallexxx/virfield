@@ -350,8 +350,14 @@ connection error without clearing errors from user actions.
 
 `make check` (Python, gofmt, vet, race tests), the additional deletion-guard race
 test and Staticcheck passed. This is code/browser verification, not a completed
-fresh golden acceptance. The Lume system-service update is still awaiting macOS
-administrator authorization; the incomplete test image is retained for inspection.
+fresh golden acceptance. After macOS administrator authorization, the patched Lume
+LaunchDaemon plist was installed and the previous service unloaded. The immediately
+following `launchctl bootstrap` failed with error 5. The plist passes `plutil`, is
+root-owned with mode 0644, and the job is not disabled; a separate bootstrap is
+awaiting a renewed macOS authorization dialog. No VM was running during the switch:
+all VM configuration locks were acquired before unloading the service. The incomplete
+test image is retained for inspection, and admission remains blocked until fresh
+backend inventory is available. The full `make check` passed again after this switch.
 
 ## Not yet accepted / production release gates
 
