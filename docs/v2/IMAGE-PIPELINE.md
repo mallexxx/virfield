@@ -96,14 +96,16 @@ The service requires the local `0.5.3 + guest-shutdown` dependency patch in
 `deploy/lume-0.5.3-guest-shutdown.patch`. Upstream `runVM` leaves a successfully
 completed guest in `SharedVM`, so `/lume/vms` and `/lume/host/status` keep reporting
 it as running after a normal shutdown. The patch removes that entry when `run`
-returns. Do not work around stale inventory by force-stopping the guest or by
+returns. It also replaces the successful unattended setup's forced power-off with
+one guest shutdown request and waits for VM lifecycle cleanup, including when SSH
+disconnects during shutdown. Do not work around stale inventory by force-stopping the guest or by
 ignoring the capacity response. `bash deploy/build-lume.sh NEW_ABSOLUTE_OUTPUT_DIR`
 verifies the source archive SHA-256, uses the upstream `Package.resolved`, applies
 only this patch, and signs a NAT-only binary with the virtualization entitlement.
 It does not install or restart services. Configure both the Lume service's
 `-binary` and `image_tools.lume` to the resulting binary. The staged source also
-contains `guestShutdownReleasesRunningCache`, runnable with
-`swift test -c release --disable-automatic-resolution --filter guestShutdownReleasesRunningCache`.
+contains cache and setup-shutdown regression tests, runnable with
+`swift test -c release --disable-automatic-resolution --filter 'guestShutdownReleasesRunningCache|setupShutdownRequiresLifecycleCompletion'`.
 
 Lume subprocesses have fixed argv, bounded private logs, context deadlines and
 an owned process group. Cancellation never uses `pkill`, process-name searches,

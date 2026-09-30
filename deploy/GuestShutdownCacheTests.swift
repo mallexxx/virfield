@@ -5,6 +5,29 @@ import Testing
 private enum GuestShutdownTestError: Error { case failed }
 
 @MainActor
+@Test("setup shutdown accepts SSH disconnect only after VM lifecycle completion")
+func setupShutdownRequiresLifecycleCompletion() async throws {
+    var requests = 0
+    var observations = 0
+    try await UnattendedInstaller.waitForGuestShutdown(request: {
+        requests += 1
+        throw GuestShutdownTestError.failed
+    }, completed: {
+        observations += 1
+        return observations == 3
+    }, timeout: 1, pollNanoseconds: 1_000_000)
+    #expect(requests == 1)
+    #expect(observations == 3)
+    do {
+        try await UnattendedInstaller.waitForGuestShutdown(request: {
+            requests += 1
+        }, completed: { false }, timeout: 0)
+        Issue.record("SSH success without completed VM shutdown was accepted")
+    } catch {}
+    #expect(requests == 2)
+}
+
+@MainActor
 private final class CompletedGuestVM: MockVM {
     var fail = false
     override func run(

@@ -364,7 +364,16 @@ against the restored service. The installed browser console passed login, token
 clearing, zero browser errors and 390-pixel layout checks. After explicit approval
 for the temporary VM, deletion job `job-4cb54b01dadf3cee5978cb1325015b97` succeeded;
 its credentials and private diagnostics were also removed. A new uninterrupted
-full-profile build is running as `job-b556a48b83c424a401b1905b300a6fa7`.
+full-profile build `job-b556a48b83c424a401b1905b300a6fa7` failed after 501.10 seconds:
+the initial password rotation returned macOS error -14915 before Recovery.
+The image was not published. Its explicitly authorized cleanup completed as
+`job-7429cf4d6883fb9617c47b87fd7b2897`.
+
+Source inspection found a second forced power-off inside Lume's successful offline
+setup, immediately after account/preboot finalization. The dependency patch now
+requests a guest shutdown there and waits for VM.run lifecycle completion. This
+is a persistence fix; its effect on the observed password error still requires a
+clean real-VM rerun. No account-repair shortcut or weakened password check is used.
 
 A stale client respawned a v1 TypeScript MCP process despite migrated client
 configuration. The v1 HTTP, MCP and direct database entrypoints now load a

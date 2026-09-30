@@ -1,6 +1,6 @@
 --- a/src/LumeController.swift
 +++ b/src/LumeController.swift
-@@ -1172,6 +1172,8 @@
+@@ -1169,6 +1169,8 @@
              vm.telemetryTransport = telemetryTransport
  
              SharedVM.shared.setVM(name: normalizedName, vm: vm)
@@ -9,3 +9,62 @@
              try await vm.run(
                  displayMode: effectiveDisplayMode,
                  sharedDirectories: sharedDirectories,
+--- a/src/Unattended/UnattendedInstaller.swift
++++ b/src/Unattended/UnattendedInstaller.swift
+@@ -111,7 +111,9 @@
+         ])
+ 
+         var vmStartError: Error?
++        var vmRunCompleted = false
+         let vmTask = Task {
++            defer { vmRunCompleted = true }
+             var attempts = 0
+             let maxAttempts = 3
+             while attempts < maxAttempts {
+@@ -191,10 +193,17 @@
+                 Logger.info("Post-SSH commands completed")
+             }
+ 
+-            Logger.info("Offline unattended setup verified - stopping VM")
+-            vmTask.cancel()
+-            try? await vm.stop()
+-            Logger.info("VM stopped", metadata: ["name": vm.name])
++            Logger.info("Offline unattended setup verified - requesting guest shutdown")
++            let sshClient = SSHClient(host: vmIP, port: 22,
++                                      user: healthCheck.user ?? "lume",
++                                      password: healthCheck.password ?? "lume")
++            let password = (healthCheck.password ?? "lume").replacingOccurrences(of: "'", with: "'\\''")
++            let command = "printf '%s\\n' '\(password)' | /usr/bin/sudo -S -p '' /sbin/shutdown -h now"
++            try await Self.waitForGuestShutdown(request: {
++                _ = try await sshClient.execute(command: command, timeout: 30)
++            }, completed: { vmRunCompleted })
++            try await vmTask.value
++            Logger.info("Guest shutdown and session cleanup completed", metadata: ["name": vm.name])
+         } catch {
+             Logger.error("Offline unattended setup verification failed", metadata: [
+                 "error": error.localizedDescription
+@@ -203,6 +212,24 @@
+             try? await vm.stop()
+             Logger.info("VM stopped after failure", metadata: ["name": vm.name])
+             throw error
++        }
++    }
++
++    // SSH may disconnect during a successful shutdown. Only VM.run completion,
++    // which includes guestDidStop and session cleanup, confirms persistence.
++    static func waitForGuestShutdown(
++        request: () async throws -> Void,
++        completed: () -> Bool,
++        timeout: TimeInterval = 120,
++        pollNanoseconds: UInt64 = 1_000_000_000
++    ) async throws {
++        try? await request()
++        let deadline = Date().addingTimeInterval(timeout)
++        while !completed() {
++            guard Date() < deadline else {
++                throw UnattendedError.healthCheckFailed("Guest setup shutdown was not confirmed")
++            }
++            try await Task.sleep(nanoseconds: pollNanoseconds)
+         }
+     }
+ 
