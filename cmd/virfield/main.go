@@ -27,9 +27,21 @@ func main() {
 func run() error {
 	base := flag.String("url", "http://127.0.0.1:7780", "daemon URL")
 	tokenFile := flag.String("token-file", "", "owner-only API token file")
-	key := flag.String("key", "", "stable idempotency key; required for acquire/release")
+	key := flag.String("key", "", "stable idempotency key; required for acquire, release, resolve and image mutations")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Usage: virfield [flags] status | image-build IMAGE_ID | image-delete IMAGE_ID EXACT_VM_NAME | acquire TEMPLATE TTL_SECONDS PUBLIC_KEY_FILE | keygen DIRECTORY | ssh-config LEASE_ID IDENTITY_DIRECTORY | lease ID | job ID | events [AFTER] | release ID | renew ID RFC3339 | resolve ID VM CONFIRM-NO-OPERATION-IN-FLIGHT | init DIRECTORY TEMPLATE VM LOCATION")
+		fmt.Fprint(os.Stderr, `Usage: virfield [flags] COMMAND [arguments]
+
+Inspect: status | lease ID | job ID | events [AFTER]
+Leases:  acquire TEMPLATE TTL_SECONDS PUBLIC_KEY_FILE | renew ID RFC3339 | release ID
+SSH:     keygen DIRECTORY | ssh-config LEASE_ID IDENTITY_DIRECTORY | tunnel LEASE_ID | tunnel-close LEASE_ID
+Images:  image-build TEMPLATE_ID | image-provision TEMPLATE_ID EXACT_VM_NAME | image-delete TEMPLATE_ID EXACT_VM_NAME
+Recover: resolve LEASE_ID VM_NAME CONFIRM-NO-OPERATION-IN-FLIGHT
+         image-recover IMAGE_RECORD_ID EXACT_VM_NAME retry|reprovision|delete CONFIRM-NO-OPERATION-IN-FLIGHT
+Host:    backup | init DIRECTORY TEMPLATE VM LOCATION
+
+release, image-delete and recovery cleanup permanently delete their VM.
+Recovery requires prior inspection that no operation remains in flight.
+`)
 		flag.PrintDefaults()
 	}
 	flag.Parse()
