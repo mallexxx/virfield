@@ -1,7 +1,0 @@
-{
-  "virfield": {
-    "command": "npx",
-    "args": ["tsx", "/absolute/path/to/virfield/server/mcp-server.ts"],
-    "description": "virfield MCP — manage macOS lume VMs, route Peekaboo calls, AX snapshots, run UI tests"
-  }
-}

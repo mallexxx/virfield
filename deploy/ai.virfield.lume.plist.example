@@ -16,19 +16,21 @@
 	<key>KeepAlive</key>
 	<true/>
 	<key>Label</key>
-	<string>ai.virfield.virfieldd</string>
+	<string>ai.virfield.lume</string>
 	<key>ProcessType</key>
 	<string>Background</string>
 	<key>ProgramArguments</key>
 	<array>
-		<string>/ABSOLUTE/DEPLOYMENT/bin/virfieldd</string>
-		<string>-config</string>
-		<string>/ABSOLUTE/DEPLOYMENT/config.json</string>
+		<string>/ABSOLUTE/DEPLOYMENT/bin/virfield-lume</string>
+		<string>-binary</string>
+		<string>/ABSOLUTE/DEPLOYMENT/tools/lume/lume</string>
+		<string>-log</string>
+		<string>/ABSOLUTE/DEPLOYMENT/lume.log</string>
 	</array>
 	<key>RunAtLoad</key>
 	<true/>
 	<key>StandardErrorPath</key>
-	<string>/ABSOLUTE/DEPLOYMENT/daemon.startup.log</string>
+	<string>/ABSOLUTE/DEPLOYMENT/lume.startup.log</string>
 	<key>StandardOutPath</key>
 	<string>/dev/null</string>
 	<key>ThrottleInterval</key>

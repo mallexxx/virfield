@@ -1,10 +1,13 @@
 # Image Manager
 
+Run command examples from the repository root. `VIRFIELD_HOME` refers to the
+private deployment directory defined in [Operations](OPERATIONS.md#paths-and-configuration).
+
 Image preparation is a durable job in `virfieldd`. CLI, UI and MCP submit the same
 API request. No client invokes Lume directly. Broker/Runner execution and the
 installation of provider binaries remain separate. The optional fixed
 `uitest-27-v1` recipe automatically installs Xcode/tools and configures guest-only
-SIP/Gatekeeper/AMFI/TCC and sudo. Its provisioning and two-clone verification passed. The operator selects and authorizes it once for the image profile; each subsequent `image-build` executes it automatically.
+SIP/Gatekeeper/AMFI/TCC and sudo. The operator selects and authorizes it once for the image profile; each subsequent `image-build` executes it automatically.
 
 ## Profile and dependencies
 
@@ -32,7 +35,7 @@ Set the top-level `image_tools` config to absolute operator-controlled paths:
 
 ```json
 {
-  "lume": "/opt/homebrew/bin/lume",
+  "lume": "/absolute/private/tools/lume/lume",
   "python": "/absolute/private/tools/vnc/bin/python",
   "tesseract": "/opt/homebrew/bin/tesseract",
   "vnc_bin": "/absolute/private/tools/vnc/bin"
@@ -44,8 +47,23 @@ rejected before any image operation until their recipe is implemented and tested
 Python environment and Tesseract before starting a build. The tested Python
 3.14.4 package set is pinned in `deploy/image-tools-requirements.txt`; Tesseract
 5.5.2 was used for live acceptance. The daemon never
-installs host dependencies itself. `assistant.py` is a versioned embedded guest
-VNC finisher for macOS 27, derived from the existing Virfield recipe; it cannot
+installs host dependencies itself. Build the patched dependency and create the
+isolated VNC environment before configuring their absolute paths:
+
+```sh
+mkdir -p "$VIRFIELD_HOME/tools"
+bash deploy/build-lume.sh "$VIRFIELD_HOME/tools/lume"
+python3 -m venv "$VIRFIELD_HOME/tools/vnc"
+"$VIRFIELD_HOME/tools/vnc/bin/python" -m pip install -r deploy/image-tools-requirements.txt
+```
+
+Use the selected Python interpreter for `python3`; install Tesseract separately
+and set its absolute executable path. The Lume output directory must be new.
+For the full profile, also configure the absolute local Xcode source as described
+in [Optional UI-test tool profile](#optional-ui-test-tool-profile).
+
+`assistant.py` is a versioned embedded guest
+VNC finisher for macOS 27; it cannot
 manage VM lifecycle. Lume's native `setup` handles offline patching. Recovery
 uses one owned `lume run --recovery-mode true` child plus `recovery27.py`: the
 native 0.5.3 SIP navigation was observed to open Time Machine on this build.
@@ -58,7 +76,7 @@ for boot frames, reconnects for full VNC framebuffers, recognizes the final
 button separately from the wallpaper and delegates the final desktop
 postcondition to SSH. Each attempt retains its own screenshot directory.
 
-The first implementation fixes resources at 4 CPUs, 8 GiB RAM, 80 GiB sparse
+The supported recipe fixes resources at 4 CPUs, 8 GiB RAM, 80 GiB sparse
 disk, 1920×1080, NAT, no host shared folders. Changing the recipe requires a code
 change and live validation; this is not an arbitrary command runner.
 
@@ -120,7 +138,7 @@ This happens before Recovery; the Recovery driver receives the generated passwor
 on private stdin. Final verification checks guest build, canonical SIP status,
 credentials and Finder after another reboot. Credentials remain in private 0600 files under
 the private state directory; they are never returned by status/job/events.
-Each disposable clone receives a distinct password, management key and SSH host key before readiness. Caller keys are supplied per lease; image/cross-lease keys are tested for rejection. See the [SSH contract](README.md).
+Each disposable clone receives a distinct password, management key and SSH host key before readiness. Caller keys are supplied per lease; image/cross-lease keys are tested for rejection. See the [SSH contract](OPERATIONS.md#leases-and-ssh).
 
 ## Recovery and deletion
 
@@ -164,7 +182,7 @@ absence. Cache media and audit history are retained; there is no hidden disk pur
 - [Pinned virtualization stop implementation](https://github.com/trycua/cua/blob/lume-v0.5.3/libs/lume/src/Virtualization/VMVirtualizationService.swift)
 - [Pinned SIP implementation](https://github.com/trycua/cua/blob/lume-v0.5.3/libs/lume/src/Commands/Sip.swift)
 
-The live acceptance record is in `VERIFICATION.md`. Unit tests alone do not
+The live acceptance record is in [Verification](VERIFICATION.md). Unit tests alone do not
 establish that a particular macOS build's Setup Assistant or Recovery UI works.
 
 The deployed journal uses schema version 4; image records were introduced in
@@ -190,8 +208,7 @@ VIRFIELD_LIVE_TOKEN_FILE=/absolute/state/token \
 go test ./internal/client -run '^TestLiveImageRebuild$' -count=1 -v -timeout=118m
 ```
 
-The base-profile acceptance took 10 minutes 38 seconds with verified local media.
-Allow 15–25 minutes for the full tool profile on this host;
+Allow 15–25 minutes for the full tool profile on the acceptance host;
 network download time depends on throughput. Long deadlines bound installation,
 not a reason to repeat a dispatched operation. The test retains the daemon's
 journal and prints image/job IDs for exact inspection on failure.
@@ -223,7 +240,7 @@ script exit code. Provisioning is a CLI/operator operation, absent from MCP.
 
 The guest recipe is embedded and has VirtualMac/build guards. It does not import
 host SSH keys, reset guest credentials to `lume`, mount host folders or accept
-caller shell commands. Logs are private and bounded by the SSH transport. The 2026-09-29 deployment now configures this profile for `macos27`, following explicit user authorization. Provisioning and two-clone acceptance passed; publication requires all verification probes. The accepted source is Xcode 27.2 beta (27B5019j); upgrading Xcode or Homebrew tools requires another image acceptance.
+caller shell commands. Logs are private and bounded by the SSH transport. Publication requires all verification probes. See [Verification](VERIFICATION.md) for tested tool versions and results; upgrading Xcode or Homebrew tools requires another image acceptance.
 
 The guest Gatekeeper setting uses Apple's Security `policydb` contract:
 `SystemPolicy-prefs.plist` stores the string `enabled = no`, with readable 0644

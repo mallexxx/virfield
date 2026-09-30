@@ -4,6 +4,7 @@ build:
 test:
 	go test -race ./...
 check:
+	python3 tools/check-docs.py
 	python3 -m unittest discover -s internal/images -p '*_test.py'
 	@test -z "$$(gofmt -l cmd internal)" || (gofmt -l cmd internal; exit 1)
 	go vet ./...

@@ -1,31 +1,23 @@
-node_modules/
-dist/
-ui/dist/
-*.log
-.env
-
-# Local config — copy mcp.json.example and fill in your path
-mcp.json
-
-# Working plan — local only, not for distribution
-PLAN.md
-
-# SQLite DB (runtime state, not source)
-server/console.db
-*.db
-
-# Claude Code project files
-.claude/
-
-# Go v2 build outputs and local runtime state
-bin/
-.v2-state/
+# Local build outputs
+/bin/
 coverage.out
+
+# Private runtime/development files
+.virfield-state/
+state/
+logs/
+*.log
+*.jsonl
+*.db
 *.db-shm
 *.db-wal
-.DS_Store
-logs/
-state/
+.env
+mcp.json
 
-# Python image-job bytecode
+# Local editor/agent state
+.claude/
+.DS_Store
+
+# Embedded Python driver bytecode
 __pycache__/
+*.pyc

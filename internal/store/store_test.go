@@ -126,7 +126,7 @@ func TestUpgradeImageJournalKeepsExistingRecords(t *testing.T) {
 	if err := s.Save(ctx, l, &j, "request-upgrade", "fingerprint", "lease.accepted", "preserve me"); err != nil {
 		t.Fatal(err)
 	}
-	// The v1 and v2 table layouts are identical; the version protects old readers
+	// Journal schema versions 1 and 2 have identical table layouts; the version protects old readers
 	// from treating permanent images as expiring leases.
 	if _, err := s.db.Exec(`PRAGMA user_version=1`); err != nil {
 		t.Fatal(err)

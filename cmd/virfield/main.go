@@ -247,7 +247,7 @@ func initialize(dir, id, name, location string) error {
 		return err
 	}
 	fmt.Println("Created", path)
-	fmt.Println("Configure a pinned image profile and image tools before acquiring leases; see docs/v2/IMAGE-PIPELINE.md")
+	fmt.Println("Configure a pinned image profile and image tools before acquiring leases; see docs/IMAGE-PIPELINE.md")
 	fmt.Println("Start: virfieldd -config", path)
 	return nil
 }

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "virfield": {
+      "command": "/ABSOLUTE/DEPLOYMENT/bin/virfield-mcp",
+      "args": ["-token-file", "/ABSOLUTE/DEPLOYMENT/token"]
+    }
+  }
+}
