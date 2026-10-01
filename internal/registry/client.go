@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -149,15 +150,19 @@ func (c *Client) Resolve(ctx context.Context, r domain.RegistryResolveRequest) (
 		return ref, domain.Err("registry_digest_mismatch", "GHCR manifest digest verification failed")
 	}
 	var manifest struct {
-		Schema    int          `json:"schemaVersion"`
-		MediaType string       `json:"mediaType"`
-		Config    *descriptor  `json:"config"`
-		Layers    []descriptor `json:"layers"`
+		Schema      int               `json:"schemaVersion"`
+		MediaType   string            `json:"mediaType"`
+		Config      *descriptor       `json:"config"`
+		Layers      []descriptor      `json:"layers"`
+		Annotations map[string]string `json:"annotations"`
 	}
 	if json.Unmarshal(b, &manifest) != nil || manifest.Schema != 2 || len(manifest.Layers) == 0 || len(manifest.Layers) > 4096 {
 		return ref, domain.Err("registry_invalid", "Expected a single VM image manifest, not an image index")
 	}
 	if err := validateMediaTypes(manifest.MediaType, manifest.Config, manifest.Layers); err != nil {
+		return ref, err
+	}
+	if err := validateDiskCoverage(manifest.Annotations, manifest.Layers); err != nil {
 		return ref, err
 	}
 	total := int64(0)
@@ -176,9 +181,70 @@ func (c *Client) Resolve(ctx context.Context, r domain.RegistryResolveRequest) (
 }
 
 type descriptor struct {
-	MediaType string `json:"mediaType"`
-	Digest    string `json:"digest"`
-	Size      int64  `json:"size"`
+	MediaType   string            `json:"mediaType"`
+	Digest      string            `json:"digest"`
+	Size        int64             `json:"size"`
+	Annotations map[string]string `json:"annotations,omitempty"`
+}
+
+// Lume's chunked OCI format declares the complete logical disk size in the
+// manifest. Verify that the disk layers cover every byte before allowing a
+// download or accepting an uploaded tag as a successful publication.
+func validateDiskCoverage(annotations map[string]string, layers []descriptor) error {
+	const diskType = "application/vnd.trycua.lume.disk.v1"
+	const maxDiskSize = uint64(512 << 30)
+	disks := make([]descriptor, 0, len(layers))
+	for _, layer := range layers {
+		if layer.MediaType == diskType {
+			disks = append(disks, layer)
+		}
+	}
+	if len(disks) == 0 {
+		return nil // Legacy manifests use a different format.
+	}
+	invalid := func() error {
+		return domain.Err("registry_invalid", "GHCR disk layers do not cover the declared VM disk")
+	}
+	declared := annotations["org.trycua.lume.total-uncompressed-size"]
+	if declared == "" && len(disks) == 1 && disks[0].Annotations["org.trycua.lume.part.number"] == "" {
+		return nil // Single-layer OCI manifests use a different size annotation.
+	}
+	total, err := strconv.ParseUint(declared, 10, 64)
+	if err != nil || total == 0 || total > maxDiskSize {
+		return invalid()
+	}
+	if configured := annotations["org.trycua.lume.disk-size"]; configured != "" {
+		size, err := strconv.ParseUint(configured, 10, 64)
+		if err != nil || size != total {
+			return invalid()
+		}
+	}
+	type part struct{ number, offset, size uint64 }
+	parts := make([]part, 0, len(disks))
+	for _, disk := range disks {
+		a := disk.Annotations
+		parse := func(key string) (uint64, error) { return strconv.ParseUint(a[key], 10, 64) }
+		number, e1 := parse("org.trycua.lume.part.number")
+		count, e2 := parse("org.trycua.lume.part.total")
+		offset, e3 := parse("org.trycua.lume.part.offset")
+		size, e4 := parse("org.trycua.lume.content.uncompressed-size")
+		if e1 != nil || e2 != nil || e3 != nil || e4 != nil || count != uint64(len(disks)) || size == 0 || size > maxDiskSize {
+			return invalid()
+		}
+		parts = append(parts, part{number, offset, size})
+	}
+	sort.Slice(parts, func(i, j int) bool { return parts[i].number < parts[j].number })
+	covered := uint64(0)
+	for i, p := range parts {
+		if p.number != uint64(i) || p.offset != covered || p.size > total-covered {
+			return invalid()
+		}
+		covered += p.size
+	}
+	if covered != total {
+		return invalid()
+	}
+	return nil
 }
 
 // Lume has two supported wire formats. Docker containers, Tart images and

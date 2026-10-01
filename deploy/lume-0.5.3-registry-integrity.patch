@@ -1,0 +1,30 @@
+--- a/src/ContainerRegistry/ImageContainerRegistry.swift
++++ b/src/ContainerRegistry/ImageContainerRegistry.swift
+@@ -4717,7 +4717,7 @@
+             manifest = createOCIManifest(
+                 configDigest: configDigest, configSize: configSize,
+                 nvramDigest: nvramDigest, nvramSize: nvramSize,
+-                diskChunks: await chunkCollector.getAll(),
++                diskChunks: try await chunkCollector.getAll(),
+                 totalUncompressedSize: diskSize,
+                 vmConfig: vmConfig
+             )
+@@ -5349,8 +5349,16 @@
+         chunks[index] = desc
+     }
+ 
+-    func getAll() -> [DiskChunkDescriptor] {
+-        chunks.compactMap { $0 }
++    func getAll() throws -> [DiskChunkDescriptor] {
++        var complete: [DiskChunkDescriptor] = []
++        complete.reserveCapacity(chunks.count)
++        for (index, chunk) in chunks.enumerated() {
++            guard let chunk else {
++                throw PushError.missingPart(index)
++            }
++            complete.append(chunk)
++        }
++        return complete
+     }
+ }
+ 

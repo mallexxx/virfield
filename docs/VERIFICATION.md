@@ -176,7 +176,38 @@ was preserved. Private test output is in the deployment's
 Fresh full import and publish → pull-back → ordinary clone/workload acceptance
 and client workflow checks remain release gates. Publication rebuilds a portable
 recipe; raw source-disk export and preservation of manual golden changes are not
-offered. No GHCR tag has been published in this acceptance run.
+offered. The published tag below failed pull-back and is not an accepted image.
+
+The first two clean portable-build attempts on 2026-10-01 did not reach upload.
+`job-a56dffdf456ecf269dc7c18bce963a97` downloaded and verified the Apple
+15.2 IPSW, then stopped at the Sequoia Accessibility screen: its `Not Now`
+control was clipped at 1920×1080. `job-5db0a2a0487122d62f3af0c7504ab46c`
+used 1920×1440 and passed Accessibility, then stopped because the Sequoia Apple
+Account screen says `Set Up Later`, unlike the earlier macOS 27 screen. Both
+quarantined temporary export VMs were deleted through exact-image recovery;
+their deletion jobs succeeded, the source golden remained stopped and the pool
+returned to 0/2. The agreed GHCR tag remained absent after those attempts.
+Commit `30f3d4a` adds the taller display and a screenshot-verified OCR target
+for `Set Up Later`.
+
+The third fresh build, `job-c7b629107f813b23f0ff425acd0df21f`, passed
+Assistant, guest security and reboot verification, sanitation, GHCR upload,
+and temporary VM cleanup. It published
+`ghcr.io/mallexxx/virfield-e2e-sequoia152:e2e-20261001-1200-a6cc966` at
+`sha256:c500d1206c768c9c720cd0da9ecf6293d7a2a86e543c5555b97e41bfed7b3811`.
+The digest and tag resolve consistently, but the OCI manifest is incomplete:
+it declares an 80 GiB disk and contains only parts 0–13 of 512 MiB each (7 GiB).
+The Lume push path silently compacted missing part descriptors when constructing
+the manifest. The exact reason those descriptors were missing is still under
+investigation. Do not pull or clone this tag.
+
+Pull-back `job-e67cee0e7659835a600a99f91c47e18f` reached a running guest
+without DHCP/SSH and failed `guest_timeout`; its VNC screen was black. The
+quarantined imported VM was deleted through exact-image recovery
+`job-77f096b2aec8cec10540e73c58833206` after operator authorization.
+The source golden remains stopped, the pool is healthy at 0/2 used, and the
+incomplete GHCR tag remains available for diagnosis. No round-trip or clone
+acceptance is claimed for the published image.
 
 ## Read-only installed-service checks
 

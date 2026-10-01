@@ -247,8 +247,9 @@ normal persistence boundary for freshly written guest account/TCC state. Final
 verification authenticates the image password again after a clean reboot, in
 addition to key-only SSH. Disposable-VM deletion uses the separate cleanup path.
 
-The service requires the local `0.5.3 + guest-shutdown` dependency patch in
-`deploy/lume-0.5.3-guest-shutdown.patch`. Upstream `runVM` leaves a successfully
+The service requires the local Lume 0.5.3 patches in
+`deploy/lume-0.5.3-guest-shutdown.patch` and
+`deploy/lume-0.5.3-registry-integrity.patch`. Upstream `runVM` leaves a successfully
 completed guest in `SharedVM`, so `/lume/vms` and `/lume/host/status` keep reporting
 it as running after a normal shutdown. The patch removes that entry when `run`
 returns. It also replaces the successful unattended setup's forced power-off with
@@ -256,11 +257,15 @@ one guest shutdown request and waits for VM lifecycle cleanup, including when SS
 disconnects during shutdown. Do not work around stale inventory by force-stopping the guest or by
 ignoring the capacity response. `bash deploy/build-lume.sh NEW_ABSOLUTE_OUTPUT_DIR`
 verifies the source archive SHA-256, uses the upstream `Package.resolved`, applies
-only this patch, and signs a NAT-only binary with the virtualization entitlement.
+both patches, and signs a NAT-only binary with the virtualization entitlement.
+The registry patch makes OCI push fail if any disk part is missing instead of
+publishing an incomplete manifest. Virfield's registry resolver also checks that
+annotated disk parts cover the full declared size before import or publication
+success is accepted.
 It does not install or restart services. Configure both the Lume service's
 `-binary` and `image_tools.lume` to the resulting binary. The staged source also
-contains cache and setup-shutdown regression tests, runnable with
-`swift test -c release --disable-automatic-resolution --filter 'guestShutdownReleasesRunningCache|setupShutdownRequiresLifecycleCompletion'`.
+contains cache, setup-shutdown and registry-integrity regression tests, runnable
+with `swift test -c release --disable-automatic-resolution --filter 'guestShutdownReleasesRunningCache|setupShutdownRequiresLifecycleCompletion|registryChunkCollectorRequiresEveryPart'`.
 
 Lume subprocesses have fixed argv, bounded private logs, context deadlines and
 an owned process group. Cancellation never uses `pkill`, process-name searches,
