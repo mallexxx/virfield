@@ -69,7 +69,8 @@ example `Xcode_13.4.1.xip` downloaded from
 `apple_cookies` is an optional Netscape-format file, mode 0600, containing the
 operator's authorized Apple download session. Only unexpired matching Apple
 cookies are sent, only to `download.developer.apple.com`; redirects are never
-followed with credentials. Keep the file outside Git. A matching local Apple-signed bundle from `image_tools.xcode` is reused first
+followed with credentials. Keep the file outside Git. The repository secret scan also detects Apple download-session
+cookies in Netscape, header and JSON formats. A matching local Apple-signed bundle from `image_tools.xcode` is reused first
 (the version/build must match exactly); otherwise the archive is imported
 before attempting an authenticated download. Neither path nor cookies can be
 supplied through MCP/API.
