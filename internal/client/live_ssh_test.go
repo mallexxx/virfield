@@ -295,7 +295,6 @@ printf "virfield-artifact-ok\\n" > ~/workspace/virfield-acceptance.txt
 				t.Fatal(err)
 			}
 			out, err = s.CombinedOutput(`/bin/bash -c 'set -euo pipefail
-sudo -n true
 test "$(/usr/sbin/spctl --status 2>&1 || true)" = "assessments disabled"
 /usr/sbin/sysctl -n kern.bootargs | /usr/bin/grep -q amfi_get_out_of_my_way=1
 printf "automation-security-ok\\n"
