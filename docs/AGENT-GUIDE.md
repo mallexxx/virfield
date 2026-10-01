@@ -247,6 +247,7 @@ make guest commands idempotent.
 | `image_in_use`, `operation_in_progress` | Inspect current jobs; do not start a competing image operation |
 | `idempotency_conflict`, `ssh_key_in_use` | Correct request tracking/key ownership; do not silently create a duplicate |
 | `apple_auth_required` | Operator imports exact Apple-signed archive or renews private authorization, then inspects/retries the failed stage |
+| `registry_bootstrap_failed` | Import requires native `lume`/`lume` SSH access; retain the failed job and use a compatible portable source. Do not overwrite its account offline. |
 | `disk_encrypted`, `disk_locked`, `disk_policy_unknown` | Golden cannot be published; report disk verification failure without bypassing it |
 | `unsupported_policy`, setup/recovery/security verification failure | Read image runbook and private diagnostics; no guessed key presses or unsupported OS substitutions |
 | `outcome_unknown`, `operation_timeout`, `unsafe_retry` | Mutation may have occurred; preserve reservation and inspect exact VM before recovery |

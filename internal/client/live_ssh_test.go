@@ -49,14 +49,19 @@ func TestLiveLeaseSSH(t *testing.T) {
 		t.Fatal("requires idle v2 manager")
 	}
 	fullProfile := false
+	var profile *domain.ImageProfile
 	expectedSIP := "System Integrity Protection status: disabled."
 	for _, template := range status.Templates {
 		if template.ID == os.Getenv("VIRFIELD_LIVE_TEMPLATE_ID") && template.Image != nil {
+			profile = template.Image
 			fullProfile = template.Image.Provision == "uitest-27-v1"
 			if !template.Image.DisableSIP {
 				expectedSIP = "System Integrity Protection status: enabled."
 			}
 		}
+	}
+	if profile == nil {
+		t.Fatal("requires a registered image recipe")
 	}
 	type owned struct {
 		op      domain.Operation
@@ -261,6 +266,46 @@ func TestLiveLeaseSSH(t *testing.T) {
 			g.Close()
 			t.Fatal("guest probes failed", err)
 		}
+		s, err = g.NewSession()
+		if err != nil {
+			g.Close()
+			t.Fatal(err)
+		}
+		out, err = s.CombinedOutput(`/bin/bash -c 'set -euo pipefail
+/usr/bin/sw_vers -productVersion
+/usr/bin/sw_vers -buildVersion
+for volume in / /System/Volumes/Data; do
+ info=$(/usr/sbin/diskutil info -plist "$volume")
+ for key in FileVault Encryption Locked; do
+  test "$(printf "%s" "$info" | /usr/bin/plutil -extract "$key" raw -o - -)" = false
+ done
+done
+printf "virfield-artifact-ok\\n" > ~/workspace/virfield-acceptance.txt
+'`)
+		s.Close()
+		versions := strings.Fields(string(out))
+		if err != nil || len(versions) != 2 || versions[1] != profile.Build || (profile.MacOS != "" && domain.CompareVersions(versions[0], profile.MacOS) != 0) {
+			g.Close()
+			t.Fatal("clone version/disk policy failed", err, string(out))
+		}
+		if profile.Security == "automation" {
+			s, err = g.NewSession()
+			if err != nil {
+				g.Close()
+				t.Fatal(err)
+			}
+			out, err = s.CombinedOutput(`/bin/bash -c 'set -euo pipefail
+sudo -n true
+test "$(/usr/sbin/spctl --status 2>&1 || true)" = "assessments disabled"
+/usr/sbin/sysctl -n kern.bootargs | /usr/bin/grep -q amfi_get_out_of_my_way=1
+printf "automation-security-ok\\n"
+'`)
+			s.Close()
+			if err != nil || !strings.Contains(string(out), "automation-security-ok") {
+				g.Close()
+				t.Fatal("cloned automation security failed", err, string(out))
+			}
+		}
 		if fullProfile {
 			s, err = g.NewSession()
 			if err != nil {
@@ -338,6 +383,16 @@ printf 'virfield-ui-profile-ok\n'
 		if err != nil || !strings.Contains(string(out), "VirtualMac") {
 			t.Fatal("exported OpenSSH configuration failed", err)
 		}
+		artifact := filepath.Join(dir, "virfield-acceptance.txt")
+		out, err = exec.CommandContext(ctx, "/usr/bin/scp", "-F", filepath.Join(dir, "config"), "virfield:workspace/virfield-acceptance.txt", artifact).CombinedOutput()
+		if err != nil {
+			t.Fatal("artifact export failed", err, string(out))
+		}
+		data, err := os.ReadFile(artifact)
+		if err != nil || string(data) != "virfield-artifact-ok\n" {
+			t.Fatal("exported artifact mismatch", err)
+		}
+		t.Log("exact version, unencrypted boot volumes and SCP artifact export passed", l.ready.ID)
 		t.Log("own key authenticated; other lease and image keys rejected", l.ready.ID)
 	}
 	t.Log("PASS: two distinct authenticated host identities, cross-lease denial, image-key denial, Finder/SIP probes, capacity refusal and idempotency")
