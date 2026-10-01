@@ -18,6 +18,13 @@ def word(words, expected):
     return matches[0] if matches else None
 
 
+def picker_options(words):
+    found = word(words, 'Options')
+    # The boot picker briefly shows Options centered before the macOS volume
+    # appears. Clicking that stale coordinate selects Macintosh HD instead.
+    return found if found and int(found.get('left', '0')) >= 960 else None
+
+
 def click_control(client, found, pause=time.sleep):
     # Recovery coalesces rapid pointer events. Keep the pointer at the observed
     # control through mouse-down/up; moving it away immediately can switch the
@@ -32,7 +39,7 @@ def click_control(client, found, pause=time.sleep):
 
 
 def run_recovery(wait_for, click_word, keys, type_line, password):
-    _, words = wait_for('boot-picker', lambda text, words: word(words, 'Options') is not None, 120)
+    _, words = wait_for('boot-picker', lambda text, words: picker_options(words) is not None, 120)
     click_word(words, 'Options')
     _, words = wait_for('options-selected', lambda text, words: word(words, 'Continue') is not None)
     click_word(words, 'Continue')
@@ -99,10 +106,10 @@ def run():
                 return '', []
         raw = subprocess.run([config['tesseract'], str(picture), 'stdout', '--psm', '11', 'tsv'], capture_output=True, text=True, timeout=20, check=True).stdout
         words = list(csv.DictReader(io.StringIO(raw), delimiter='\t'))
-        # Sparse OCR omits the dark-on-gray Continue button in the boot picker.
-        # Read this versioned ROI separately; only an exact recognized word permits
-        # a click, and coordinates are mapped back to the original framebuffer.
-        if any(w.get('text') == 'Macintosh' for w in words):
+        # Sparse OCR omits the dark-on-gray Continue button beneath Options.
+        # Read this versioned ROI only after Options reaches its stable right
+        # position; exact OCR is still required before clicking.
+        if label == 'options-selected' and picker_options(words) is not None:
             roi = folder / f'{sequence:03}-picker-button.png'
             with Image.open(picture) as frame:
                 offset_y = (frame.height - 1080) // 2

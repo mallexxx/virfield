@@ -217,6 +217,17 @@ An 80 GiB synthetic dry-run with 160 parts completed without a missing part;
 this exercises compression/collection without GHCR upload and does not prove
 the network upload path. A new unique tag and full pull-back remain required.
 
+The next clean export (`job-847168d15f89f1744f2efe33296ad419`) reached
+paired Recovery but stopped at `sip_dispatched` before upload. Screenshot 005
+showed a transient picker with centered Options (OCR x=725); screenshot 006
+showed the settled two-icon picker with Options at x=1141. The driver's click
+used the transient coordinate after the layout changed and selected Macintosh
+HD. The failed job left its temporary VM stopped and the new tag absent.
+`recovery.py` now waits for Options in the stable right position and reads the
+Continue button ROI without requiring OCR to spell the Macintosh label. The
+saved screenshots and OCR confirm the two positions; a new clean build must
+verify the fix live before publication is accepted.
+
 ## Read-only installed-service checks
 
 ```sh

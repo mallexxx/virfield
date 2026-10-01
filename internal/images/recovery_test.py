@@ -1,12 +1,20 @@
 import unittest
-from recovery import click_control, run_recovery, word
+from recovery import click_control, picker_options, run_recovery, word
 
 
 def screen(text):
-    return text.lower(), [{'text': w, 'conf': '95'} for w in text.split()]
+    return text.lower(), [{'text': w, 'conf': '95', 'left': '1141' if w == 'Options' else '0'}
+                          for w in text.split()]
 
 
 class RecoveryTransitions(unittest.TestCase):
+    def test_boot_picker_waits_for_stable_right_hand_options(self):
+        transient = [{'text': 'Options', 'conf': '96', 'left': '725'}]
+        stable = [{'text': 'Options', 'conf': '96', 'left': '1141'},
+                  {'text': 'MacintostyiD', 'conf': '0', 'left': '654'}]
+        self.assertIsNone(picker_options(transient))
+        self.assertEqual(picker_options(stable), stable[0])
+
     def test_menu_click_keeps_pointer_at_observed_control_until_release(self):
         events = []
 
