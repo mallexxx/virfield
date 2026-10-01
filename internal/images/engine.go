@@ -139,9 +139,9 @@ func (e *Engine) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile
 			}
 		}
 		display := "1920x1080"
-		if onlineSetupRequired(p) {
-			// Native Monterey Assistant needs more than 540 logical pixels of
-			// height on Lume's Retina display, otherwise its buttons are clipped.
+		if onlineSetupRequired(p) || (domain.CompareVersions(p.MacOS, "15") >= 0 && domain.CompareVersions(p.MacOS, "16") < 0) {
+			// Monterey and Sequoia Assistant controls can be clipped at 1080
+			// pixels. The taller guest display keeps the actual buttons visible.
 			display = "1920x1440"
 		}
 		return lume.ImageCommand(ctx, e.Tools.Lume, e.Tools.VNCBin, folder, step, l, ipsw, display)

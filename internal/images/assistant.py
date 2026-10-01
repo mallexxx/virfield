@@ -1,4 +1,32 @@
-"""Versioned macOS 27 Setup Assistant finisher; guest VNC only, no lifecycle."""
+"""Versioned macOS Setup Assistant finisher; guest VNC only, no lifecycle."""
+
+
+def locate_phrase(tsv, phrase, min_y=0):
+    """Locate a complete OCR label on one line; never infer a button from a title."""
+    import csv
+    from io import StringIO
+
+    target = phrase.lower().split()
+    lines = {}
+    for word in csv.DictReader(StringIO(tsv), delimiter='\t'):
+        label = word.get('text', '').strip().lower().strip('.,:!?')
+        if not label:
+            continue
+        line = tuple(word[k] for k in ('page_num', 'block_num', 'par_num', 'line_num'))
+        lines.setdefault(line, []).append((int(word['word_num']), label, int(word['left']), int(word['top']), int(word['width']), int(word['height'])))
+    matches = []
+    for line in lines.values():
+        line.sort()
+        for start in range(len(line) - len(target) + 1):
+            part = line[start:start + len(target)]
+            if [word[1] for word in part] != target or min(word[3] for word in part) < min_y:
+                continue
+            left = min(word[2] for word in part)
+            right = max(word[2] + word[4] for word in part)
+            top = min(word[3] for word in part)
+            bottom = max(word[3] + word[5] for word in part)
+            matches.append(((left + right) // 2, (top + bottom) // 2))
+    return max(matches, key=lambda point: point[1]) if matches else None
 
 def classify(screen, welcome_button=""):
     if ''.join(welcome_button.lower().split()) == "getstarted":
@@ -60,8 +88,9 @@ def run():
             picture = folder / f'assistant-{step:02}.png'
             client.captureScreen(str(picture))
             with Image.open(picture) as frame:
-                if frame.size != (1920, 1080):
+                if frame.size not in ((1920, 1080), (1920, 1440)):
                     raise RuntimeError('Unexpected guest resolution; fixed coordinates are unsafe')
+                tall = frame.height == 1440
             screen = subprocess.run([config['tesseract'], str(picture), 'stdout'], capture_output=True, text=True, timeout=30, check=True).stdout
             # Full-page segmentation can miss the isolated final button on a
             # photographic wallpaper. Recognize only its exact label in the
@@ -71,12 +100,24 @@ def run():
                 png = BytesIO()
                 button.save(png, format='PNG')
             button_text = subprocess.run([config['tesseract'], 'stdin', 'stdout', '--psm', '7'], input=png.getvalue(), capture_output=True, timeout=30, check=True).stdout.decode('utf-8', errors='replace')
-            action = classify(screen, button_text)
+            action = classify(screen, button_text if not tall else '')
             print(f'Observation {step}: {action}', flush=True)
             def tap(x, y, delay=8):
                 client.mouseMove(x, y)
                 client.mousePress(1)
                 time.sleep(delay)
+            def tap_label(picture, phrases, min_y, delay=8):
+                result = subprocess.run([config['tesseract'], str(picture), 'stdout', 'tsv'], capture_output=True, text=True, timeout=30, check=True)
+                for phrase in phrases:
+                    point = locate_phrase(result.stdout, phrase, min_y)
+                    if point is not None:
+                        tap(*point, delay)
+                        return
+                raise RuntimeError(f'Expected Assistant button {phrases!r} is not visible in {picture.name}')
+            if tall and action in ('boot', 'unknown'):
+                result = subprocess.run([config['tesseract'], str(picture), 'stdout', 'tsv'], capture_output=True, text=True, timeout=30, check=True)
+                if locate_phrase(result.stdout, 'Get Started', 500) is not None:
+                    action = 'welcome'
             if action in ('boot', 'unknown'):
                 unknown_frames += 1
                 limit = 24 if action == 'boot' else 3
@@ -94,7 +135,27 @@ def run():
                 continue
             unchanged_frames = 0
             last_clicked_screen = normalized
-            if action == 'accessibility':
+            if tall and action == 'accessibility':
+                tap_label(picture, ('Not Now',), 800, 12)
+            elif tall and action == 'account':
+                tap_label(picture, ('Other Sign-In Options',), 650, 2)
+                menu = folder / f'assistant-{step:02}-menu.png'
+                client.captureScreen(str(menu))
+                tap_label(menu, ('Set Up Later', 'Not Now'), 650, 5)
+            elif tall and action == 'adult':
+                tap_label(picture, ('Adult',), 500)
+            elif tall and action == 'continue':
+                tap_label(picture, ('Continue',), 800)
+            elif tall and action == 'later':
+                tap_label(picture, ('Set Up Later', 'Not Now'), 800)
+            elif tall and action == 'confirm_account_skip':
+                tap_label(picture, ('Skip', 'Continue'), 400)
+            elif tall and action == 'confirm_filevault_skip':
+                tap_label(picture, ('Continue',), 400)
+            elif tall and action == 'welcome':
+                tap_label(picture, ('Get Started',), 500, 15)
+                return
+            elif action == 'accessibility':
                 tap(1600, 1058, 12)
             elif action == 'confirm_account_skip':
                 tap(1080, 746)

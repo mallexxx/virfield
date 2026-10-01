@@ -1,8 +1,25 @@
 import unittest
-from assistant import classify
+from assistant import classify, locate_phrase
 
 
 class CapturedScreenRegression(unittest.TestCase):
+    def test_button_ocr_uses_complete_label_below_body(self):
+        tsv = '''level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext
+5\t1\t1\t1\t1\t1\t300\t200\t40\t20\t95\tNot
+5\t1\t1\t1\t1\t2\t350\t200\t45\t20\t95\tNow
+5\t1\t2\t1\t1\t1\t1540\t1190\t40\t22\t95\tNot
+5\t1\t2\t1\t1\t2\t1590\t1190\t45\t22\t95\tNow
+'''
+        self.assertEqual(locate_phrase(tsv, 'Not Now', 800), (1587, 1201))
+        self.assertIsNone(locate_phrase(tsv, 'Not Now', 1300))
+
+    def test_button_ocr_does_not_join_different_lines(self):
+        tsv = '''level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext
+5\t1\t1\t1\t1\t1\t1540\t1190\t40\t22\t95\tNot
+5\t1\t1\t1\t2\t1\t1590\t1210\t45\t22\t95\tNow
+'''
+        self.assertIsNone(locate_phrase(tsv, 'Not Now', 800))
+
     def test_photographic_welcome_requires_exact_button_ocr(self):
         self.assertEqual(classify('', 'Get Started\n'), 'welcome')
         self.assertEqual(classify('', 'Started'), 'boot')

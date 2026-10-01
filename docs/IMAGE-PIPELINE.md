@@ -213,7 +213,8 @@ postcondition to SSH. Each attempt retains its own screenshot directory.
 
 The supported recipe fixes resources at 4 CPUs, 8 GiB RAM, 80 GiB sparse
 disk, NAT, no host shared folders. Display is 1920×1440 for native macOS 11/12
-setup (Retina minimum window height), and 1920×1080 otherwise. Changing the recipe requires a code
+and Sequoia setup (their Assistant controls can be clipped at 1080 pixels), and
+1920×1080 otherwise. Changing the recipe requires a code
 change and live validation; this is not an arbitrary command runner.
 
 ## Build and inspect
@@ -351,9 +352,10 @@ The live acceptance record is in [Verification](VERIFICATION.md). Unit tests alo
 establish that a particular macOS build's Setup Assistant or Recovery UI works.
 
 The candidate journal uses schema version 6 for registry references and portable
-exports; the deployed runtime remains schema 5. Image records were introduced in
-schema 2. Supported migrations preserve leases, requests and events and update
-the version guard. Older binaries reject newer schemas.
+exports; the installed candidate also uses schema 6. Image records were introduced
+in schema 2. Supported migrations preserve leases, requests and events and update
+the version guard. Older binaries reject newer schemas. Check the deployment's
+`release.json` before assuming that a later checkout build is installed.
 
 ## Reproducible live acceptance
 
