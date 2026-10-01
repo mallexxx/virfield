@@ -189,6 +189,7 @@ def run():
     folder = pathlib.Path(config['directory'])
     folder.mkdir(mode=0o700, parents=True, exist_ok=True)
     previous = None
+    filevault_toggle_sent = False
     unchanged = 0
     unknown = 0
     for step in range(160):
@@ -266,7 +267,7 @@ def run():
                 client.mouseUp(1)
                 return True
 
-            def uncheck(phrase):
+            def uncheck(phrase, verify_only=False):
                 matches = find(words, phrase)
                 if not matches:
                     return False
@@ -276,9 +277,12 @@ def run():
                 patch = frame.crop((max(0, left - 28), max(0, y - 10), left - 2, y + 10))
                 blue = sum(1 for r, g, b in patch.getdata() if b > 120 and b > r * 1.4 and b > g * 1.1)
                 if blue > 8:
+                    if verify_only:
+                        raise RuntimeError('FileVault remained selected after disabling it')
                     client.mouseMove(left - 15, y)
                     client.mousePress(1)
-                return True
+                    return 'changed'
+                return 'clear'
 
             def default_button(label):
                 # Full-frame OCR can omit white text on a blue default button.
@@ -393,9 +397,17 @@ def run():
                 tap('Not Now')
                 tap('Continue')
             elif action == 'filevault':
-                if not uncheck('Turn on FileVault disk encryption'):
-                    if not uncheck('Turn on FileVault'):
-                        raise RuntimeError('Cannot identify FileVault policy control')
+                state = uncheck('Turn on FileVault disk encryption', filevault_toggle_sent) or uncheck('Turn on FileVault', filevault_toggle_sent)
+                if not state:
+                    raise RuntimeError('Cannot identify FileVault policy control')
+                if state == 'changed':
+                    filevault_toggle_sent = True
+                    # Never continue based on the frame from before the click.
+                    # Re-observe the checkbox, then verify APFS over SSH before
+                    # declaring setup complete or publishing the golden.
+                    previous = None
+                    time.sleep(6)
+                    continue
                 tap('Continue')
             elif action == 'continue':
                 tap('Continue')

@@ -2,8 +2,9 @@
 
 This is the current acceptance record and test runbook. It distinguishes the
 verified local host from the still-unimplemented Balda/Broker deployment. Results
-were collected on Apple Silicon macOS on 2026-09-29 and 2026-09-30 (timestamps UTC),
-using Go 1.26.8, patched Lume 0.5.3 and macOS guest build `26A428`.
+were collected on Apple Silicon macOS through 2026-10-01 (timestamps UTC),
+using Go 1.26.8 and patched Lume 0.5.3. The full UI-test suite is verified on
+macOS 27 build `26A428`; versioned image coverage is recorded separately below.
 
 ## Accepted behavior
 
@@ -17,7 +18,6 @@ using Go 1.26.8, patched Lume 0.5.3 and macOS guest build `26A428`.
 | Daemon crash/restart | Real installed-service restart preserved leases; a crash during dispatched SSH preparation quarantined the lease without replay; explicit cleanup passed |
 | MCP and browser | Installed HTTP/stdio discovery and status passed; anonymous MCP rejected; desktop/390px console passed with no browser errors |
 | Backup integrity | Isolated snapshot copy passed SQLite integrity/foreign keys/schema checks and exact config/token/image-identity comparison |
-| Host state at acceptance | Only the main `macos27` template; 0/2 slots used, no unresolved jobs; temporary image/clone credentials and listeners removed |
 
 The accepted clean image was `image-93604e81b7b84976aa96a86173072f2d`, created by
 job `job-da632cf1a2dffeacb8076ccde6e4fd38`. It exercised verified cached media,
@@ -133,11 +133,35 @@ VIRFIELD_LIVE_TEMPLATE=macos-27-golden \
 go test ./internal/control -run '^TestLiveLifecycle$' -count=1 -v -timeout=26m
 ```
 
+## Versioned images (2026-10-01)
+
+| Guest / policy | Evidence |
+| --- | --- |
+| Monterey 12.6 / 21G115, default protection, no Xcode | IPSW download and native Assistant passed; source boot, key-only SSH, password rotation and Finder passed. **Not accepted:** both ordinary clones stalled before SSH; FileVault is off but System/Data report encryption at rest. Both test clones were cleaned up. |
+| Monterey with `automation` security | Implementation present; live acceptance blocked by the unencrypted golden requirement |
+| Xcode 13.4.1 / 13F100 | Catalog resolution and compatibility checks pass; live install awaits an authenticated Apple archive |
+| Other catalog macOS generations | Selectable; not yet a claim of live acceptance on this host |
+
+The disk-policy probe was run in the real Monterey guest: both boot volumes
+reported `FileVault=false`, `Encryption=true`, `Locked=false`. The new pipeline
+rejects that state before completing setup and again before publication. The
+installed runtime has not yet been upgraded with that gate, and the old
+`image_ready` status is not evidence that the current disk requirement passes.
+No clone-identity workaround is included. A fresh successful clone acceptance
+run and disk-policy validation remain required before release.
+
+The initial Monterey bring-up required inspected operator recovery while native
+UI and older OpenSSH compatibility were being fixed. It is not a clean-run
+acceptance claim. The finalized pipeline must be exercised from a fresh image
+before recording that result. Older OpenSSH needs both
+`KbdInteractiveAuthentication no` and `ChallengeResponseAuthentication no`;
+checking just `PasswordAuthentication` does not establish key-only access.
+
 ## Not yet accepted
 
 - Remaining VM-mutation crash points, prolonged soak and VM-disk disaster recovery. Unit/mock checks and state snapshots do not replace
   these exercises.
-- Registry pull and macOS builds other than `26A428`.
+- Registry pull and macOS builds not explicitly recorded in the versioned-image matrix.
 - Container-facing routing/TLS and per-principal authentication.
 - Broker, Runner, Callee/provider installation, Balda and Prism integration.
   The complete task → VM → execution → result → cleanup workflow from Balda

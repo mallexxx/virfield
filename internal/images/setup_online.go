@@ -69,6 +69,9 @@ func (e *Engine) setupOnline(ctx context.Context, l domain.Lease, progress func(
 				if err := e.desktop(ctx, g); err != nil {
 					return err
 				}
+				if _, err := e.verifyDiskPolicy(ctx, l, g); err != nil {
+					return err
+				}
 				if err := guestssh.BootstrapAutoLogin(ctx, g); err != nil {
 					return err
 				}
@@ -129,7 +132,10 @@ func (e *Engine) setupOnline(ctx context.Context, l domain.Lease, progress func(
 	if err := e.desktop(ctx, g); err != nil {
 		return err
 	}
-	// Establish reboot-safe automatic login before stopping the native setup.
+	// Reject encrypted boot volumes before enabling automatic login.
+	if _, err := e.verifyDiskPolicy(ctx, l, g); err != nil {
+		return err
+	}
 	if err := guestssh.BootstrapAutoLogin(ctx, g); err != nil {
 		return err
 	}

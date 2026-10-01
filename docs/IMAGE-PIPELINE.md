@@ -50,6 +50,24 @@ version-specific; guest security is independent of that tool suite. Other versio
 Virtualization framework must support the restore image on the actual host.
 Unknown Assistant screens fail rather than publishing an incomplete desktop.
 
+### Golden disk policy
+
+Golden boot volumes must be unencrypted. Native Setup Assistant leaves FileVault
+unchecked, re-observes the control after changing it, and verifies the resulting
+System and Data volumes over SSH. The assistant stage and final post-reboot
+verification require `diskutil info -plist` to report `FileVault=false`,
+`Encryption=false` and `Locked=false` on both volumes. Missing or unknown values
+fail closed. The final verification manifest includes both volume states.
+
+`FileVault is Off` alone is insufficient: the tested Monterey 12.6 guest reports
+`Encrypted at rest` even after completing Setup Assistant without FileVault.
+[Apple documents this distinction](https://support.apple.com/en-gb/guide/security/sec4c6dc1b6e/1/web/1).
+Such a guest returns `disk_encrypted` and cannot be published by this pipeline.
+The macOS selection remains available, but Monterey is not yet accepted for
+clone execution under this disk policy. Virfield does not silently preserve the
+source VM machine identifier to work around encryption. Existing images need
+re-verification; upgrading the binaries does not retroactively certify them.
+
 ### Guest security policy
 
 The API and MCP `image_create` accept `security`; the CLI uses `-security` before

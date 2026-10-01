@@ -49,9 +49,13 @@ func TestLiveLeaseSSH(t *testing.T) {
 		t.Fatal("requires idle v2 manager")
 	}
 	fullProfile := false
+	expectedSIP := "System Integrity Protection status: disabled."
 	for _, template := range status.Templates {
-		if template.ID == os.Getenv("VIRFIELD_LIVE_TEMPLATE_ID") && template.Image != nil && template.Image.Provision == "uitest-27-v1" {
-			fullProfile = true
+		if template.ID == os.Getenv("VIRFIELD_LIVE_TEMPLATE_ID") && template.Image != nil {
+			fullProfile = template.Image.Provision == "uitest-27-v1"
+			if !template.Image.DisableSIP {
+				expectedSIP = "System Integrity Protection status: enabled."
+			}
 		}
 	}
 	type owned struct {
@@ -251,9 +255,9 @@ func TestLiveLeaseSSH(t *testing.T) {
 			g.Close()
 			t.Fatal(err)
 		}
-		out, err := s.CombinedOutput("/usr/sbin/sysctl -n hw.model; /usr/bin/csrutil status; /usr/bin/pgrep -x Finder; test -d ~/workspace")
+		out, err := s.CombinedOutput("set -eu; /usr/sbin/sysctl -n hw.model; /usr/bin/csrutil status; /usr/bin/pgrep -x Finder; test -d ~/workspace")
 		s.Close()
-		if err != nil || !strings.Contains(string(out), "VirtualMac") || !strings.Contains(string(out), "disabled") {
+		if err != nil || !strings.Contains(string(out), "VirtualMac") || !strings.Contains(string(out), expectedSIP) {
 			g.Close()
 			t.Fatal("guest probes failed", err)
 		}
