@@ -24,6 +24,9 @@ id_ed25519*
 *.p12
 *.pfx
 *.ipsw
+*.xip
+*.app/
+apple-download-cookies*
 *.img
 *.dmg
 recordings/

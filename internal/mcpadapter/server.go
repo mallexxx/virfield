@@ -12,6 +12,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+// Version is overridden by the release packager through Go linker flags.
+var Version = "2.1.0-dev"
+
 type empty struct{}
 type createImageArgs struct {
 	ID       string `json:"id" jsonschema:"New golden image ID and VM name"`
@@ -49,11 +52,11 @@ func result(b json.RawMessage, err error) (*mcp.CallToolResult, any, error) {
 	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(b)}}}, nil, nil
 }
 func New(c *client.Client) *mcp.Server {
-	s := mcp.NewServer(&mcp.Implementation{Name: "virfield", Version: "2.1.0-dev"}, nil)
+	s := mcp.NewServer(&mcp.Implementation{Name: "virfield", Version: Version}, nil)
 	mcp.AddTool(s, &mcp.Tool{Name: "virfield_status", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}, Description: "Show Lume health, VM slot usage, active leases and durable jobs"}, func(ctx context.Context, _ *mcp.CallToolRequest, _ empty) (*mcp.CallToolResult, any, error) {
 		return result(c.Do(ctx, "GET", "status", nil, ""))
 	})
-	mcp.AddTool(s, &mcp.Tool{Name: "vm_acquire", Annotations: &mcp.ToolAnnotations{IdempotentHint: true}, Description: "Reserve one of at most two VM slots and asynchronously clone/start an allowlisted golden image. Supply a fresh per-lease Ed25519 public key; keep its private key local. Use the SAME idempotency key on retries. Returns capacity_exhausted when full."}, func(ctx context.Context, _ *mcp.CallToolRequest, a acquireArgs) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(s, &mcp.Tool{Name: "vm_acquire", Annotations: &mcp.ToolAnnotations{IdempotentHint: true}, Description: "Reserve one of at most two VM slots and asynchronously clone/start a verified golden image. Use image_create if the desired macOS/Xcode is not in templates. Supply a fresh per-lease Ed25519 public key; keep its private key local. Use the SAME idempotency key on retries. Returns capacity_exhausted when full."}, func(ctx context.Context, _ *mcp.CallToolRequest, a acquireArgs) (*mcp.CallToolResult, any, error) {
 		return result(c.Do(ctx, "POST", "leases", map[string]any{"template": a.Template, "ttl_seconds": a.TTLSeconds, "ssh_public_key": a.SSHPublicKey}, a.Key))
 	})
 	mcp.AddTool(s, &mcp.Tool{Name: "vm_lease", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}, Description: "Read a durable lease, readiness and error"}, func(ctx context.Context, _ *mcp.CallToolRequest, a idArgs) (*mcp.CallToolResult, any, error) {
@@ -77,7 +80,7 @@ func New(c *client.Client) *mcp.Server {
 	mcp.AddTool(s, &mcp.Tool{Name: "image_create", Annotations: &mcp.ToolAnnotations{IdempotentHint: true}, Description: "Create and build a new golden image by macOS version/build/codename and optional exact Xcode version. Example: macos monterey, xcode 13.4.1. Resolves and pins official Apple downloads; persists the template across restart. Requires all leases released. Keeps SIP enabled. No arbitrary host paths, no overwriting VMs. Poll virfield_job for progress and actionable download/authentication errors. Retry with the same idempotency key."}, func(ctx context.Context, _ *mcp.CallToolRequest, a createImageArgs) (*mcp.CallToolResult, any, error) {
 		return result(c.Do(ctx, "POST", "images", map[string]string{"id": a.ID, "macos": a.MacOS, "xcode": a.Xcode, "location": a.Location}, a.Key))
 	})
-	mcp.AddTool(s, &mcp.Tool{Name: "image_build", Annotations: &mcp.ToolAnnotations{IdempotentHint: true}, Description: "Build a NEW allowlisted golden image from its pinned Apple IPSW profile. Downloads and installs macOS, completes setup, applies the operator-configured guest SIP policy and verifies credentials. Requires no active leases. Never overwrites an existing VM. Use the same idempotency key on retries."}, func(ctx context.Context, _ *mcp.CallToolRequest, a releaseArgs) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(s, &mcp.Tool{Name: "image_build", Annotations: &mcp.ToolAnnotations{IdempotentHint: true}, Description: "Build an absent VM from an already registered pinned image profile. To choose macOS/Xcode versions, use image_create instead. Downloads and installs macOS, completes setup, applies the operator-configured guest SIP policy and verifies credentials. Requires no active leases. Never overwrites an existing VM. Use the same idempotency key on retries."}, func(ctx context.Context, _ *mcp.CallToolRequest, a releaseArgs) (*mcp.CallToolResult, any, error) {
 		return result(c.Do(ctx, "POST", "images/"+url.PathEscape(a.ID)+"/build", empty{}, a.Key))
 	})
 	mcp.AddTool(s, &mcp.Tool{Name: "vm_tunnel", Description: "Open or return an ephemeral loopback TCP tunnel to this ready lease's SSH port. SSH authentication and pinned host key remain mandatory. Reopen after daemon restart.", Annotations: &mcp.ToolAnnotations{IdempotentHint: true}}, func(ctx context.Context, _ *mcp.CallToolRequest, a idArgs) (*mcp.CallToolResult, any, error) {

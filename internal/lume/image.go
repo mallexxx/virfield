@@ -26,6 +26,8 @@ func ImageCommand(ctx context.Context, binary, toolsDir, logDir, step string, l 
 	switch step {
 	case "create":
 		args = []string{"create", l.VMName, "--os", "macos", "--ipsw", ipsw, "--cpu", "4", "--memory", "8GB", "--disk-size", "80GB", "--display", "1920x1080", "--storage", l.Location}
+	// In pinned Lume 0.5.3, "tahoe" is a version-neutral offline preset:
+	// empty boot_commands and SSH verification. It does not select the OS.
 	case "setup":
 		args = []string{"setup", l.VMName, "--unattended", "tahoe", "--storage", l.Location, "--vnc-port", "0"}
 	default:

@@ -50,7 +50,9 @@ def build(version, destination):
         with tarfile.open(fileobj=io.BytesIO(run('git', 'archive', 'HEAD'))) as source:
             source.extractall(package, filter='data')
         environment = dict(os.environ, GOOS='darwin', GOARCH='arm64', CGO_ENABLED='0')
-        subprocess.run(['go', 'build', '-trimpath', '-mod=readonly', '-o', str(package / 'bin') + '/', './cmd/...'],
+        subprocess.run(['go', 'build', '-trimpath', '-mod=readonly', '-ldflags',
+                        f'-X github.com/mallexxx/virfield/internal/mcpadapter.Version={version.removeprefix("v")}',
+                        '-o', str(package / 'bin') + '/', './cmd/...'],
                        cwd=ROOT, env=environment, check=True)
         notices = package / 'THIRD_PARTY_NOTICES'
         notices.mkdir()

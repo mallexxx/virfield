@@ -34,11 +34,11 @@ func (c *Catalog) fetch(ctx context.Context, url string, v any) error {
 	}
 	res, err := c.HTTP.Do(req)
 	if err != nil {
-		return domain.Err("catalog_unavailable", "Version catalog unavailable; retry when network access recovers")
+		return &domain.Error{Code: "catalog_unavailable", Message: "Version catalog unavailable; retry when network access recovers", Retryable: true}
 	}
 	defer res.Body.Close()
 	if res.StatusCode != 200 {
-		return domain.Err("catalog_unavailable", "Version catalog returned an unexpected response")
+		return &domain.Error{Code: "catalog_unavailable", Message: "Version catalog returned an unexpected response", Retryable: res.StatusCode >= 500 || res.StatusCode == 429 || res.StatusCode == 408}
 	}
 	b, err := io.ReadAll(io.LimitReader(res.Body, (8<<20)+1))
 	if err != nil || len(b) > 8<<20 {

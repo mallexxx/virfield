@@ -126,7 +126,7 @@ func Download(ctx context.Context, client *http.Client, dir string, p domain.Ima
 				return "", domain.Err("download_integrity", "invalid Content-Range for pinned IPSW")
 			}
 		} else if res.StatusCode != http.StatusOK {
-			return "", domain.Err("download_failed", "Apple download returned an unexpected status")
+			return "", domain.Err("download_failed", fmt.Sprintf("Apple restore download returned HTTP %d; partial bytes are retained", res.StatusCode))
 		}
 		if res.ContentLength != -1 && res.ContentLength != p.Size-offset {
 			return "", domain.Err("download_integrity", "unexpected download length")

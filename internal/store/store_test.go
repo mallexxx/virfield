@@ -28,7 +28,7 @@ func TestReopenAndAtomicRollback(t *testing.T) {
 	}
 	l.State = "ready"
 	j.State = "succeeded"
-	if err := s.Save(ctx, l, &j, "request-one", "fp", "ready", "must roll back"); err == nil {
+	if err := s.SaveImage(ctx, l, &j, "request-one", "fp", "ready", "must roll back", domain.Template{ID: "rolled-back", Name: "golden", Location: "home"}); err == nil {
 		t.Fatal("duplicate idempotency key accepted")
 	}
 	if err := s.Close(); err != nil {
@@ -39,6 +39,10 @@ func TestReopenAndAtomicRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
+	templates, err := s.Templates(ctx)
+	if err != nil || len(templates) != 0 {
+		t.Fatal("template registration was not rolled back", templates, err)
+	}
 	got, err := s.Lease(ctx, l.ID)
 	if err != nil || got.State != "pending" {
 		t.Fatalf("%+v %v", got, err)

@@ -69,14 +69,16 @@ example `Xcode_13.4.1.xip` downloaded from
 `apple_cookies` is an optional Netscape-format file, mode 0600, containing the
 operator's authorized Apple download session. Only unexpired matching Apple
 cookies are sent, only to `download.developer.apple.com`; redirects are never
-followed with credentials. Keep the file outside Git. The archive is imported
+followed with credentials. Keep the file outside Git. A matching local Apple-signed bundle from `image_tools.xcode` is reused first
+(the version/build must match exactly); otherwise the archive is imported
 before attempting an authenticated download. Neither path nor cookies can be
 supplied through MCP/API.
 
 Expired/missing authorization returns `apple_auth_required` with the exact
 archive filename and recovery action. Download/import verifies the catalog SHA-1
 (the metadata source's available checksum); macOS `xip` additionally verifies
-Apple's archive signature, and `codesign` checks an intact Apple-signed app.
+Apple's archive signature, and `codesign` checks an intact Apple-signed app on the host and in the guest
+before executing Xcode.
 Checksums alone are not the Xcode trust boundary. Version/build metadata is read
 without executing the older Xcode on the host. Expanded apps and archives are
 cached privately by digest. Host Xcode selection is unchanged.
@@ -141,7 +143,9 @@ in [Optional UI-test tool profile](#optional-ui-test-tool-profile).
 
 `assistant.py` is an embedded guest
 VNC finisher whose recognized screens are tested on macOS 27; it cannot
-manage VM lifecycle. Lume's native `setup` handles offline patching. Recovery
+manage VM lifecycle. Lume's native `setup` handles offline patching. In pinned
+0.5.3 its `tahoe` preset contains no UI boot commands or version guard: it selects
+the offline account/SSH setup, while the IPSW manifest selects the macOS version. Recovery
 uses one owned `lume run --recovery-mode true` child plus `recovery27.py`: the
 native 0.5.3 SIP navigation was observed to open Time Machine on this build.
 The versioned driver verifies Options, English, Utilities, Terminal and each
@@ -262,7 +266,7 @@ absence. Cache media and audit history are retained; there is no hidden disk pur
 The live acceptance record is in [Verification](VERIFICATION.md). Unit tests alone do not
 establish that a particular macOS build's Setup Assistant or Recovery UI works.
 
-The deployed journal uses schema version 4; image records were introduced in
+The deployed journal uses schema version 5; image records were introduced in
 schema 2. Supported migrations preserve leases, requests and events and update
 the version guard. Older binaries reject newer schemas.
 

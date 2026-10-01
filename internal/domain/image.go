@@ -61,7 +61,7 @@ func (p ImageProfile) Validate() error {
 	return nil
 }
 
-// ImageTools are immutable operator-owned executable paths, never API input.
+// ImageTools are immutable operator-owned host paths, never API input.
 type ImageTools struct {
 	Xcode         string `json:"xcode,omitempty"`
 	XcodeArchives string `json:"xcode_archives,omitempty"`

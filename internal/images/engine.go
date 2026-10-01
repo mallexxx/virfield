@@ -35,9 +35,9 @@ func New(dir string, b *lume.Client, t domain.ImageTools) (*Engine, error) {
 			return nil, fmt.Errorf("image tool paths must be absolute")
 		}
 	}
-	for _, p := range []string{t.XcodeArchives, t.AppleCookies} {
+	for _, p := range []string{t.Xcode, t.XcodeArchives, t.AppleCookies} {
 		if p != "" && !filepath.IsAbs(p) {
-			return nil, fmt.Errorf("xcode archive and Apple cookie paths must be absolute")
+			return nil, fmt.Errorf("xcode bundle/archive and Apple cookie paths must be absolute")
 		}
 	}
 	tr := &http.Transport{Proxy: http.ProxyFromEnvironment, DialContext: (&net.Dialer{Timeout: 15 * time.Second}).DialContext, TLSHandshakeTimeout: 15 * time.Second, ResponseHeaderTimeout: 30 * time.Second, IdleConnTimeout: 30 * time.Second, DisableCompression: true}

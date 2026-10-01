@@ -21,6 +21,9 @@ import (
 
 const maxXcodeArchive = 32 << 30
 
+// The leading = selects inline requirement syntax; otherwise codesign opens a file.
+const appleCodeRequirement = "=anchor apple"
+
 // Apple credentials are operator-owned files, never API fields or durable job data.
 func appleCookies(path string) (string, error) {
 	if path == "" {
@@ -214,7 +217,7 @@ func (e *Engine) xcodeArchive(ctx context.Context, x domain.XcodeRelease, progre
 				return "", domain.Err("download_integrity", "Invalid Xcode download length")
 			}
 		} else {
-			return "", domain.Err("download_failed", "Apple returned an unexpected Xcode download response")
+			return "", domain.Err("download_failed", fmt.Sprintf("Apple Xcode download returned HTTP %d; partial bytes are retained", res.StatusCode))
 		}
 		reader = res.Body
 	}
@@ -274,6 +277,14 @@ func (e *Engine) xcodeArchive(ctx context.Context, x domain.XcodeRelease, progre
 	return final, nil
 }
 func (e *Engine) xcodeSource(ctx context.Context, x domain.XcodeRelease, progress func(string) error) (string, error) {
+	// An operator may already own the selected signed bundle. Read metadata
+	// without executing it; an unrelated host Xcode never constrains selection.
+	if e.Tools.Xcode != "" && xcodeBundleMatches(ctx, e.Tools.Xcode, x) {
+		if err := progress("Verifying the operator's matching Xcode " + x.Version + " bundle"); err != nil {
+			return "", err
+		}
+		return e.Tools.Xcode, checkXcodeBundle(ctx, e.Tools.Xcode, x)
+	}
 	archive, err := e.xcodeArchive(ctx, x, progress)
 	if err != nil {
 		return "", err
@@ -314,17 +325,26 @@ func checkXcodeBundle(ctx context.Context, app string, x domain.XcodeRelease) er
 	if err != nil || !st.IsDir() {
 		return domain.Err("image_dependency", "Expanded Xcode.app is absent or invalid")
 	}
-	// Read metadata without executing an old xcodebuild on a newer host macOS.
-	for key, want := range map[string]string{"CFBundleShortVersionString": x.Version, "ProductBuildVersion": x.Build} {
-		out, err := exec.CommandContext(ctx, "/usr/libexec/PlistBuddy", "-c", "Print :"+key, filepath.Join(app, "Contents/version.plist")).Output()
-		if err != nil || strings.TrimSpace(string(out)) != want {
-			return domain.Err("xcode_version_mismatch", "Xcode bundle version/build differs from the selected release")
-		}
+	if !xcodeBundleMatches(ctx, app, x) {
+		return domain.Err("xcode_version_mismatch", "Xcode bundle version/build differs from the selected release")
 	}
 	probe, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
-	if err := exec.CommandContext(probe, "/usr/bin/codesign", "--verify", "--deep", "--strict", "-R", "anchor apple", app).Run(); err != nil {
+	if err := exec.CommandContext(probe, "/usr/bin/codesign", "--verify", "--deep", "--strict", "-R", appleCodeRequirement, app).Run(); err != nil {
 		return domain.Err("xcode_signature_failed", "Xcode must have an intact Apple signature")
 	}
 	return nil
+}
+
+// xcodeBundleMatches performs bounded metadata reads, never starts xcodebuild.
+func xcodeBundleMatches(ctx context.Context, app string, x domain.XcodeRelease) bool {
+	probe, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	for key, want := range map[string]string{"CFBundleShortVersionString": x.Version, "ProductBuildVersion": x.Build} {
+		out, err := exec.CommandContext(probe, "/usr/libexec/PlistBuddy", "-c", "Print :"+key, filepath.Join(app, "Contents/version.plist")).Output()
+		if err != nil || strings.TrimSpace(string(out)) != want {
+			return false
+		}
+	}
+	return true
 }

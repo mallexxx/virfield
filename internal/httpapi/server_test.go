@@ -180,3 +180,59 @@ func TestImageDeleteRequiresAuthAndExactConfirmation(t *testing.T) {
 		t.Fatal(w.Code, w.Body.String())
 	}
 }
+
+type catalogFixture struct{}
+
+func (catalogFixture) List(context.Context) (domain.ImageCatalog, error) {
+	return domain.ImageCatalog{MacOS: []domain.MacOSRelease{{Version: "12.6", Build: "21G115"}}}, nil
+}
+func (catalogFixture) Resolve(context.Context, domain.ImageCreateRequest) (domain.ImageProfile, error) {
+	return domain.ImageProfile{MacOS: "12.6", Build: "21G115", URL: "https://updates.cdn-apple.com/test.ipsw", SHA256: strings.Repeat("a", 64), Size: 123}, nil
+}
+func (catalogFixture) Step(context.Context, domain.Lease, domain.ImageProfile, string, func(string) error) error {
+	panic("HTTP request must not execute image effects")
+}
+func TestCatalogHTTPAdmissionAndStrictInput(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	c, err := control.New(db, backend{}, nil, 2, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.SetImageBuilder(catalogFixture{})
+	c.SetImageCatalog(catalogFixture{}, []string{"home"})
+	if err := c.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	h := New(c, token, log)
+	if w := request(h, "GET", "/api/v1/images/catalog", "", "", false); w.Code != 401 {
+		t.Fatal(w.Code)
+	}
+	if w := request(h, "GET", "/api/v1/images/catalog", "", "", true); w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if w := request(h, "POST", "/api/v1/images", `{"id":"monterey","macos":"monterey","url":"https://attacker.invalid/install"}`, "bad-image-request", true); w.Code != 400 {
+		t.Fatal(w.Code)
+	}
+	for _, status := range []int{202, 200} {
+		w := request(h, "POST", "/api/v1/images", `{"id":"monterey","macos":"monterey"}`, "catalog-image-request", true)
+		if w.Code != status {
+			t.Fatal(w.Code, w.Body.String())
+		}
+		var op domain.Operation
+		if err := json.Unmarshal(w.Body.Bytes(), &op); err != nil {
+			t.Fatal(err)
+		}
+		if op.Job.Image.Build != "21G115" || op.Replayed != (status == 200) {
+			t.Fatal(op)
+		}
+	}
+	ts, err := db.Templates(context.Background())
+	if err != nil || len(ts) != 1 || ts[0].Name != "monterey" {
+		t.Fatal(ts, err)
+	}
+}

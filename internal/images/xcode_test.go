@@ -8,7 +8,9 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -91,5 +93,15 @@ func TestAppleCookiesAreScopedAndPrivate(t *testing.T) {
 	}
 	if _, err := appleCookies(path); err == nil {
 		t.Fatal("public cookie file accepted")
+	}
+}
+
+func TestAppleSignatureRequirementSyntax(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("requires native Apple requirement compiler")
+	}
+	cmd := exec.Command("/usr/bin/csreq", "-r", appleCodeRequirement, "-t")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("Apple signature requirement rejected: %s: %v", out, err)
 	}
 }

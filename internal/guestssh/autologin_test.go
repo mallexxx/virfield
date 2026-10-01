@@ -3,6 +3,8 @@ package guestssh
 import (
 	"bytes"
 	"encoding/base64"
+	"os/exec"
+	"strings"
 	"testing"
 )
 
@@ -18,6 +20,16 @@ func TestLoginPasswordTerminatesAndPads(t *testing.T) {
 		}
 		if !bytes.Equal(b[:len(password)], []byte(password)) || b[len(password)] != 0 {
 			t.Fatal("password not NUL terminated")
+		}
+	}
+}
+
+func TestCredentialScriptsParse(t *testing.T) {
+	for _, script := range []string{autologinScript, leaseScript} {
+		cmd := exec.Command("/bin/bash", "-n")
+		cmd.Stdin = strings.NewReader(script)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("invalid credential script: %s: %v", out, err)
 		}
 	}
 }

@@ -32,7 +32,8 @@ func NewID(prefix string) string {
 	return prefix + hex.EncodeToString(b[:])
 }
 
-// Template is explicitly configured by the host operator, never a caller's path.
+// Template is operator-configured or catalog-resolved into an approved storage
+// location. A caller never supplies a host filesystem path.
 type Template struct {
 	Image    *ImageProfile `json:"image,omitempty"`
 	ID       string        `json:"id"`

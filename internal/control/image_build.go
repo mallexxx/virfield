@@ -108,7 +108,7 @@ func (c *Controller) advanceImageBuild(ctx context.Context, l domain.Lease, j do
 	}
 	j.Phase = step + "_dispatched"
 	j.State = "running"
-	j.Progress = map[string]string{"download": "Downloading and verifying Apple restore image", "create": "Installing macOS from the verified IPSW", "setup": "Preparing guest account, SSH and automatic login", "assistant": "Completing Setup Assistant and checking Finder", "sip": "Applying guest SIP policy through paired Recovery", "provision": "Installing Xcode and versioned UI automation tools", "verify": "Verifying build, SIP, SSH credentials and desktop after reboot", "stop": "Stopping the verified image before publication"}[step]
+	j.Progress = map[string]string{"download": "Downloading and verifying selected Apple installers", "create": "Installing macOS from the verified IPSW", "setup": "Preparing guest account, SSH and automatic login", "assistant": "Completing Setup Assistant and checking Finder", "sip": "Applying guest SIP policy through paired Recovery", "provision": "Installing selected guest developer tools", "verify": "Verifying build, SIP, SSH credentials and desktop after reboot", "stop": "Stopping the verified image before publication"}[step]
 	if err := c.save(ctx, l, j, "image.step_started", step); err != nil {
 		return err
 	}
