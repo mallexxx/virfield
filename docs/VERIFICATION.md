@@ -15,11 +15,13 @@ the deployed release or registering it in Codex and Claude Code, complete:
    Monterey/Xcode combination; the known blocker is recorded below.
 2. A fresh full image/security/Xcode workflow, pinned SSH workload, artifact
    export and confirmed cleanup, with exact versions and evidence recorded here.
-3. GHCR import and portable publish → pull-back → ordinary clone → workload
-   acceptance, including credentials, exact digest and temporary-VM cleanup.
-4. Install the accepted build, register `virfield` in both clients using
+3. Install the accepted build, register `virfield` in both clients using
    [Operations](OPERATIONS.md#register-codex-and-claude-code), and validate the
    [agent workflow](AGENT-GUIDE.md#client-registration-and-acceptance) in each.
+
+The Sequoia 15.2 GHCR publish → pull-back → ordinary clone/workload and cleanup
+gate passed; its exact digest and live evidence are recorded below. This does
+not establish the separate Monterey/Xcode or Balda/Broker workflow gates.
 
 The agent guide and operations/image/verification runbooks are embedded in MCP
 as `virfield_help` and four read-only resources. Automated protocol tests verify
