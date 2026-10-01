@@ -64,7 +64,7 @@ the versioned patch with zero fuzz to the pinned archive reproduces the built
 Swift sources. Earlier failed development attempts are not counted as passes.
 
 The full-profile acceptance above was collected on commit `44a1c15`.
-As checked on 2026-10-01, the installed runtime is candidate `9090337`, with
+As checked on 2026-10-01, the installed runtime is candidate `674e9c5`, with
 `release_status: registry_candidate_pending_live_acceptance` and schema 6.
 The disk gate, 17 MCP tools and embedded agent runbooks are deployed. Installed
 HTTP/stdio discovery, authenticated status and anonymous rejection passed.
@@ -143,8 +143,10 @@ The deployed candidate imported `macos-sequoia-vanilla:15.2` at that same digest
 Both System and Data reported FileVault=false, Encryption=false, Locked=false.
 The job stopped at credential rotation (`sysadminctl -14915`) after offline setup
 replaced the imported native account record. It did not publish a ready golden.
-The fix uses SSH bootstrap for imported accounts and reserves offline setup for
-fresh IPSW installations; a clean import rerun is required to establish the fix.
+The installed fix (`674e9c5`) uses SSH bootstrap for imported accounts and
+reserves offline setup for fresh IPSW installations. Full checks and staticcheck
+passed. The failed guest was shut down cleanly; deletion authorization and a
+clean import rerun are still required to establish the fix.
 Full import and publish/pull-back acceptance and client workflow checks remain
 release gates. Publication rebuilds a portable recipe;
 raw source-disk export and preservation of manual golden changes are not offered.
@@ -208,7 +210,7 @@ go test ./internal/control -run '^TestLiveLifecycle$' -count=1 -v -timeout=26m
 The disk-policy probe was run in the real Monterey guest: both boot volumes
 reported `FileVault=false`, `Encryption=true`, `Locked=false`. The new pipeline
 rejects that state before completing setup and again before publication. The
-installed runtime has not yet been upgraded with that gate, and the failed golden was deleted through the API (job
+installed runtime includes that gate. The failed golden was deleted through the API (job
 `job-d8a05d245b9ca804b35e0212a9be87fe`, succeeded; absence confirmed in Lume).
 The registered recipe remains; there is no accepted Monterey golden.
 No clone-identity workaround is included. A fresh successful clone acceptance
