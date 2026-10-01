@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mallexxx/virfield/internal/catalog"
 	"github.com/mallexxx/virfield/internal/client"
 	"github.com/mallexxx/virfield/internal/config"
 	"github.com/mallexxx/virfield/internal/control"
@@ -109,6 +110,11 @@ func run() error {
 			return err
 		}
 		manager.SetImageBuilder(builder)
+		locations := []string{}
+		for name := range cfg.StoragePaths {
+			locations = append(locations, name)
+		}
+		manager.SetImageCatalog(catalog.New(), locations)
 	}
 	// Bind before starting background effects: a conflicting port must not leave
 	// an invisible controller running beside the real service.

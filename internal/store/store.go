@@ -52,16 +52,16 @@ func (s *Store) migrate() error {
 	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
 		return err
 	}
-	if version > 4 {
+	if version > 5 {
 		return fmt.Errorf("database schema %d is newer than this binary", version)
 	}
-	if version == 4 {
+	if version == 5 {
 		return nil
 	}
-	if version >= 1 && version <= 3 {
-		// Version 4 adds provisioning recipes and resource reservations.
-		// Older binaries must not publish leases without completing this phase.
-		_, err := s.db.Exec(`PRAGMA user_version=4`)
+	if version >= 1 && version <= 4 {
+		// Version 5 persists catalog templates and Xcode manifests. Older
+		// executors must not silently ignore the new provisioning requirements.
+		_, err := s.db.Exec(`BEGIN IMMEDIATE; CREATE TABLE templates (id TEXT PRIMARY KEY, body TEXT NOT NULL); PRAGMA user_version=5; COMMIT;`)
 		return err
 	}
 	_, err := s.db.Exec(`BEGIN IMMEDIATE;
@@ -71,7 +71,8 @@ func (s *Store) migrate() error {
  CREATE TABLE events (id INTEGER PRIMARY KEY AUTOINCREMENT, lease_id TEXT NOT NULL REFERENCES leases(id), job_id TEXT NOT NULL, type TEXT NOT NULL, message TEXT NOT NULL, at TEXT NOT NULL);
  CREATE INDEX events_lease ON events(lease_id,id);
  CREATE INDEX jobs_state ON jobs(state);
- PRAGMA user_version=4;
+ CREATE TABLE templates (id TEXT PRIMARY KEY, body TEXT NOT NULL);
+ PRAGMA user_version=5;
  COMMIT;`)
 	return err
 }
@@ -166,11 +167,28 @@ func (s *Store) Replay(ctx context.Context, key, fp string) (*domain.Operation, 
 
 // Save persists the complete transition. key is only set for a newly accepted request.
 func (s *Store) Save(ctx context.Context, l domain.Lease, j *domain.Job, key, fp, typ, message string) error {
+	return s.save(ctx, l, j, key, fp, typ, message, nil)
+}
+
+// SaveImage atomically registers the template with admission, request and job.
+func (s *Store) SaveImage(ctx context.Context, l domain.Lease, j *domain.Job, key, fp, typ, message string, t domain.Template) error {
+	return s.save(ctx, l, j, key, fp, typ, message, &t)
+}
+func (s *Store) save(ctx context.Context, l domain.Lease, j *domain.Job, key, fp, typ, message string, t *domain.Template) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	if t != nil {
+		b, err := json.Marshal(t)
+		if err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, `INSERT INTO templates(id,body) VALUES(?,?)`, t.ID, string(b)); err != nil {
+			return err
+		}
+	}
 	lb, err := json.Marshal(l)
 	if err != nil {
 		return err
@@ -228,6 +246,27 @@ func (s *Store) Events(ctx context.Context, after int64, leaseID string, limit i
 			return nil, err
 		}
 		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) Templates(ctx context.Context) ([]domain.Template, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT body FROM templates ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []domain.Template{}
+	for rows.Next() {
+		var b string
+		var t domain.Template
+		if err := rows.Scan(&b); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal([]byte(b), &t); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
 	}
 	return out, rows.Err()
 }

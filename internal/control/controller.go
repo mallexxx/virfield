@@ -34,6 +34,8 @@ type Controller struct {
 	resourceProbe  ResourceProbe
 	diskAvailable  map[string]int64
 	resourceError  string
+	imageCatalog   ImageCatalog
+	imageLocations map[string]bool
 	imageBuilder   ImageBuilder
 	leasePreparer  LeasePreparer
 	mu             sync.Mutex
@@ -52,6 +54,11 @@ func New(s *store.Store, b Backend, templates []domain.Template, limit int, log 
 	if limit < 1 || limit > domain.MaxVMs {
 		return nil, fmt.Errorf("max_vms must be 1 or 2")
 	}
+	persisted, err := s.Templates(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	templates = append(append([]domain.Template(nil), templates...), persisted...)
 	tm := map[string]domain.Template{}
 	identities := map[string]bool{}
 	for _, t := range templates {

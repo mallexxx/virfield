@@ -35,12 +35,17 @@ func New(dir string, b *lume.Client, t domain.ImageTools) (*Engine, error) {
 			return nil, fmt.Errorf("image tool paths must be absolute")
 		}
 	}
+	for _, p := range []string{t.XcodeArchives, t.AppleCookies} {
+		if p != "" && !filepath.IsAbs(p) {
+			return nil, fmt.Errorf("xcode archive and Apple cookie paths must be absolute")
+		}
+	}
 	tr := &http.Transport{Proxy: http.ProxyFromEnvironment, DialContext: (&net.Dialer{Timeout: 15 * time.Second}).DialContext, TLSHandshakeTimeout: 15 * time.Second, ResponseHeaderTimeout: 30 * time.Second, IdleConnTimeout: 30 * time.Second, DisableCompression: true}
 	client := &http.Client{Transport: tr, Timeout: 90 * time.Minute, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
 	return &Engine{Dir: dir, Backend: b, Tools: t, HTTP: client}, nil
 }
 func (e *Engine) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile, step string, progress func(string) error) error {
-	timeout, known := map[string]time.Duration{"download": 90 * time.Minute, "create": 45 * time.Minute, "setup": 15 * time.Minute, "assistant": 10 * time.Minute, "sip": 20 * time.Minute, "provision": 2 * time.Hour, "verify": 10 * time.Minute, "stop": 2 * time.Minute}[step]
+	timeout, known := map[string]time.Duration{"download": 3 * time.Hour, "create": 45 * time.Minute, "setup": 15 * time.Minute, "assistant": 10 * time.Minute, "sip": 20 * time.Minute, "provision": 2 * time.Hour, "verify": 10 * time.Minute, "stop": 2 * time.Minute}[step]
 	if !known {
 		return domain.Err("invalid_profile", "unsupported image pipeline stage")
 	}
@@ -48,9 +53,6 @@ func (e *Engine) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile
 	defer cancel()
 	if err := p.Validate(); err != nil {
 		return err
-	}
-	if p.Build != "26A428" {
-		return domain.Err("unsupported_image", "Only the tested macOS 27 build 26A428 image recipe is supported")
 	}
 	if !domain.ValidName(l.ID) || !domain.ValidName(l.VMName) || !domain.ValidName(l.Location) {
 		return domain.Err("invalid_profile", "invalid image identity")
@@ -62,7 +64,7 @@ func (e *Engine) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile
 	ipsw := filepath.Join(e.Dir, "cache", p.SHA256+".ipsw")
 	switch step {
 	case "download":
-		if p.Provision != "" {
+		if p.Provision == "uitest-27-v1" {
 			if _, err := e.checkXcode(ctx); err != nil {
 				return err
 			}
@@ -75,6 +77,11 @@ func (e *Engine) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile
 		}
 		if err := lume.VerifyImageVersion(ctx, e.Tools.Lume); err != nil {
 			return err
+		}
+		if p.Xcode != nil {
+			if _, err := e.xcodeSource(ctx, *p.Xcode, progress); err != nil {
+				return err
+			}
 		}
 		// A full restore plus a new guest and safety headroom must fit together.
 		if err := Space(e.Dir, p.Size+(48<<30)); err != nil {
@@ -150,6 +157,16 @@ func (e *Engine) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile
 		if strings.TrimSpace(build) != p.Build {
 			return domain.Err("guest_build_mismatch", "Guest macOS build differs from the image manifest")
 		}
+		if p.MacOS != "" {
+			version, err := guest.Run(ctx, "/usr/bin/sw_vers -productVersion", "")
+			if err != nil {
+				return err
+			}
+			actual := strings.TrimSpace(version)
+			if !domain.ValidVersion(actual) || domain.CompareVersions(actual, p.MacOS) != 0 {
+				return domain.Err("guest_version_mismatch", "Guest macOS version differs from the selected catalog release")
+			}
+		}
 		sip, err := guest.Run(ctx, "/usr/bin/csrutil status", "")
 		if err != nil {
 			return err
@@ -192,12 +209,17 @@ func (e *Engine) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile
 		if _, err := secured.Run(ctx, "/bin/bash -c 'IFS= read -r password; /usr/bin/dscl . -authonly lume \"$password\"'", credentials.Password+"\n"); err != nil {
 			return domain.Err("credential_verification_failed", "Image password did not persist across reboot; image will not be published")
 		}
-		if p.Provision != "" {
+		if p.Xcode != nil {
+			if err := e.verifyXcode(ctx, l, secured, *p.Xcode); err != nil {
+				return err
+			}
+		}
+		if p.Provision == "uitest-27-v1" {
 			if err := e.verifyProvision(ctx, l, secured); err != nil {
 				return err
 			}
 		}
-		evidence, _ := json.MarshalIndent(map[string]any{"build": p.Build, "ipsw_sha256": p.SHA256, "sip": strings.TrimSpace(sip), "desktop": true, "scoped_image_ssh": true, "provision": p.Provision, "verified_at": time.Now().UTC()}, "", "  ")
+		evidence, _ := json.MarshalIndent(map[string]any{"macos": p.MacOS, "xcode": p.Xcode, "build": p.Build, "ipsw_sha256": p.SHA256, "sip": strings.TrimSpace(sip), "desktop": true, "scoped_image_ssh": true, "provision": p.Provision, "verified_at": time.Now().UTC()}, "", "  ")
 		return os.WriteFile(filepath.Join(folder, "verification.json"), evidence, 0600)
 	case "stop":
 		return e.stop(ctx, l)

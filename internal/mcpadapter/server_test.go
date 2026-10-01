@@ -56,7 +56,7 @@ func TestMCPProxiesToAPIAndPreservesIdempotency(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list.Tools) != 10 {
+	if len(list.Tools) != 12 {
 		t.Fatal(len(list.Tools))
 	}
 	for _, tool := range list.Tools {
@@ -77,5 +77,46 @@ func TestMCPProxiesToAPIAndPreservesIdempotency(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Fatal(calls)
+	}
+}
+
+func TestMCPVersionSelectionReachesAPI(t *testing.T) {
+	calls := 0
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.URL.Path != "/api/v1/images" || r.Method != "POST" || r.Header.Get("Idempotency-Key") != "monterey-xcode-request" {
+			t.Error(r.Method, r.URL, r.Header.Get("Idempotency-Key"))
+		}
+		var body map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body["macos"] != "monterey" || body["xcode"] != "13.4.1" || body["id"] != "monterey-xcode" {
+			t.Error(body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(202)
+		fmt.Fprint(w, `{"job":{"id":"durable-job"}}`)
+	}))
+	defer api.Close()
+	c, err := client.New(api.URL, "secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, ct := mcp.NewInMemoryTransports()
+	ctx := context.Background()
+	ss, err := New(c).Connect(ctx, st, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ss.Close()
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil).Connect(ctx, ct, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cs.Close()
+	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "image_create", Arguments: map[string]any{"id": "monterey-xcode", "macos": "monterey", "xcode": "13.4.1", "idempotency_key": "monterey-xcode-request"}})
+	if err != nil || res.IsError || calls != 1 {
+		t.Fatal(res, err, calls)
 	}
 }

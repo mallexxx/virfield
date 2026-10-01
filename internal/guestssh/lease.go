@@ -80,7 +80,7 @@ func (e *Manager) Prepare(ctx context.Context, l domain.Lease) (domain.SSHConnec
 	if err := SaveCredentials(scoped.CredentialPath(l), c); err != nil {
 		return result, err
 	}
-	input := strings.Join([]string{inherited.Password, c.Password, management, public, base64.StdEncoding.EncodeToString(c.HostPrivate)}, "\n") + "\n"
+	input := strings.Join([]string{inherited.Password, c.Password, management, public, base64.StdEncoding.EncodeToString(c.HostPrivate), loginPassword(c.Password)}, "\n") + "\n"
 	out, err := g.Run(ctx, "/bin/bash -c '"+strings.ReplaceAll(leaseScript, "'", "'\"'\"'")+"'", input)
 	if err != nil {
 		if saveErr := os.WriteFile(filepath.Join(scoped.Directory(l), "provision.log"), []byte(out), 0600); saveErr != nil {
@@ -136,12 +136,13 @@ IFS= read -r new
 IFS= read -r management
 IFS= read -r client
 IFS= read -r hostkey
+IFS= read -r kcpassword
 umask 077
 mkdir -p ~/.ssh ~/workspace
 chmod 700 ~/.ssh ~/workspace
 /usr/sbin/sysadminctl -newPassword "$new" -oldPassword "$old"
 /usr/bin/dscl . -authonly lume "$new" >/dev/null 2>&1
-printf '%s\n' "$new" | sudo -S -p '' /usr/sbin/sysadminctl -autologin set -userName lume -password "$new" -adminUser lume -adminPassword "$new"
+` + autologinScript + `
 printf '%s' "$hostkey" | /usr/bin/base64 -D > ~/.ssh/virfield-host-key
 printf '%s\n' "$new" | sudo -S -p '' /usr/bin/install -m 600 ~/.ssh/virfield-host-key /etc/ssh/ssh_host_ed25519_key
 /bin/rm ~/.ssh/virfield-host-key

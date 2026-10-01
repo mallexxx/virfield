@@ -4,7 +4,7 @@ This is the single runbook for installing and operating the Go implementation.
 Commands below run from the repository root unless an installed binary path is
 shown. VM operations require an Apple Silicon macOS host and a separate Lume
 service. Tests and compilation also run on Linux. VM hosting requires Apple Silicon; Intel
-Macs, Linux and Windows are not supported VM hosts. The accepted image recipe
+Macs, Linux and Windows are not supported VM hosts. Catalog image creation selects macOS and Xcode versions. The fully accepted UI-test recipe
 is macOS 27 build 26A428; see the tested scope in [Verification](VERIFICATION.md).
 
 ## Paths and configuration
@@ -136,7 +136,9 @@ not establish fresh backend inventory.
 
 For an update, first obtain an idle healthy pool with no unresolved jobs and all
 VMs stopped. Back up the state, preserve the installed binaries/config, then
-install a clean committed build. Restart the exact manager job; restart Lume
+install a clean committed build. Schema 5 adds durable catalog templates; older
+binaries refuse this database. Rollback requires the matching pre-upgrade backup,
+not merely replacing the executable. Restart the exact manager job; restart Lume
 only if its binary or service configuration changed. Never unload or kill Lume
 while a VM is active. Verify both services, fresh inventory and MCP before
 accepting the release. An ambiguous `bootstrap` failure requires inspection of
@@ -191,7 +193,10 @@ restart/reconnect the client after changing its command. No npm/tsx entrypoint
 is supported. The stdio adapter calls the same authenticated daemon API.
 
 Tools: `virfield_status`, `vm_acquire`, `vm_lease`, `vm_release`, `vm_renew`,
-`virfield_job`, `virfield_events`, `image_build`, `vm_tunnel`, `vm_tunnel_close`.
+`virfield_job`, `virfield_events`, `image_catalog`, `image_create`, `image_build`,
+`vm_tunnel`, `vm_tunnel_close`.
+Use `image_create` to select versions instead of restricting an agent to configured
+templates; see [version selection and Apple authentication](IMAGE-PIPELINE.md#choose-macos-and-xcode-versions).
 HTTP MCP is served at `/mcp` and requires the same owner bearer token.
 
 The daemon binds only to loopback. Broker/container access needs an explicit

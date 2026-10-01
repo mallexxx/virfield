@@ -68,3 +68,8 @@ runs; Runner/Callee executes work inside the VM. The planned flow is
 `Balda → Broker → Virfield → VM/Runner`. Broker/Runner/Balda integration and
 container-facing network deployment are not supplied by this repository.
 See [current verification limits](docs/VERIFICATION.md#not-yet-accepted).
+
+Create a golden by version with MCP `image_catalog` / `image_create`, or CLI
+`image-create NEW_ID monterey 13.4.1`. Versions are resolved from catalogs and
+pinned in the journal; they are not limited to preconfigured templates. See
+[image version selection and Xcode authentication](docs/IMAGE-PIPELINE.md#choose-macos-and-xcode-versions).

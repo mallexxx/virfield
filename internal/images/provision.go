@@ -46,10 +46,18 @@ func compatibleXcode(version string) bool {
 }
 
 func (e *Engine) provision(ctx context.Context, l domain.Lease, p domain.ImageProfile, progress func(string) error) error {
-	if p.Provision != "uitest-27-v1" {
+	if p.Provision != "uitest-27-v1" && p.Provision != "developer-v1" {
 		return domain.Err("invalid_profile", "Unknown guest provisioning recipe")
 	}
-	sourceVersion, err := e.checkXcode(ctx)
+	source := e.Tools.Xcode
+	var sourceVersion string
+	var err error
+	if p.Xcode != nil {
+		source, err = e.xcodeSource(ctx, *p.Xcode, progress)
+		sourceVersion = "Xcode " + p.Xcode.Version + "\nBuild version " + p.Xcode.Build
+	} else {
+		sourceVersion, err = e.checkXcode(ctx)
+	}
 	if err != nil {
 		return err
 	}
@@ -96,7 +104,7 @@ mkdir -p /Users/lume/.virfield-xcode
 		}
 		transfer, stop := context.WithCancel(ctx)
 		defer stop()
-		cmd := exec.CommandContext(transfer, "/usr/bin/tar", "-C", filepath.Dir(e.Tools.Xcode), "-cf", "-", filepath.Base(e.Tools.Xcode))
+		cmd := exec.CommandContext(transfer, "/usr/bin/tar", "-C", filepath.Dir(source), "-cf", "-", filepath.Base(source))
 		pipe, err := cmd.StdoutPipe()
 		if err != nil {
 			return err
@@ -118,7 +126,7 @@ mkdir -p /Users/lume/.virfield-xcode
 		if err := progress("Xcode transferred; installing developer components and completing first launch"); err != nil {
 			return err
 		}
-		move := "set -eu; sudo /bin/rm -rf /Applications/Xcode.app; /bin/mv " + shellQuote(filepath.Join("/Users/lume/.virfield-xcode", filepath.Base(e.Tools.Xcode))) + " /Applications/Xcode.app"
+		move := "set -eu; sudo /bin/rm -rf /Applications/Xcode.app; /bin/mv " + shellQuote(filepath.Join("/Users/lume/.virfield-xcode", filepath.Base(source))) + " /Applications/Xcode.app"
 		if _, err := g.Run(ctx, "/bin/bash -c "+shellQuote(move), ""); err != nil {
 			return err
 		}
@@ -134,6 +142,12 @@ sudo /usr/bin/xcodebuild -runFirstLaunch
 	if err != nil {
 		e.provisionLog(l, "xcode", out)
 		return domain.Err("xcode_install_failed", "Guest Xcode first launch failed; inspect private stage log")
+	}
+	if p.Xcode != nil {
+		if err := e.verifyXcode(ctx, l, g, *p.Xcode); err != nil {
+			return err
+		}
+		return e.stop(ctx, l)
 	}
 	if err := progress("Xcode installed; provisioning guest tools, Gatekeeper, AMFI and TCC"); err != nil {
 		return err
@@ -176,4 +190,26 @@ sysctl -n kern.bootargs | grep -q amfi_get_out_of_my_way=1
 	}
 	b, _ := json.MarshalIndent(map[string]any{"recipe": "uitest-27-v1", "verified_at": time.Now().UTC(), "probes": out}, "", "  ")
 	return os.WriteFile(filepath.Join(e.Dir, "images", l.ID, "provision-verification.json"), b, 0600)
+}
+
+func (e *Engine) verifyXcode(ctx context.Context, l domain.Lease, g *guest, x domain.XcodeRelease) error {
+	out, err := g.Run(ctx, "/usr/bin/xcodebuild -version", "")
+	if err != nil || strings.TrimSpace(out) != "Xcode "+x.Version+"\nBuild version "+x.Build {
+		return domain.Err("xcode_version_mismatch", "Guest Xcode version/build does not match the manifest")
+	}
+	probe := `set -eu
+ test "$(/usr/bin/xcode-select -p)" = /Applications/Xcode.app/Contents/Developer
+ /usr/bin/xcodebuild -checkFirstLaunchStatus
+ /usr/bin/xcrun --find swift
+ /usr/bin/xcrun swift -e 'import Foundation; print("virfield-swift-ok")'
+ /usr/bin/codesign --verify --deep --strict -R 'anchor apple' /Applications/Xcode.app
+`
+	out, err = g.RunReader(ctx, 5*time.Minute, "/bin/bash -c "+shellQuote(probe), nil)
+	if logErr := e.provisionLog(l, "xcode-verify", out); logErr != nil {
+		return logErr
+	}
+	if err != nil {
+		return domain.Err("xcode_verification_failed", "Guest Xcode signature, first launch or Swift compilation check failed")
+	}
+	return nil
 }

@@ -34,7 +34,8 @@ func run() error {
 Inspect: status | lease ID | job ID | events [AFTER]
 Leases:  acquire TEMPLATE TTL_SECONDS PUBLIC_KEY_FILE | renew ID RFC3339 | release ID
 SSH:     keygen DIRECTORY | ssh-config LEASE_ID IDENTITY_DIRECTORY | tunnel LEASE_ID | tunnel-close LEASE_ID
-Images:  image-build TEMPLATE_ID | image-provision TEMPLATE_ID EXACT_VM_NAME | image-delete TEMPLATE_ID EXACT_VM_NAME
+Images:  image-catalog | image-create ID MACOS [XCODE]
+         image-build TEMPLATE_ID | image-provision TEMPLATE_ID EXACT_VM_NAME | image-delete TEMPLATE_ID EXACT_VM_NAME
 Recover: resolve LEASE_ID VM_NAME CONFIRM-NO-OPERATION-IN-FLIGHT
          image-recover IMAGE_RECORD_ID EXACT_VM_NAME retry|reprovision|delete CONFIRM-NO-OPERATION-IN-FLIGHT
 Host:    backup | init DIRECTORY TEMPLATE VM LOCATION
@@ -77,6 +78,25 @@ Recovery requires prior inspection that no operation remains in flight.
 	method, path := "GET", ""
 	var body any
 	switch args[0] {
+	case "image-catalog":
+		if len(args) != 1 {
+			return errors.New("usage: image-catalog")
+		}
+		path = "images/catalog"
+	case "image-create":
+		if (len(args) != 3 && len(args) != 4) || *key == "" {
+			return errors.New("usage: -key STABLE_KEY image-create NEW_ID MACOS_VERSION_OR_CODENAME [XCODE_VERSION]")
+		}
+		req := domain.ImageCreateRequest{ID: args[1], MacOS: args[2]}
+		if len(args) == 4 {
+			req.Xcode = args[3]
+		}
+		if err := req.Validate(); err != nil {
+			return err
+		}
+		method = "POST"
+		path = "images"
+		body = req
 	case "image-recover":
 		if len(args) != 5 || !domain.ValidName(args[1]) || !domain.ValidName(args[2]) || args[4] != "CONFIRM-NO-OPERATION-IN-FLIGHT" || *key == "" {
 			return errors.New("usage: -key STABLE_KEY image-recover IMAGE_RECORD_ID EXACT_VM_NAME retry|reprovision|delete CONFIRM-NO-OPERATION-IN-FLIGHT")

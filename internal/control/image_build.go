@@ -34,6 +34,9 @@ func (c *Controller) BuildImage(ctx context.Context, id, key string) (domain.Ope
 	if !ok || t.Image == nil || c.imageBuilder == nil {
 		return domain.Operation{}, domain.Err("invalid_profile", "image build profile is not configured")
 	}
+	return c.buildImageLocked(ctx, t, key, fp, false)
+}
+func (c *Controller) buildImageLocked(ctx context.Context, t domain.Template, key, fp string, register bool) (domain.Operation, error) {
 	ls, err := c.store.Leases(ctx)
 	if err != nil {
 		return domain.Operation{}, err
@@ -52,11 +55,22 @@ func (c *Controller) BuildImage(ctx context.Context, id, key string) (domain.Ope
 		}
 	}
 	now := c.now()
-	l := domain.Lease{ID: domain.NewID("image-"), Purpose: "image", Template: id, VMName: t.Name, Location: t.Location, State: "image_building", CreatedAt: now, UpdatedAt: now}
+	l := domain.Lease{ID: domain.NewID("image-"), Purpose: "image", Template: t.ID, VMName: t.Name, Location: t.Location, State: "image_building", CreatedAt: now, UpdatedAt: now}
 	profile := *t.Image
-	j := domain.Job{ID: domain.NewID("job-"), LeaseID: l.ID, Kind: "image_build", Image: &profile, Phase: "queued", State: "queued", CreatedAt: now, UpdatedAt: now, Deadline: now.Add(3 * time.Hour)}
-	if err := c.store.Save(ctx, l, &j, key, fp, "image.build_accepted", "Image build reserved maintenance access; download, install, setup, SIP and verification are journaled separately"); err != nil {
+	j := domain.Job{ID: domain.NewID("job-"), LeaseID: l.ID, Kind: "image_build", Image: &profile, Phase: "queued", State: "queued", CreatedAt: now, UpdatedAt: now, Deadline: now.Add(6 * time.Hour)}
+	save := func() error {
+		return c.store.Save(ctx, l, &j, key, fp, "image.build_accepted", "Image build accepted; installation and verification are journaled")
+	}
+	if register {
+		save = func() error {
+			return c.store.SaveImage(ctx, l, &j, key, fp, "image.build_accepted", "Catalog image accepted; resolved versions are pinned", t)
+		}
+	}
+	if err := save(); err != nil {
 		return domain.Operation{}, err
+	}
+	if register {
+		c.templates[t.ID] = t
 	}
 	return domain.Operation{Lease: l, Job: j}, nil
 }
@@ -202,7 +216,7 @@ func (c *Controller) RecoverImage(ctx context.Context, id, key, name, action str
 		j.Phase = phase
 		j.State = "queued"
 		j.Error = nil
-		j.Deadline = c.now().Add(3 * time.Hour)
+		j.Deadline = c.now().Add(6 * time.Hour)
 		j.UpdatedAt = c.now()
 		l.State = "image_building"
 		l.Error = nil

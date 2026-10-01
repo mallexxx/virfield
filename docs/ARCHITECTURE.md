@@ -11,6 +11,7 @@ policy and Runner/Callee workflow execution belong to separate applications.
 | `cmd/virfieldd` | Configuration, host singleton lock, HTTP server, shutdown |
 | `internal/control` | Admission, leases, durable job phases, reconciliation, cleanup |
 | `internal/guestssh` | Bounded pinned SSH, image bootstrap, per-lease credential isolation |
+| `internal/catalog` | Public version metadata, macOS selectors and Xcode minimum-OS checks |
 | `internal/images` | Pinned IPSW downloads, versioned guest provisioning, image verification |
 | `internal/store` | SQLite schema, atomic state + event transactions, idempotency |
 | `internal/lume` | Sole Lume HTTP/CLI adapter, fixed image commands, no blind mutation retries |
@@ -63,8 +64,8 @@ connection metadata and public keys.
 An interrupted SSH isolation is never replayed. The lease becomes
 `needs_attention`, remains reserved and can be released or expire normally:
 its clone ownership and completed start are already known. An IP change after
-verification requires a new lease. Schema version 4 prevents older binaries from
-skipping readiness, resource and provisioning contracts. Existing leases without an SSH identity require
+verification requires a new lease. Schema version 5 prevents older binaries from
+skipping readiness, resource, catalog-template and provisioning contracts. Existing leases without an SSH identity require
 release and reacquisition; the existing verified image remains usable.
 
 ## API boundary

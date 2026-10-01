@@ -46,6 +46,8 @@ func New(c *control.Controller, token string, log *slog.Logger, options ...Optio
 		api.Handle("POST /api/v1/maintenance/backup", extra.Backup)
 	}
 	api.HandleFunc("GET /api/v1/status", s.status)
+	api.HandleFunc("GET /api/v1/images/catalog", s.catalog)
+	api.HandleFunc("POST /api/v1/images", s.createImage)
 	api.HandleFunc("POST /api/v1/images/{id}/delete", s.deleteImage)
 	api.HandleFunc("POST /api/v1/images/{id}/build", s.buildImage)
 	api.HandleFunc("POST /api/v1/images/{id}/provision", s.provisionImage)
@@ -111,7 +113,7 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 		status = 404
 	case "resource_exhausted", "resource_unknown", "resource_unavailable", "ssh_key_in_use", "image_in_use", "image_exists", "capacity_exhausted", "idempotency_conflict", "operation_in_progress", "lease_expired", "lease_released", "outcome_unknown", "template_unavailable":
 		status = 409
-	case "backend_unavailable":
+	case "backend_unavailable", "catalog_unavailable":
 		status = 503
 	case "internal_error":
 		status = 500
@@ -335,4 +337,31 @@ func (s *Server) closeTunnel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	write(w, 200, map[string]bool{"closed": true})
+}
+
+func (s *Server) catalog(w http.ResponseWriter, r *http.Request) {
+	v, err := s.c.ImageCatalog(r.Context())
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	write(w, 200, v)
+}
+func (s *Server) createImage(w http.ResponseWriter, r *http.Request) {
+	var req domain.ImageCreateRequest
+	if err := decode(w, r, &req); err != nil {
+		s.fail(w, err)
+		return
+	}
+	v, err := s.c.CreateImage(r.Context(), req, r.Header.Get("Idempotency-Key"))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	w.Header().Set("Location", "/api/v1/jobs/"+v.Job.ID)
+	status := 202
+	if v.Replayed {
+		status = 200
+	}
+	write(w, status, v)
 }

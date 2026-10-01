@@ -9,6 +9,82 @@ installation of provider binaries remain separate. The optional fixed
 `uitest-27-v1` recipe automatically installs Xcode/tools and configures guest-only
 SIP/Gatekeeper/AMFI/TCC and sudo. The operator selects and authorizes it once for the image profile; each subsequent `image-build` executes it automatically.
 
+## Choose macOS and Xcode versions
+
+`image_catalog` (MCP) or `image-catalog` (CLI) lists current restore releases and
+stable Xcode versions. `image_create` accepts `id`, `macos`, optional `xcode`,
+optional named `location` (default `home`) and `idempotency_key`:
+
+```json
+{"id":"monterey-xcode1341","macos":"monterey","xcode":"13.4.1","idempotency_key":"monterey-xcode1341-001"}
+```
+
+```sh
+"$VIRFIELD_HOME/bin/virfield" -token-file "$VIRFIELD_HOME/token" image-catalog
+"$VIRFIELD_HOME/bin/virfield" -token-file "$VIRFIELD_HOME/token" -key monterey-xcode1341-001 image-create monterey-xcode1341 monterey 13.4.1
+```
+
+The HTTP equivalents are `GET /api/v1/images/catalog` and `POST /api/v1/images`
+with the request fields above except the key, which uses `Idempotency-Key`.
+Use an exact macOS version, build, or codename (`big-sur`, `monterey`, `ventura`,
+`sonoma`, `sequoia`, `tahoe`). A codename resolves to the highest available point
+release. Xcode selection is an exact stable version. The catalog is metadata from
+[IPSW.me](https://api.ipsw.me/v4/device/VirtualMac2,1?type=ipsw) and
+[Xcode Releases](https://xcodereleases.com/data.json); binaries are fetched only
+from their validated Apple HTTPS endpoints. Metadata is cached for ten minutes.
+An unavailable or malformed catalog fails explicitly; there is no guessed URL.
+
+Acceptance atomically persists the resolved manifest, template and build job in
+SQLite. Retrying an accepted request returns its original selection even if the
+catalog changes or is offline. The template survives daemon restart and appears
+in status; no config-file edit is needed. IDs and VM names cannot overwrite an
+existing template. Storage must be in the operator's `storage_paths`.
+
+Catalog images keep SIP enabled. Without Xcode they produce a base desktop image;
+with Xcode they use `developer-v1`: install the selected Xcode, accept its license,
+complete first launch, verify its exact version/build, Apple signature and Swift
+compilation again after reboot. Guest developer provisioning enables passwordless
+sudo for the disposable worker account. It does not install the separate UI-test
+tool suite. The macOS 27 UI-test/SIP-removal recipe below remains explicitly
+version-specific. Other versions are not globally rejected, but Apple's
+Virtualization framework must support the restore image on the actual host.
+Unknown Assistant screens fail rather than publishing an incomplete desktop.
+
+### Apple Developer downloads
+
+Some Xcode versions require an Apple Developer session. The daemon never asks an
+agent for an Apple ID password. Configure either or both operator-owned paths in
+`image_tools`:
+
+```json
+{
+  "xcode_archives": "/absolute/private/imports",
+  "apple_cookies": "/absolute/private/apple-download-cookies.txt"
+}
+```
+
+`xcode_archives` is optional: place an official `Xcode_VERSION.xip` there, for
+example `Xcode_13.4.1.xip` downloaded from
+[Apple Developer Downloads](https://developer.apple.com/download/all/).
+`apple_cookies` is an optional Netscape-format file, mode 0600, containing the
+operator's authorized Apple download session. Only unexpired matching Apple
+cookies are sent, only to `download.developer.apple.com`; redirects are never
+followed with credentials. Keep the file outside Git. The archive is imported
+before attempting an authenticated download. Neither path nor cookies can be
+supplied through MCP/API.
+
+Expired/missing authorization returns `apple_auth_required` with the exact
+archive filename and recovery action. Download/import verifies the catalog SHA-1
+(the metadata source's available checksum); macOS `xip` additionally verifies
+Apple's archive signature, and `codesign` checks an intact Apple-signed app.
+Checksums alone are not the Xcode trust boundary. Version/build metadata is read
+without executing the older Xcode on the host. Expanded apps and archives are
+cached privately by digest. Host Xcode selection is unchanged.
+
+After placing the archive or renewing the cookie file, inspect the failed job and
+use the documented download-stage `image-recover ... retry` command below. No VM
+is created until the required downloads and Xcode expansion pass.
+
 ## Profile and dependencies
 
 Add `image` to an existing configured template. It pins an Apple HTTPS URL,
@@ -42,8 +118,9 @@ Set the top-level `image_tools` config to absolute operator-controlled paths:
 }
 ```
 
-The executor is pinned to Lume 0.5.3 and macOS build 26A428. Other builds are
-rejected before any image operation until their recipe is implemented and tested. Install `vncdotool==1.3.0` into an isolated
+The Lume adapter is pinned to patched Lume 0.5.3. Base/developer images use
+the selected restore build; only the SIP-removal/UI-test recipe is pinned to
+26A428. Install `vncdotool==1.3.0` into an isolated
 Python environment and Tesseract before starting a build. The tested Python
 3.14.4 package set is pinned in `deploy/image-tools-requirements.txt`; Tesseract
 5.5.2 was used for live acceptance. The daemon never
@@ -62,8 +139,8 @@ and set its absolute executable path. The Lume output directory must be new.
 For the full profile, also configure the absolute local Xcode source as described
 in [Optional UI-test tool profile](#optional-ui-test-tool-profile).
 
-`assistant.py` is a versioned embedded guest
-VNC finisher for macOS 27; it cannot
+`assistant.py` is an embedded guest
+VNC finisher whose recognized screens are tested on macOS 27; it cannot
 manage VM lifecycle. Lume's native `setup` handles offline patching. Recovery
 uses one owned `lume run --recovery-mode true` child plus `recovery27.py`: the
 native 0.5.3 SIP navigation was observed to open Time Machine on this build.
@@ -96,7 +173,7 @@ provision (when configured) → verify → stop → ready. Each external effect 
 completion event. The manifest is copied into the accepted job, so changing
 configuration during a restart cannot change an in-progress restore image.
 
-The download is real HTTPS from Apple, with no redirects. Transient network failures get at most three range-resume attempts. A graceful
+The download is real HTTPS from Apple, with no redirects. IPSW transient network failures get at most three range-resume attempts. Xcode retains partial bytes for an explicit retry. A graceful
 daemon shutdown pauses a download for automatic resume on restart. Partial downloads use
 Range with validated Content-Range. Only exact size plus a full SHA-256 permits
 atomic cache promotion. Disk-space checks run before download and installation.

@@ -299,10 +299,11 @@ fi
 	if err := runSecret("rotation", rotate, old+"\n"+c.Password+"\n"); err != nil {
 		return err
 	}
-	autologin := `IFS= read -r new
-printf '%s\n' "$new" | sudo -S -p '' /usr/sbin/sysadminctl -autologin set -userName lume -password "$new" -adminUser lume -adminPassword "$new"
-`
-	if err := runSecret("autologin", autologin, c.Password+"\n"); err != nil {
+	autologin := `set -eu
+IFS= read -r new
+IFS= read -r kcpassword
+` + autologinScript
+	if err := runSecret("autologin", autologin, c.Password+"\n"+loginPassword(c.Password)+"\n"); err != nil {
 		return err
 	}
 	harden := `IFS= read -r new

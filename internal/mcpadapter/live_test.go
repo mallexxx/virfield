@@ -35,7 +35,7 @@ func TestLiveInstalledMCP(t *testing.T) {
 			t.Fatal(err)
 		}
 		list, err := session.ListTools(ctx, nil)
-		if err != nil || len(list.Tools) != 10 {
+		if err != nil || len(list.Tools) != 12 {
 			session.Close()
 			t.Fatal("MCP tool discovery failed", err)
 		}
