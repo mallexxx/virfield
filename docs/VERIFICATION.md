@@ -174,9 +174,9 @@ were cleaned up; final pool capacity was 0/2 used with no active jobs. The golde
 was preserved. Private test output is in the deployment's
 `acceptance-sequoia-clones-20261001.log`.
 Fresh full import and publish → pull-back → ordinary clone/workload acceptance
-and client workflow checks remain release gates. Publication rebuilds a portable
+passed below; client workflow checks remain release gates. Publication rebuilds a portable
 recipe; raw source-disk export and preservation of manual golden changes are not
-offered. The published tag below failed pull-back and is not an accepted image.
+offered. The first published tag below failed pull-back and is not an accepted image.
 
 The first two clean portable-build attempts on 2026-10-01 did not reach upload.
 `job-a56dffdf456ecf269dc7c18bce963a97` downloaded and verified the Apple
@@ -214,8 +214,8 @@ acceptance is claimed for the published image.
 Commit `04c9f13` installed a resolver guard and a pinned Lume patch that rejects
 missing disk parts. The follow-up patch also propagates child upload errors.
 An 80 GiB synthetic dry-run with 160 parts completed without a missing part;
-this exercises compression/collection without GHCR upload and does not prove
-the network upload path. A new unique tag and full pull-back remain required.
+this exercises compression/collection without GHCR upload and did not prove
+the network upload path. The new unique tag and full pull-back are recorded below.
 
 The next clean export (`job-847168d15f89f1744f2efe33296ad419`) reached
 paired Recovery but stopped at `sip_dispatched` before upload. Screenshot 005
@@ -225,8 +225,8 @@ used the transient coordinate after the layout changed and selected Macintosh
 HD. The failed job left its temporary VM stopped and the new tag absent.
 `recovery.py` now waits for Options in the stable right position and reads the
 Continue button ROI without requiring OCR to spell the Macintosh label. The
-saved screenshots and OCR confirm the two positions; a new clean build must
-verify the fix live before publication is accepted.
+saved screenshots and OCR confirm the two positions; the later clean build
+verified the fix live.
 
 That clean retry (`job-6eb402a6e5d8d4f630d921328f9676e6`) selected the
 right-hand Options but again timed out before Continue. The next screenshot
@@ -235,8 +235,35 @@ at 96% confidence. The cursor obscured the final letter of the Options label,
 so a guard on full-frame `Options` OCR skipped the ROI. The driver now scans the
 fixed right-hand Continue ROI on every `options-selected` frame while still
 requiring exact button OCR before clicking. The tag remained absent and the
-failed temporary VM was stopped; live verification of this second fix remains
-required.
+failed temporary VM was stopped. The next clean run verified this second fix.
+
+Clean publish `job-4a0f22bf6531f77de5669742ae476442` then passed native
+Assistant, paired Recovery, security/reboot verification, sanitation, GHCR
+upload and exact temporary-VM cleanup without operator recovery. The published
+tag is `ghcr.io/mallexxx/virfield-e2e-sequoia152:e2e-20261001-165cef8-r2`,
+digest `sha256:d9a22e89fef5c73f9ed3241b48e1b40b4ff9eb383a152cce7684b6a4d7b41e72`.
+The installed resolver accepted the manifest. A direct GHCR metadata read
+confirmed 160 consecutively numbered, contiguous 512 MiB disk parts, covering
+the declared 85,899,345,920 bytes exactly; all part-count annotations are 160.
+The source `vf-ghcr-sequoia152` remained stopped and preserved.
+
+Pull-back `job-5c0bf72ab62c50355e7eaf94184013b3` pinned that digest and
+reached `image_ready` without manual intervention. Its new golden is
+`vf-e2e-sequoia152-r2-20261002` (`image-6a2453038d8cffc2d3bfc6481c700996`).
+Verification at 2026-10-01T18:59:12Z confirmed macOS 15.2 / 24C101,
+`automation`, and FileVault/encryption/lock all false on both boot volumes;
+the job also passed SIP, SSH credentials and Finder after reboot. The golden
+was stopped normally.
+
+`TestLiveLeaseSSH` passed on this new golden in 67.27 seconds, creating only
+disposable leases `lease-a4a01025e370187507229df4996e4460` and
+`lease-af2861ac848aca915a42aaa1ff21f7e4`. Both ordinary clones booted,
+reported the exact version and unencrypted disks, passed Finder/SIP probes,
+accepted their own SSH keys and rejected cross-lease and image keys. Distinct
+host pins, tunnels, idempotency, third-VM capacity refusal at 2/2 and real
+SCP artifact export passed. Both test clones and their credentials/tunnels
+were removed through the API. Final inventory showed 0/2 slots used, no
+active jobs, and both original and imported goldens preserved.
 
 ## Read-only installed-service checks
 
@@ -290,7 +317,7 @@ go test ./internal/control -run '^TestLiveLifecycle$' -count=1 -v -timeout=26m
 | Guest / policy | Evidence |
 | --- | --- |
 | Monterey 12.6 / 21G115, default protection, no Xcode | IPSW download and native Assistant passed; source boot, key-only SSH, password rotation and Finder passed. **Not accepted:** both ordinary clones stalled before SSH; FileVault is off but System/Data report encryption at rest. Both test clones and the failed encrypted golden were deleted. |
-| Sequoia 15.2 / 24C101, GHCR import, `automation`, no Xcode | Recovered import reached `image_ready`; both boot volumes unencrypted, rotated SSH/autologin, Finder, SIP/Gatekeeper/AMFI/TCC and reboot verification passed. Two ordinary clones passed isolation, capacity, disk, workload/SCP and cleanup checks. Clean full import/round-trip acceptance still pending. |
+| Sequoia 15.2 / 24C101, GHCR import, `automation`, no Xcode | Clean portable publish, complete 80 GiB GHCR manifest, clean pull-back and two ordinary clones passed boot, isolation, capacity, disk, workload/SCP and cleanup. The earlier recovered import separately passed Gatekeeper/AMFI/TCC and reboot verification. |
 | Monterey with `automation` security | Implementation present; live acceptance blocked by the unencrypted golden requirement |
 | Xcode 13.4.1 / 13F100 | Catalog resolution and compatibility checks pass; live install awaits an authenticated Apple archive |
 | Other catalog macOS generations | Selectable; not yet a claim of live acceptance on this host |
@@ -315,7 +342,7 @@ checking just `PasswordAuthentication` does not establish key-only access.
 
 - Remaining VM-mutation crash points, prolonged soak and VM-disk disaster recovery. Unit/mock checks and state snapshots do not replace
   these exercises.
-- Registry pull, portable publication/pull-back and macOS builds not explicitly recorded in the versioned-image matrix.
+- Registry pull, portable publication/pull-back and macOS builds outside the versioned-image matrix above.
 - Container-facing routing/TLS and per-principal authentication.
 - Broker, Runner, Callee/provider installation, Balda and Prism integration.
   The complete task → VM → execution → result → cleanup workflow from Balda
