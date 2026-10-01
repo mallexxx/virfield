@@ -307,7 +307,7 @@ IFS= read -r kcpassword
 		return err
 	}
 	harden := `IFS= read -r new
-printf '%s\n' "$new" | sudo -S -p '' /bin/sh -c 'umask 077; mkdir -p /etc/ssh/sshd_config.d; printf "PasswordAuthentication no\nKbdInteractiveAuthentication no\n" > /etc/ssh/sshd_config.d/000-virfield.conf; /usr/sbin/sshd -t'
+printf '%s\n' "$new" | sudo -S -p '' /bin/sh -c 'umask 077; mkdir -p /etc/ssh/sshd_config.d; printf "PasswordAuthentication no\nKbdInteractiveAuthentication no\nChallengeResponseAuthentication no\n" > /etc/ssh/sshd_config.d/000-virfield.conf; /usr/sbin/sshd -t'
 `
 	if err := runSecret("ssh", harden, c.Password+"\n"); err != nil {
 		return err
