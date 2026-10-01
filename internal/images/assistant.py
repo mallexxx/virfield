@@ -114,6 +114,19 @@ def run():
                         tap(*point, delay)
                         return
                 raise RuntimeError(f'Expected Assistant button {phrases!r} is not visible in {picture.name}')
+            def tap_bottom_left(picture, phrase, delay=8):
+                # Sequoia's blue Set Up Later link is missed by full-page OCR.
+                # Read only the visible footer and map its text box back to VNC.
+                box = (160, 1200, 520, 1320)
+                with Image.open(picture) as frame:
+                    crop = frame.crop(box).resize((1080, 360))
+                    png = BytesIO()
+                    crop.save(png, format='PNG')
+                result = subprocess.run([config['tesseract'], 'stdin', 'stdout', '--psm', '7', 'tsv'], input=png.getvalue(), capture_output=True, timeout=30, check=True)
+                point = locate_phrase(result.stdout.decode('utf-8', errors='replace'), phrase)
+                if point is None:
+                    raise RuntimeError(f'Expected Assistant button {phrase!r} is not visible in {picture.name}')
+                tap(box[0] + point[0] // 3, box[1] + point[1] // 3, delay)
             if tall and action in ('boot', 'unknown'):
                 result = subprocess.run([config['tesseract'], str(picture), 'stdout', 'tsv'], capture_output=True, text=True, timeout=30, check=True)
                 if locate_phrase(result.stdout, 'Get Started', 500) is not None:
@@ -138,10 +151,7 @@ def run():
             if tall and action == 'accessibility':
                 tap_label(picture, ('Not Now',), 800, 12)
             elif tall and action == 'account':
-                tap_label(picture, ('Other Sign-In Options',), 650, 2)
-                menu = folder / f'assistant-{step:02}-menu.png'
-                client.captureScreen(str(menu))
-                tap_label(menu, ('Set Up Later', 'Not Now'), 650, 5)
+                tap_bottom_left(picture, 'Set Up Later', 5)
             elif tall and action == 'adult':
                 tap_label(picture, ('Adult',), 500)
             elif tall and action == 'continue':
