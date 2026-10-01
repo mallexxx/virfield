@@ -328,6 +328,13 @@ rejects that state before completing setup and again before publication. The
 installed runtime includes that gate. The failed golden was deleted through the API (job
 `job-d8a05d245b9ca804b35e0212a9be87fe`, succeeded; absence confirmed in Lume).
 The registered recipe remains; there is no accepted Monterey golden.
+Apple [documents default APFS encryption on Apple silicon even when FileVault
+is off](https://support.apple.com/en-nz/guide/security/sec4c6dc1b6e/web).
+That is consistent with this guest observation, but does not establish whether
+an alternate supported VM preparation can produce an unencrypted Monterey disk.
+On 2026-10-02 the configured private imports directory and Downloads contained
+no `Xcode_13.4.1.xip`; the exact Apple archive remains required for the live
+Xcode 13.4.1 / 13F100 install test.
 No clone-identity workaround is included. A fresh successful clone acceptance
 run and disk-policy validation remain required before release.
 
