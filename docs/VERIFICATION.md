@@ -228,6 +228,16 @@ Continue button ROI without requiring OCR to spell the Macintosh label. The
 saved screenshots and OCR confirm the two positions; a new clean build must
 verify the fix live before publication is accepted.
 
+That clean retry (`job-6eb402a6e5d8d4f630d921328f9676e6`) selected the
+right-hand Options but again timed out before Continue. The next screenshot
+showed Continue under Options; its cropped ROI yielded exact OCR `Continue`
+at 96% confidence. The cursor obscured the final letter of the Options label,
+so a guard on full-frame `Options` OCR skipped the ROI. The driver now scans the
+fixed right-hand Continue ROI on every `options-selected` frame while still
+requiring exact button OCR before clicking. The tag remained absent and the
+failed temporary VM was stopped; live verification of this second fix remains
+required.
+
 ## Read-only installed-service checks
 
 ```sh

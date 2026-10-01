@@ -107,9 +107,10 @@ def run():
         raw = subprocess.run([config['tesseract'], str(picture), 'stdout', '--psm', '11', 'tsv'], capture_output=True, text=True, timeout=20, check=True).stdout
         words = list(csv.DictReader(io.StringIO(raw), delimiter='\t'))
         # Sparse OCR omits the dark-on-gray Continue button beneath Options.
-        # Read this versioned ROI only after Options reaches its stable right
-        # position; exact OCR is still required before clicking.
-        if label == 'options-selected' and picker_options(words) is not None:
+        # The pointer may cover part of the Options label after selection, so
+        # scan this fixed ROI on every options-selected frame. Only an exact
+        # recognized Continue permits a click.
+        if label == 'options-selected':
             roi = folder / f'{sequence:03}-picker-button.png'
             with Image.open(picture) as frame:
                 offset_y = (frame.height - 1080) // 2
