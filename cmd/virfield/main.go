@@ -37,7 +37,7 @@ SSH:     keygen DIRECTORY | ssh-config LEASE_ID IDENTITY_DIRECTORY | tunnel LEAS
 Images:  image-catalog | image-create ID MACOS [XCODE]
          image-build TEMPLATE_ID | image-provision TEMPLATE_ID EXACT_VM_NAME | image-delete TEMPLATE_ID EXACT_VM_NAME
 Recover: resolve LEASE_ID VM_NAME CONFIRM-NO-OPERATION-IN-FLIGHT
-         image-recover IMAGE_RECORD_ID EXACT_VM_NAME retry|reprovision|delete CONFIRM-NO-OPERATION-IN-FLIGHT
+         image-recover IMAGE_RECORD_ID EXACT_VM_NAME retry|reprovision|setup-online|delete CONFIRM-NO-OPERATION-IN-FLIGHT
 Host:    backup | init DIRECTORY TEMPLATE VM LOCATION
 
 release, image-delete and recovery cleanup permanently delete their VM.
@@ -99,7 +99,7 @@ Recovery requires prior inspection that no operation remains in flight.
 		body = req
 	case "image-recover":
 		if len(args) != 5 || !domain.ValidName(args[1]) || !domain.ValidName(args[2]) || args[4] != "CONFIRM-NO-OPERATION-IN-FLIGHT" || *key == "" {
-			return errors.New("usage: -key STABLE_KEY image-recover IMAGE_RECORD_ID EXACT_VM_NAME retry|reprovision|delete CONFIRM-NO-OPERATION-IN-FLIGHT")
+			return errors.New("usage: -key STABLE_KEY image-recover IMAGE_RECORD_ID EXACT_VM_NAME retry|reprovision|setup-online|delete CONFIRM-NO-OPERATION-IN-FLIGHT")
 		}
 		method = "POST"
 		path = "images/" + args[1] + "/recover"

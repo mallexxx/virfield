@@ -45,7 +45,7 @@ func New(dir string, b *lume.Client, t domain.ImageTools) (*Engine, error) {
 	return &Engine{Dir: dir, Backend: b, Tools: t, HTTP: client}, nil
 }
 func (e *Engine) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile, step string, progress func(string) error) error {
-	timeout, known := map[string]time.Duration{"download": 3 * time.Hour, "create": 45 * time.Minute, "setup": 15 * time.Minute, "assistant": 10 * time.Minute, "sip": 20 * time.Minute, "provision": 2 * time.Hour, "verify": 10 * time.Minute, "stop": 2 * time.Minute}[step]
+	timeout, known := map[string]time.Duration{"download": 3 * time.Hour, "create": 45 * time.Minute, "setup": 25 * time.Minute, "assistant": 10 * time.Minute, "sip": 20 * time.Minute, "provision": 2 * time.Hour, "verify": 10 * time.Minute, "stop": 2 * time.Minute}[step]
 	if !known {
 		return domain.Err("invalid_profile", "unsupported image pipeline stage")
 	}
@@ -108,6 +108,9 @@ func (e *Engine) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile
 		}
 		return err
 	case "create", "setup":
+		if step == "setup" && onlineSetupRequired(p) {
+			return e.setupOnline(ctx, l, progress)
+		}
 		if step == "create" {
 			if err := Space(e.Dir, 48<<30); err != nil {
 				return err

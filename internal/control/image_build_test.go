@@ -403,3 +403,44 @@ func TestFailedVerificationRequiresExplicitReprovision(t *testing.T) {
 		})
 	}
 }
+
+func TestOnlineSetupRecoveryDoesNotRepeatCreate(t *testing.T) {
+	c, b := imageController(t)
+	p := c.templates["test"].Image
+	p.MacOS = "12.6"
+	p.Build = "21G115"
+	b.fail = "setup"
+	op, err := c.BuildImage(context.Background(), "test", "online-setup-build")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 4 {
+		tick(t, c)
+	}
+	_, err = c.RecoverImage(context.Background(), op.Lease.ID, "ordinary-setup-retry", "golden", "retry", true)
+	code(t, err, "unsafe_retry")
+	b.fail = ""
+	recovery, err := c.RecoverImage(context.Background(), op.Lease.ID, "online-setup-recovery", "golden", "setup-online", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recovery.Job.Phase != "create_done" {
+		t.Fatal(recovery.Job.Phase)
+	}
+	for range 7 {
+		tick(t, c)
+	}
+	got, err := c.Lease(context.Background(), op.Lease.ID)
+	if err != nil || got.State != "image_ready" {
+		t.Fatal(got, err)
+	}
+	creates := 0
+	for _, stage := range b.steps {
+		if stage == "create" {
+			creates++
+		}
+	}
+	if creates != 1 {
+		t.Fatal("replayed restore", b.steps)
+	}
+}

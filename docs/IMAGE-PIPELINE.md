@@ -222,6 +222,28 @@ credentials and Finder after another reboot. Credentials remain in private 0600 
 the private state directory; they are never returned by status/job/events.
 Each disposable clone receives a distinct password, management key and SSH host key before readiness. Caller keys are supplied per lease; image/cross-lease keys are tested for rejection. See the [SSH contract](OPERATIONS.md#leases-and-ssh).
 
+## Native setup for macOS 11/12
+
+These guests use their native Setup Assistant because their encrypted APFS Data
+volume may be unlockable only by the running guest. The executor recognizes
+visible screens and OCR text anchors, creates the fixed bootstrap account,
+enables guest SSH, establishes automatic login, and shuts down cleanly. The
+next journaled stage rotates the bootstrap password and hardens SSH. Unknown
+screens or missing controls stop with private screenshots; they never publish
+an unverified image. This path keeps guest SIP enabled.
+
+An inspected failed setup of macOS 11/12 can be resumed with `setup-online`:
+
+```sh
+./bin/virfield -token-file /absolute/state/token -key inspected-online-setup-001 \
+  image-recover IMAGE_RECORD_ID EXACT_VM_NAME setup-online CONFIRM-NO-OPERATION-IN-FLIGHT
+```
+
+This distinct recovery action resumes the visible Assistant in the owned guest;
+it never repeats restore or offline disk patching. The exact VM must be running
+or stopped with no setup process in flight. Ordinary `retry` still refuses an
+interrupted create/setup. The operator-only action is absent from MCP.
+
 ## Recovery and deletion
 
 An interrupted VM mutation is quarantined and holds admission. A completed

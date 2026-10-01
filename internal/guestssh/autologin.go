@@ -1,6 +1,10 @@
 package guestssh
 
-import "encoding/base64"
+import (
+	"context"
+	"encoding/base64"
+	"strings"
+)
 
 // Older macOS lacks sysadminctl -autologin. loginwindow reads a NUL-terminated
 // password XOR-obfuscated with Apple's fixed key. This is a credential, not
@@ -30,3 +34,17 @@ else
  printf '%s\n' "$new" | sudo -S -p '' /usr/bin/defaults write /Library/Preferences/com.apple.loginwindow autoLoginUser -string lume
 fi
 `
+
+// BootstrapAutoLogin is confined to a fresh guest's native Setup Assistant.
+// Credential rotation remains in the subsequent journaled assistant stage.
+func BootstrapAutoLogin(ctx context.Context, g *Client) error {
+	script := `set -eu
+IFS= read -r new
+IFS= read -r kcpassword
+umask 077
+mkdir -p ~/.ssh
+chmod 700 ~/.ssh
+` + autologinScript
+	_, err := g.Run(ctx, "/bin/bash -c '"+strings.ReplaceAll(script, "'", "'\"'\"'")+"'", "lume\n"+loginPassword("lume")+"\n")
+	return err
+}

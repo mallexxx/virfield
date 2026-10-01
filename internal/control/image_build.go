@@ -201,6 +201,21 @@ func (c *Controller) RecoverImage(ctx context.Context, id, key, name, action str
 		return domain.Operation{}, domain.Err("not_found", "no failed image job found")
 	}
 	switch action {
+	case "setup-online":
+		if j.Kind != "image_build" || j.Phase != "setup_dispatched" || j.Image == nil || !domain.ValidVersion(j.Image.MacOS) || domain.CompareVersions(j.Image.MacOS, "13") >= 0 {
+			return domain.Operation{}, domain.Err("unsafe_retry", "Online setup recovery is only for an inspected failed setup of macOS 11/12; it never reruns offline disk patching")
+		}
+		if v, exists := c.vm(l); !exists || (v.State != "stopped" && v.State != "running") {
+			return domain.Operation{}, domain.Err("image_in_use", "Inspect the exact setup VM; it must be running or stopped with no setup process in flight")
+		}
+		j.Phase = "create_done"
+		j.State = "queued"
+		j.Error = nil
+		j.Deadline = c.now().Add(6 * time.Hour)
+		j.UpdatedAt = c.now()
+		l.State = "image_building"
+		l.Error = nil
+		l.UpdatedAt = c.now()
 	case "retry", "reprovision":
 		previous := map[string]string{"download_dispatched": "queued", "assistant_dispatched": "setup_done", "sip_dispatched": "assistant_done", "verify_dispatched": "provision_done", "provision_dispatched": "sip_done"}
 		phase, ok := previous[j.Phase]
@@ -227,7 +242,7 @@ func (c *Controller) RecoverImage(ctx context.Context, id, key, name, action str
 		l.Error = nil
 		l.UpdatedAt = c.now()
 	default:
-		return domain.Operation{}, domain.Err("invalid_request", "recovery action must be retry, reprovision or delete")
+		return domain.Operation{}, domain.Err("invalid_request", "recovery action must be retry, reprovision, setup-online or delete")
 	}
 	if err := c.store.Save(ctx, l, &j, key, fp, "image.operator_recovery", "Operator inspected exact image and authorized "+action); err != nil {
 		return domain.Operation{}, err
