@@ -91,7 +91,7 @@ func TestMCPVersionSelectionReachesAPI(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Fatal(err)
 		}
-		if body["macos"] != "monterey" || body["xcode"] != "13.4.1" || body["id"] != "monterey-xcode" {
+		if body["macos"] != "monterey" || body["xcode"] != "13.4.1" || body["id"] != "monterey-xcode" || body["security"] != "automation" {
 			t.Error(body)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -115,7 +115,7 @@ func TestMCPVersionSelectionReachesAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer cs.Close()
-	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "image_create", Arguments: map[string]any{"id": "monterey-xcode", "macos": "monterey", "xcode": "13.4.1", "idempotency_key": "monterey-xcode-request"}})
+	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "image_create", Arguments: map[string]any{"id": "monterey-xcode", "macos": "monterey", "xcode": "13.4.1", "security": "automation", "idempotency_key": "monterey-xcode-request"}})
 	if err != nil || res.IsError || calls != 1 {
 		t.Fatal(res, err, calls)
 	}

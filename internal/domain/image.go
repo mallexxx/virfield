@@ -11,6 +11,7 @@ import (
 type ImageProfile struct {
 	MacOS      string        `json:"macos,omitempty"`
 	Xcode      *XcodeRelease `json:"xcode,omitempty"`
+	Security   string        `json:"security,omitempty"`
 	Provision  string        `json:"provision,omitempty"`
 	URL        string        `json:"url"`
 	SHA256     string        `json:"sha256"`
@@ -25,6 +26,10 @@ func (p ImageProfile) Validate() error {
 		if p.Xcode != nil {
 			return Err("invalid_profile", "Xcode requires developer-v1 provisioning")
 		}
+	case "security-v1":
+		if p.Security != "automation" || p.Xcode != nil {
+			return Err("invalid_profile", "security-v1 requires automation security without Xcode")
+		}
 	case "developer-v1":
 		if p.Xcode == nil {
 			return Err("invalid_profile", "developer-v1 requires a pinned Xcode release")
@@ -36,8 +41,20 @@ func (p ImageProfile) Validate() error {
 	default:
 		return Err("invalid_profile", "unknown provisioning recipe")
 	}
-	if p.DisableSIP && p.Build != "26A428" {
-		return Err("unsupported_policy", "Automated SIP removal is currently verified only for build 26A428; other macOS versions can be built with SIP enabled")
+	if p.Security != "" && p.Security != "default" && p.Security != "sip-disabled" && p.Security != "automation" {
+		return Err("invalid_profile", "Unknown guest security policy")
+	}
+	if (p.Security == "automation" || p.Security == "sip-disabled") && !p.DisableSIP {
+		return Err("invalid_profile", "Selected guest security policy requires disabled SIP")
+	}
+	if p.Security == "default" && p.DisableSIP {
+		return Err("invalid_profile", "Default security requires enabled SIP")
+	}
+	if p.Security == "automation" && p.Provision != "security-v1" && p.Provision != "developer-v1" {
+		return Err("invalid_profile", "Automation security requires guest provisioning")
+	}
+	if p.DisableSIP && p.Build != "26A428" && !SupportsRecovery(p.MacOS) {
+		return Err("unsupported_policy", "Recovery automation supports macOS 11 through 15, 26 and 27; specify an exact macOS version")
 	}
 	if p.MacOS != "" && !ValidVersion(p.MacOS) {
 		return Err("invalid_profile", "invalid macOS version")
@@ -70,4 +87,17 @@ type ImageTools struct {
 	Python        string `json:"python"`
 	Tesseract     string `json:"tesseract"`
 	VNCBin        string `json:"vnc_bin"`
+}
+
+// SupportsRecovery lists Apple silicon guest generations with paired Recovery.
+// Acceptance still requires signed policy success and canonical normal-boot status.
+func SupportsRecovery(version string) bool {
+	if !ValidVersion(version) {
+		return false
+	}
+	switch strings.Split(version, ".")[0] {
+	case "11", "12", "13", "14", "15", "26", "27":
+		return true
+	}
+	return false
 }

@@ -1,5 +1,5 @@
 import unittest
-from recovery27 import run_recovery, word
+from recovery import run_recovery, word
 
 
 def screen(text):
@@ -11,7 +11,10 @@ class RecoveryTransitions(unittest.TestCase):
         states = {
             'boot-picker': 'Macintosh HD Options',
             'options-selected': 'Options Continue',
-            'language': 'English Deutsch',
+            'recovery-entry': 'English Deutsch',
+            'recovery-ready': 'macOS Recovery Utilities',
+            'recovery-user-selected': 'lume Next',
+            'recovery-user-password': 'Enter password for lume',
             'recovery-menu': 'macOS Recovery Utilities',
             'utilities-menu': 'Terminal',
             'terminal-shell': '-bash-3.2#',
@@ -46,6 +49,17 @@ class RecoveryTransitions(unittest.TestCase):
         self.assertEqual([v for k, v in actions if k == 'type'],
                          ['csrutil disable', 'y', 'lume', 'fixturepassword', 'shutdown -h now'])
         self.assertLess(actions.index(('click', 'English')), actions.index(('click', 'Terminal')))
+
+    def test_older_recovery_can_skip_language(self):
+        actions, failure = self.drive({'recovery-entry': 'macOS Recovery Utilities'})
+        self.assertIsNone(failure)
+        self.assertNotIn(('click', 'English'), actions)
+
+    def test_older_recovery_volume_owner_authentication(self):
+        actions, failure = self.drive({'recovery-ready': 'Select a user you know the password for lume'})
+        self.assertIsNone(failure)
+        self.assertIn(('click', 'lume'), actions)
+        self.assertLess(actions.index(('type', 'fixturepassword')), actions.index(('type', 'csrutil disable')))
 
     def test_macos27_single_user_password_prompt(self):
         actions, failure = self.drive({'administrator-prompt': 'Enter password for user lume:'})

@@ -156,5 +156,10 @@ func Resolve(v domain.ImageCatalog, r domain.ImageCreateRequest) (domain.ImagePr
 			return p, domain.Err("version_not_found", "Requested stable Xcode version is absent from the catalog")
 		}
 	}
+	p.Security = r.Security
+	p.DisableSIP = r.Security == "sip-disabled" || r.Security == "automation"
+	if r.Security == "automation" && p.Xcode == nil {
+		p.Provision = "security-v1"
+	}
 	return p, p.Validate()
 }

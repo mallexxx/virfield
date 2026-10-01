@@ -27,6 +27,7 @@ func main() {
 func run() error {
 	base := flag.String("url", "http://127.0.0.1:7780", "daemon URL")
 	tokenFile := flag.String("token-file", "", "owner-only API token file")
+	security := flag.String("security", "", "image-create guest policy: default, sip-disabled or automation")
 	key := flag.String("key", "", "stable idempotency key; required for acquire, release, resolve and image mutations")
 	flag.Usage = func() {
 		fmt.Fprint(os.Stderr, `Usage: virfield [flags] COMMAND [arguments]
@@ -87,7 +88,7 @@ Recovery requires prior inspection that no operation remains in flight.
 		if (len(args) != 3 && len(args) != 4) || *key == "" {
 			return errors.New("usage: -key STABLE_KEY image-create NEW_ID MACOS_VERSION_OR_CODENAME [XCODE_VERSION]")
 		}
-		req := domain.ImageCreateRequest{ID: args[1], MacOS: args[2]}
+		req := domain.ImageCreateRequest{ID: args[1], MacOS: args[2], Security: *security}
 		if len(args) == 4 {
 			req.Xcode = args[3]
 		}

@@ -52,6 +52,30 @@ func (e *Engine) setupOnline(ctx context.Context, l domain.Lease, progress func(
 			return err
 		}
 	}
+	// A previous worker may have enabled SSH before losing its final response.
+	// Verify the native desktop first; never type another shell command into an
+	// already bootstrapped console merely because its journal was interrupted.
+	current, observeErr := e.Backend.Observe(ctx)
+	if observeErr == nil {
+		for _, vm := range current.VMs {
+			if vm.Key() != l.Key() || vm.State != "running" || vm.IP == "" {
+				continue
+			}
+			probe, stop := context.WithTimeout(ctx, 8*time.Second)
+			g, connectErr := e.connect(probe, l, vm.IP, true)
+			stop()
+			if connectErr == nil {
+				defer g.Close()
+				if err := e.desktop(ctx, g); err != nil {
+					return err
+				}
+				if err := guestssh.BootstrapAutoLogin(ctx, g); err != nil {
+					return err
+				}
+				return e.stop(ctx, l)
+			}
+		}
+	}
 	ready, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	endpoint := ""

@@ -67,9 +67,13 @@ type ImageCreateRequest struct {
 	MacOS    string `json:"macos"`
 	Xcode    string `json:"xcode,omitempty"`
 	Location string `json:"location,omitempty"`
+	Security string `json:"security,omitempty"`
 }
 
 func (r ImageCreateRequest) Validate() error {
+	if r.Security != "" && r.Security != "default" && r.Security != "sip-disabled" && r.Security != "automation" {
+		return Err("invalid_request", "security must be default, sip-disabled or automation")
+	}
 	if !ValidName(r.ID) || !ValidName(r.MacOS) || (r.Xcode != "" && !ValidVersion(r.Xcode)) || (r.Location != "" && !ValidName(r.Location)) {
 		return Err("invalid_request", "Specify a valid image ID, macOS version/build/codename and optional exact Xcode version and storage name")
 	}

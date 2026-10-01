@@ -146,7 +146,7 @@ func (e *Engine) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile
 		if !p.DisableSIP {
 			return progress("SIP kept enabled by image profile")
 		}
-		return e.sip27(ctx, l)
+		return e.disableSIP(ctx, l)
 	case "provision":
 		return e.provision(ctx, l, p, progress)
 	case "verify":
@@ -223,12 +223,17 @@ func (e *Engine) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile
 				return err
 			}
 		}
+		if p.Security == "automation" {
+			if err := e.securityPolicy(ctx, l, secured, "verify"); err != nil {
+				return err
+			}
+		}
 		if p.Provision == "uitest-27-v1" {
 			if err := e.verifyProvision(ctx, l, secured); err != nil {
 				return err
 			}
 		}
-		evidence, _ := json.MarshalIndent(map[string]any{"macos": p.MacOS, "xcode": p.Xcode, "build": p.Build, "ipsw_sha256": p.SHA256, "sip": strings.TrimSpace(sip), "desktop": true, "scoped_image_ssh": true, "provision": p.Provision, "verified_at": time.Now().UTC()}, "", "  ")
+		evidence, _ := json.MarshalIndent(map[string]any{"macos": p.MacOS, "xcode": p.Xcode, "build": p.Build, "ipsw_sha256": p.SHA256, "sip": strings.TrimSpace(sip), "desktop": true, "scoped_image_ssh": true, "provision": p.Provision, "security": p.Security, "verified_at": time.Now().UTC()}, "", "  ")
 		return os.WriteFile(filepath.Join(folder, "verification.json"), evidence, 0600)
 	case "stop":
 		return e.stop(ctx, l)

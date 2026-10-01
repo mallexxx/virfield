@@ -40,15 +40,49 @@ catalog changes or is offline. The template survives daemon restart and appears
 in status; no config-file edit is needed. IDs and VM names cannot overwrite an
 existing template. Storage must be in the operator's `storage_paths`.
 
-Catalog images keep SIP enabled. Without Xcode they produce a base desktop image;
+Catalog images keep SIP enabled unless `security` explicitly selects another policy. Without Xcode they produce a base desktop image;
 with Xcode they use `developer-v1`: install the selected Xcode, accept its license,
 complete first launch, verify its exact version/build, Apple signature and Swift
 compilation again after reboot. Guest developer provisioning enables passwordless
 sudo for the disposable worker account. It does not install the separate UI-test
-tool suite. The macOS 27 UI-test/SIP-removal recipe below remains explicitly
-version-specific. Other versions are not globally rejected, but Apple's
+tool suite. The full macOS 27 UI-test tool suite below remains explicitly
+version-specific; guest security is independent of that tool suite. Other versions are not globally rejected, but Apple's
 Virtualization framework must support the restore image on the actual host.
 Unknown Assistant screens fail rather than publishing an incomplete desktop.
+
+### Guest security policy
+
+The API and MCP `image_create` accept `security`; the CLI uses `-security` before
+`image-create`. The selection is persisted in the immutable manifest and retry
+fingerprint, independently of Xcode:
+
+| Policy | Guest behavior |
+| --- | --- |
+| `default` or omitted | Keep SIP and system protections enabled |
+| `sip-disabled` | Disable SIP through paired Recovery; verify canonical status after normal boot |
+| `automation` | Also disable Gatekeeper, preserve existing boot arguments while adding the AMFI flag, and grant Terminal/SSH Accessibility, Screen Capture, Full Disk Access and AppleEvents to System Events |
+
+Example: `virfield -security automation -key monterey-ui-001 image-create monterey-ui monterey 13.4.1`.
+The supported Recovery generations are macOS 11–15, 26 and 27; availability still
+depends on Apple's restore catalog and the host's virtualization support. This is
+an implementation range, **not a claim that every release has passed live acceptance**.
+See [Verification](VERIFICATION.md) for tested combinations. Unknown UI or TCC
+schemas stop the job and prevent publication.
+
+Only SIP needs Recovery console input. Gatekeeper, boot arguments and TCC are
+configured over authenticated SSH with fixed embedded commands. TCC grants use
+installed code-signing requirements and schema discovery; no downloaded script
+is executed. Verification checks the grants, canonical SIP status, Gatekeeper,
+active AMFI boot argument and AppleEvents again after reboot. AMFI evidence is
+configuration evidence; it does not assert that every future OS honors that flag.
+This policy does not install third-party UI tools or grant permissions to every
+application. Xcode installation remains optional and separately verified.
+
+Upstream references: [Lume SIP implementation](https://github.com/trycua/cua/blob/main/libs/lume/src/Commands/Sip.swift),
+[guest TCC seeding](https://github.com/trycua/cua/blob/main/libs/cua-driver/tests/runners/macos-lume/seed-tcc-guest.sh),
+and [paired Recovery constraints](https://cua.ai/docs/concepts/how-sip-works-in-lume-vms).
+Virfield adapts these mechanisms to its pinned SSH credentials, exclusive image
+jobs and observed Recovery transitions. It never changes host protections.
 
 ### Apple Developer downloads
 
@@ -122,7 +156,7 @@ Set the top-level `image_tools` config to absolute operator-controlled paths:
 ```
 
 The Lume adapter is pinned to patched Lume 0.5.3. Base/developer images use
-the selected restore build; only the SIP-removal/UI-test recipe is pinned to
+the selected restore build; only the full `uitest-27-v1` tool suite is pinned to
 26A428. Install `vncdotool==1.3.0` into an isolated
 Python environment and Tesseract before starting a build. The tested Python
 3.14.4 package set is pinned in `deploy/image-tools-requirements.txt`; Tesseract
@@ -147,9 +181,10 @@ VNC finisher whose recognized screens are tested on macOS 27; it cannot
 manage VM lifecycle. Lume's native `setup` handles offline patching. In pinned
 0.5.3 its `tahoe` preset contains no UI boot commands or version guard: it selects
 the offline account/SSH setup, while the IPSW manifest selects the macOS version. Recovery
-uses one owned `lume run --recovery-mode true` child plus `recovery27.py`: the
+uses one owned `lume run --recovery-mode true` child plus `recovery.py`: the
 native 0.5.3 SIP navigation was observed to open Time Machine on this build.
-The versioned driver verifies Options, English, Utilities, Terminal and each
+The driver handles optional language and volume-owner screens, and verifies
+Options, Utilities, Terminal and each
 authentication prompt before input. It accepts only an explicit successful SIP
 policy response, requests guest shutdown and waits for fresh stopped inventory.
 Normal-boot `csrutil status` is still the mandatory final policy check. Unknown
@@ -159,7 +194,8 @@ button separately from the wallpaper and delegates the final desktop
 postcondition to SSH. Each attempt retains its own screenshot directory.
 
 The supported recipe fixes resources at 4 CPUs, 8 GiB RAM, 80 GiB sparse
-disk, 1920×1080, NAT, no host shared folders. Changing the recipe requires a code
+disk, NAT, no host shared folders. Display is 1920×1440 for native macOS 11/12
+setup (Retina minimum window height), and 1920×1080 otherwise. Changing the recipe requires a code
 change and live validation; this is not an arbitrary command runner.
 
 ## Build and inspect
@@ -230,7 +266,7 @@ visible screens and OCR text anchors, creates the fixed bootstrap account,
 enables guest SSH, establishes automatic login, and shuts down cleanly. The
 next journaled stage rotates the bootstrap password and hardens SSH. Unknown
 screens or missing controls stop with private screenshots; they never publish
-an unverified image. This path keeps guest SIP enabled.
+an unverified image. The subsequent SIP stage applies the selected security policy.
 
 An inspected failed setup of macOS 11/12 can be resumed with `setup-online`:
 

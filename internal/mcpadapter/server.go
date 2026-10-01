@@ -17,6 +17,7 @@ var Version = "2.1.0-dev"
 
 type empty struct{}
 type createImageArgs struct {
+	Security string `json:"security,omitempty" jsonschema:"Guest policy: default keeps protections; sip-disabled disables SIP; automation also configures Gatekeeper, AMFI and Terminal/SSH TCC grants. Applied only inside the VM and verified after reboot."`
 	ID       string `json:"id" jsonschema:"New golden image ID and VM name"`
 	MacOS    string `json:"macos" jsonschema:"macOS exact version, build or codename such as monterey; inspect image_catalog first"`
 	Xcode    string `json:"xcode,omitempty" jsonschema:"Optional exact stable Xcode version, such as 13.4.1"`
@@ -77,8 +78,8 @@ func New(c *client.Client) *mcp.Server {
 	mcp.AddTool(s, &mcp.Tool{Name: "image_catalog", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}, Description: "List downloadable Apple silicon macOS restore versions and stable Xcode releases with minimum macOS requirements. Not limited to existing templates. Xcode archives may require Apple Developer authentication configured by the host operator."}, func(ctx context.Context, _ *mcp.CallToolRequest, _ empty) (*mcp.CallToolResult, any, error) {
 		return result(c.Do(ctx, "GET", "images/catalog", nil, ""))
 	})
-	mcp.AddTool(s, &mcp.Tool{Name: "image_create", Annotations: &mcp.ToolAnnotations{IdempotentHint: true}, Description: "Create and build a new golden image by macOS version/build/codename and optional exact Xcode version. Example: macos monterey, xcode 13.4.1. Resolves and pins official Apple downloads; persists the template across restart. Requires all leases released. Keeps SIP enabled. No arbitrary host paths, no overwriting VMs. Poll virfield_job for progress and actionable download/authentication errors. Retry with the same idempotency key."}, func(ctx context.Context, _ *mcp.CallToolRequest, a createImageArgs) (*mcp.CallToolResult, any, error) {
-		return result(c.Do(ctx, "POST", "images", map[string]string{"id": a.ID, "macos": a.MacOS, "xcode": a.Xcode, "location": a.Location}, a.Key))
+	mcp.AddTool(s, &mcp.Tool{Name: "image_create", Annotations: &mcp.ToolAnnotations{IdempotentHint: true}, Description: "Create and build a new golden image by macOS version/build/codename and optional exact Xcode version. Example: macos monterey, xcode 13.4.1. Resolves and pins official Apple downloads; persists the template across restart. Requires all leases released. Select security default, sip-disabled or automation. Omission keeps SIP enabled. No arbitrary host paths, no overwriting VMs. Poll virfield_job for progress and actionable download/authentication errors. Retry with the same idempotency key."}, func(ctx context.Context, _ *mcp.CallToolRequest, a createImageArgs) (*mcp.CallToolResult, any, error) {
+		return result(c.Do(ctx, "POST", "images", map[string]string{"id": a.ID, "macos": a.MacOS, "xcode": a.Xcode, "location": a.Location, "security": a.Security}, a.Key))
 	})
 	mcp.AddTool(s, &mcp.Tool{Name: "image_build", Annotations: &mcp.ToolAnnotations{IdempotentHint: true}, Description: "Build an absent VM from an already registered pinned image profile. To choose macOS/Xcode versions, use image_create instead. Downloads and installs macOS, completes setup, applies the operator-configured guest SIP policy and verifies credentials. Requires no active leases. Never overwrites an existing VM. Use the same idempotency key on retries."}, func(ctx context.Context, _ *mcp.CallToolRequest, a releaseArgs) (*mcp.CallToolResult, any, error) {
 		return result(c.Do(ctx, "POST", "images/"+url.PathEscape(a.ID)+"/build", empty{}, a.Key))

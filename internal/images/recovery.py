@@ -1,4 +1,8 @@
-"""Pinned 26A428 Recovery driver. Every transition checks visible guest state."""
+"""Paired Recovery driver for Apple silicon macOS guests.
+
+Follows upstream Lume's csrutil workflow, with observed transitions rather than
+blind key counts. Normal-boot canonical verification remains mandatory in Go.
+"""
 import csv
 import io
 import json
@@ -19,9 +23,17 @@ def run_recovery(wait_for, click_word, keys, type_line, password):
     click_word(words, 'Options')
     _, words = wait_for('options-selected', lambda text, words: word(words, 'Continue') is not None)
     click_word(words, 'Continue')
-    _, words = wait_for('language', lambda text, words: word(words, 'English') is not None, 180)
-    click_word(words, 'English')
-    keys('enter')
+    text, words = wait_for('recovery-entry', lambda text, words: word(words, 'English') is not None or word(words, 'Utilities') is not None or 'select a user' in text, 180)
+    if word(words, 'English') is not None and word(words, 'Utilities') is None:
+        click_word(words, 'English')
+        keys('enter')
+        text, words = wait_for('recovery-ready', lambda text, words: word(words, 'Utilities') is not None or 'select a user' in text, 120)
+    if 'select a user' in text:
+        click_word(words, 'lume')
+        _, words = wait_for('recovery-user-selected', lambda text, words: word(words, 'Next') is not None)
+        click_word(words, 'Next')
+        wait_for('recovery-user-password', lambda text, words: 'password' in text and 'lume' in text)
+        type_line(password)
     _, words = wait_for('recovery-menu', lambda text, words: word(words, 'Utilities') is not None, 120)
     click_word(words, 'Utilities')
     _, words = wait_for('utilities-menu', lambda text, words: word(words, 'Terminal') is not None, 30)
@@ -68,7 +80,7 @@ def run():
         finally:
             client.disconnect()
         with Image.open(picture) as frame:
-            if frame.size != (1920, 1080):
+            if frame.size not in ((1920, 1080), (1920, 1440)):
                 # Recovery starts with a temporary 1280x720 framebuffer. Never
                 # interact until the configured display mode has been negotiated.
                 return '', []
@@ -80,11 +92,12 @@ def run():
         if any(w.get('text') == 'Macintosh' for w in words):
             roi = folder / f'{sequence:03}-picker-button.png'
             with Image.open(picture) as frame:
-                frame.crop((1088, 681, 1280, 725)).convert('L').resize((576, 132)).save(roi)
+                offset_y = (frame.height - 1080) // 2
+                frame.crop((1088, 681 + offset_y, 1280, 725 + offset_y)).convert('L').resize((576, 132)).save(roi)
             raw_button = subprocess.run([config['tesseract'], str(roi), 'stdout', '--psm', '7', 'tsv'], capture_output=True, text=True, timeout=20, check=True).stdout
             for w in csv.DictReader(io.StringIO(raw_button), delimiter='\t'):
                 if w.get('text', '').lower() == 'continue':
-                    for field, offset in (('left', 1088), ('top', 681), ('width', 0), ('height', 0)):
+                    for field, offset in (('left', 1088), ('top', 681 + offset_y), ('width', 0), ('height', 0)):
                         w[field] = str(int(w[field]) // 3 + offset)
                     words.append(w)
         text = ' '.join(w['text'] for w in words if w.get('text')).lower()

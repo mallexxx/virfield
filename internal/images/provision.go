@@ -46,6 +46,9 @@ func compatibleXcode(version string) bool {
 }
 
 func (e *Engine) provision(ctx context.Context, l domain.Lease, p domain.ImageProfile, progress func(string) error) error {
+	if p.Provision == "security-v1" {
+		return e.provisionSecurity(ctx, l)
+	}
 	if p.Provision != "uitest-27-v1" && p.Provision != "developer-v1" {
 		return domain.Err("invalid_profile", "Unknown guest provisioning recipe")
 	}
@@ -157,6 +160,11 @@ sudo /usr/bin/xcodebuild -runFirstLaunch
 		return domain.Err("xcode_install_failed", "Guest Xcode first launch failed; inspect private stage log")
 	}
 	if p.Xcode != nil {
+		if p.Security == "automation" {
+			if err := e.securityPolicy(ctx, l, g, "apply"); err != nil {
+				return err
+			}
+		}
 		if err := e.verifyXcode(ctx, l, g, *p.Xcode); err != nil {
 			return err
 		}

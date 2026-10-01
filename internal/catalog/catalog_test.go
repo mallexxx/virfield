@@ -70,3 +70,27 @@ func TestCatalogFailureIsSafe(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestSelectedSecurityIsPinnedIndependentlyOfXcode(t *testing.T) {
+	for _, policy := range []string{"", "default", "sip-disabled", "automation"} {
+		for _, xcode := range []string{"", "13.4.1"} {
+			p, err := Resolve(fixture(), domain.ImageCreateRequest{ID: "golden", MacOS: "monterey", Xcode: xcode, Security: policy})
+			if err != nil {
+				t.Fatal(err)
+			}
+			disabled := policy == "sip-disabled" || policy == "automation"
+			if p.DisableSIP != disabled || p.Security != policy {
+				t.Fatalf("Policy lost: %+v", p)
+			}
+			if policy == "automation" && xcode == "" && p.Provision != "security-v1" {
+				t.Fatal(p)
+			}
+			if xcode != "" && p.Provision != "developer-v1" {
+				t.Fatal(p)
+			}
+		}
+	}
+	if _, err := Resolve(fixture(), domain.ImageCreateRequest{ID: "golden", MacOS: "monterey", Security: "arbitrary-script"}); err == nil {
+		t.Fatal("unknown security accepted")
+	}
+}
