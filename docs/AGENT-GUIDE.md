@@ -114,6 +114,11 @@ second image with a new name/key does not repair the first one.
    lowercase package-name component (no namespace or slash); source supplies the
    namespace. This checks metadata, not the guest, provenance or workload safety.
    Import only images from a publisher authorized by the user/operator.
+   The image must boot with SSH enabled for the native `lume` account and
+   bootstrap password `lume`. Virfield prepares imported accounts through SSH;
+   it never overwrites their directory records using offline Setup Assistant.
+   Other credentials or an unfinished initial Setup Assistant are not an import
+   contract: prepare a portable image with `image_publish` or build from IPSW.
 3. With an idle pool, submit `image_pull` with the expected macOS and optional
    Xcode/security selection. The job pins the manifest and refuses a changed tag
    before boot. Imported files are checked; CPU/RAM become 4/8 GiB, network NAT,

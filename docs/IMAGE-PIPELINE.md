@@ -267,7 +267,10 @@ or kills the Lume service. No raw process output or VNC password enters events.
 
 Guest provisioning uses Go SSH, a pinned guest host key and a `VirtualMac`
 hardware check before privileged operations. The documented `lume/lume`
-bootstrap is used only for a newly installed image. After Assistant completes,
+bootstrap is used only for a newly installed or explicitly imported portable image.
+Registry imports must already boot with SSH and the native `lume`/`lume`
+bootstrap account. Their setup runs through SSH and preserves directory-service
+records and volume ownership; offline setup is only for fresh IPSW installations. After Assistant completes,
 the manager establishes generated image-specific credentials, disables SSH password
 authentication, checks effective `sshd -T` policy and creates a VM-local workspace.
 This happens before Recovery; the Recovery driver receives the generated password

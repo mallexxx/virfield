@@ -127,6 +127,9 @@ func (e *Engine) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile
 		if step == "create" && p.Registry != nil {
 			return e.pullRegistry(ctx, l, *p.Registry)
 		}
+		if step == "setup" && p.Registry != nil {
+			return e.setupRegistry(ctx, l, progress)
+		}
 		if step == "setup" && onlineSetupRequired(p) {
 			return e.setupOnline(ctx, l, progress)
 		}

@@ -9,9 +9,38 @@ import (
 	"strings"
 
 	"github.com/mallexxx/virfield/internal/domain"
+	"github.com/mallexxx/virfield/internal/guestssh"
 	"github.com/mallexxx/virfield/internal/lume"
 	"github.com/mallexxx/virfield/internal/registry"
 )
+
+// An imported VM already has a native account. Offline setup replaces its
+// directory record and can invalidate Secure Token / volume-owner credentials.
+// Require the portable bootstrap contract and preserve that account in place.
+func (e *Engine) setupRegistry(ctx context.Context, l domain.Lease, progress func(string) error) error {
+	if err := progress("Preparing imported guest through SSH; preserving native account and volume ownership"); err != nil {
+		return err
+	}
+	vm, err := e.boot(ctx, l)
+	if err != nil {
+		return err
+	}
+	g, err := e.connect(ctx, l, vm.IP, true)
+	if err != nil {
+		return domain.Err("registry_bootstrap_failed", "Imported guest must provide SSH for the lume account with bootstrap password lume; native account was not overwritten")
+	}
+	defer g.Close()
+	if _, err := e.verifyDiskPolicy(ctx, l, g); err != nil {
+		return err
+	}
+	if err := guestssh.BootstrapAutoLogin(ctx, g); err != nil {
+		return err
+	}
+	if err := e.prepareDesktop(ctx, l, g); err != nil {
+		return err
+	}
+	return e.stop(ctx, l)
+}
 
 func (e *Engine) registrySource(ref domain.RegistryReference) (domain.RegistrySource, error) {
 	if e.Registry == nil {

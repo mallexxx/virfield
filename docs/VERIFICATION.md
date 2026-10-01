@@ -64,13 +64,16 @@ the versioned patch with zero fuzz to the pinned archive reproduces the built
 Swift sources. Earlier failed development attempts are not counted as passes.
 
 The full-profile acceptance above was collected on commit `44a1c15`.
-As checked on 2026-10-01, the installed runtime is candidate `7b55bcc`, with
-`release_status: catalog_candidate_pending_live_image_acceptance`. It is not the
-accepted production release. The newer disk gate and embedded agent runbooks
-have not yet been deployed. Editing or committing the checkout does not upgrade
-the service. The live deployment remains outside the checkout at `~/.virfield-v2`;
-its `release.json` records the installed commit and binary hashes. Snapshot `backup-caac74afb3773d106eb2f95840c6e2c9` passed the isolated
-integrity/identity rehearsal. VM disk restore was not part of that check.
+As checked on 2026-10-01, the installed runtime is candidate `9090337`, with
+`release_status: registry_candidate_pending_live_acceptance` and schema 6.
+The disk gate, 17 MCP tools and embedded agent runbooks are deployed. Installed
+HTTP/stdio discovery, authenticated status and anonymous rejection passed.
+The live deployment remains outside the checkout at `~/.virfield-v2`;
+its `release.json` records the installed commit and binary hashes. The explicitly
+authorized schema 5 → 6 update followed integrity and foreign-key checks of
+snapshot `backup-ff4570a85e703b595b92a9c2606cf3f3`. VM disk restore was not part of
+that check. Subsequent checkout commits are not installed until confirmed by
+the deployment manifest; the candidate is not production accepted.
 
 Private development evidence is archived outside the worktree under
 `~/.virfield-v2/archives/repository-cleanup-20260930/development-state/`.
@@ -135,9 +138,15 @@ published in this check. Reproduce with:
 VIRFIELD_LIVE_REGISTRY_METADATA=1 go test ./internal/registry -run '^TestLivePublicManifest$' -count=1 -v
 ```
 
-The deployed service does not yet contain these changes. Full import and
-publish/pull-back acceptance, source credential configuration, and client
-workflow checks remain release gates. Publication rebuilds a portable recipe;
+The deployed candidate imported `macos-sequoia-vanilla:15.2` at that same digest
+(job `job-81880fd34056b9c0186af4b3624b4865`). Download and digest validation passed.
+Both System and Data reported FileVault=false, Encryption=false, Locked=false.
+The job stopped at credential rotation (`sysadminctl -14915`) after offline setup
+replaced the imported native account record. It did not publish a ready golden.
+The fix uses SSH bootstrap for imported accounts and reserves offline setup for
+fresh IPSW installations; a clean import rerun is required to establish the fix.
+Full import and publish/pull-back acceptance and client workflow checks remain
+release gates. Publication rebuilds a portable recipe;
 raw source-disk export and preservation of manual golden changes are not offered.
 
 ## Read-only installed-service checks

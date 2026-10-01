@@ -1,11 +1,51 @@
 package images
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/mallexxx/virfield/internal/domain"
+	"github.com/mallexxx/virfield/internal/lume"
 )
+
+func TestImportedSetupNeverRunsOfflineAccountPatch(t *testing.T) {
+	// A missing imported VM must fail at guest observation, without executing
+	// offline setup even on releases whose fresh installs use that path.
+	for _, version := range []string{"12.6", "15.2", "27.0"} {
+		t.Run(version, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/lume/host/status":
+					fmt.Fprint(w, `{"vm_count":0,"max_vms":2,"available_slots":2,"status":"healthy"}`)
+				case "/lume/vms":
+					fmt.Fprint(w, `[]`)
+				default:
+					t.Errorf("unexpected backend request: %s %s", r.Method, r.URL.Path)
+					http.NotFound(w, r)
+				}
+			}))
+			defer server.Close()
+			backend, err := lume.New(server.URL)
+			if err != nil {
+				t.Fatal(err)
+			}
+			engine := &Engine{Dir: t.TempDir(), Backend: backend}
+			p := domain.ImageProfile{MacOS: version, Build: "24C101", Registry: &domain.RegistryReference{Source: "public", Organization: "trycua", Repository: "macos", Tag: "test", Digest: "sha256:" + strings.Repeat("a", 64), Size: 1}}
+			err = engine.Step(context.Background(), domain.Lease{ID: "image-test", VMName: "golden", Location: "home"}, p, "setup", func(string) error { return nil })
+			failure, ok := err.(*domain.Error)
+			if !ok || failure.Code != "vm_missing" {
+				t.Fatalf("expected guest observation, got %v", err)
+			}
+		})
+	}
+}
 
 func importedFixture(t *testing.T) string {
 	t.Helper()
