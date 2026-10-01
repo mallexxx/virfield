@@ -1,6 +1,14 @@
 --- a/src/ContainerRegistry/ImageContainerRegistry.swift
 +++ b/src/ContainerRegistry/ImageContainerRegistry.swift
-@@ -4717,7 +4717,7 @@
+@@ -4710,6 +4710,7 @@
+                         }
+                     }
+                 }
++                try await awaitAllOCIUploadPipelines(&pipeline)
+             }
+ 
+             await progress.finish()
+@@ -4717,7 +4718,7 @@
              manifest = createOCIManifest(
                  configDigest: configDigest, configSize: configSize,
                  nvramDigest: nvramDigest, nvramSize: nvramSize,
@@ -9,7 +17,20 @@
                  totalUncompressedSize: diskSize,
                  vmConfig: vmConfig
              )
-@@ -5349,8 +5349,16 @@
+@@ -5335,6 +5336,12 @@
+     ) {
+         onProgress?(totalBytesSent, totalBytes)
+     }
++}
++
++// A throwing task group discards unconsumed child errors at scope exit. The
++// uploader must observe both pipeline tasks before it can publish a manifest.
++func awaitAllOCIUploadPipelines(_ pipeline: inout ThrowingTaskGroup<Void, Error>) async throws {
++    for try await _ in pipeline {}
+ }
+ 
+ /// Thread-safe collector for chunk descriptors from parallel workers.
+@@ -5349,8 +5356,16 @@
          chunks[index] = desc
      }
  

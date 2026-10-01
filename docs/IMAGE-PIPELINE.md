@@ -258,14 +258,14 @@ disconnects during shutdown. Do not work around stale inventory by force-stoppin
 ignoring the capacity response. `bash deploy/build-lume.sh NEW_ABSOLUTE_OUTPUT_DIR`
 verifies the source archive SHA-256, uses the upstream `Package.resolved`, applies
 both patches, and signs a NAT-only binary with the virtualization entitlement.
-The registry patch makes OCI push fail if any disk part is missing instead of
-publishing an incomplete manifest. Virfield's registry resolver also checks that
-annotated disk parts cover the full declared size before import or publication
-success is accepted.
+The registry patch propagates child upload errors and makes OCI push fail if
+any disk part is missing instead of publishing an incomplete manifest.
+Virfield's registry resolver also checks that annotated disk parts cover the
+full declared size before import or publication success is accepted.
 It does not install or restart services. Configure both the Lume service's
 `-binary` and `image_tools.lume` to the resulting binary. The staged source also
 contains cache, setup-shutdown and registry-integrity regression tests, runnable
-with `swift test -c release --disable-automatic-resolution --filter 'guestShutdownReleasesRunningCache|setupShutdownRequiresLifecycleCompletion|registryChunkCollectorRequiresEveryPart'`.
+with `swift test -c release --disable-automatic-resolution --filter 'guestShutdownReleasesRunningCache|setupShutdownRequiresLifecycleCompletion|registryChunkCollectorRequiresEveryPart|registryUploadPipelinePropagatesFailure'`.
 
 Lume subprocesses have fixed argv, bounded private logs, context deadlines and
 an owned process group. Cancellation never uses `pkill`, process-name searches,

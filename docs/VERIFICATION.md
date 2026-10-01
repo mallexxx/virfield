@@ -197,9 +197,11 @@ and temporary VM cleanup. It published
 `sha256:c500d1206c768c9c720cd0da9ecf6293d7a2a86e543c5555b97e41bfed7b3811`.
 The digest and tag resolve consistently, but the OCI manifest is incomplete:
 it declares an 80 GiB disk and contains only parts 0–13 of 512 MiB each (7 GiB).
-The Lume push path silently compacted missing part descriptors when constructing
-the manifest. The exact reason those descriptors were missing is still under
-investigation. Do not pull or clone this tag.
+The Lume push path failed to consume errors from its child upload task group,
+then silently compacted missing part descriptors when constructing the manifest.
+This explains why an incomplete upload could report success; the specific
+upload failure remains unknown because it was not propagated. Do not pull or
+clone this tag.
 
 Pull-back `job-e67cee0e7659835a600a99f91c47e18f` reached a running guest
 without DHCP/SSH and failed `guest_timeout`; its VNC screen was black. The
@@ -208,6 +210,12 @@ quarantined imported VM was deleted through exact-image recovery
 The source golden remains stopped, the pool is healthy at 0/2 used, and the
 incomplete GHCR tag remains available for diagnosis. No round-trip or clone
 acceptance is claimed for the published image.
+
+Commit `04c9f13` installed a resolver guard and a pinned Lume patch that rejects
+missing disk parts. The follow-up patch also propagates child upload errors.
+An 80 GiB synthetic dry-run with 160 parts completed without a missing part;
+this exercises compression/collection without GHCR upload and does not prove
+the network upload path. A new unique tag and full pull-back remain required.
 
 ## Read-only installed-service checks
 

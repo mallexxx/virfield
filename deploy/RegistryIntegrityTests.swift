@@ -1,6 +1,19 @@
 import Testing
 @testable import lume
 
+private enum RegistryPipelineTestError: Error { case uploadFailed }
+
+@Test("OCI push observes upload pipeline errors before publishing")
+func registryUploadPipelinePropagatesFailure() async throws {
+    do {
+        try await withThrowingTaskGroup(of: Void.self) { pipeline in
+            pipeline.addTask { throw RegistryPipelineTestError.uploadFailed }
+            try await awaitAllOCIUploadPipelines(&pipeline)
+        }
+        Issue.record("An upload failure was ignored")
+    } catch RegistryPipelineTestError.uploadFailed {}
+}
+
 @Test("OCI push rejects a missing disk chunk instead of publishing a partial manifest")
 func registryChunkCollectorRequiresEveryPart() async throws {
     let collector = ChunkCollector(count: 3)
