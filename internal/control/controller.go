@@ -29,6 +29,7 @@ type Backend interface {
 	Delete(context.Context, domain.Lease) error
 }
 type Controller struct {
+	registry       ImageRegistry
 	tunnels        map[string]*tunnel
 	resourceLimits *domain.ResourceLimits
 	resourceProbe  ResourceProbe

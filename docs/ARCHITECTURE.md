@@ -11,6 +11,7 @@ policy and Runner/Callee workflow execution belong to separate applications.
 | `cmd/virfieldd` | Configuration, host singleton lock, HTTP server, shutdown |
 | `internal/control` | Admission, leases, durable job phases, reconciliation, cleanup |
 | `internal/guestssh` | Bounded pinned SSH, image bootstrap, per-lease credential isolation |
+| `internal/registry` | Fixed-origin GHCR metadata, digest/format validation, operator-owned credential files |
 | `internal/catalog` | Public version metadata, macOS selectors and Xcode minimum-OS checks |
 | `internal/images` | Pinned IPSW downloads, versioned guest provisioning, image verification |
 | `internal/store` | SQLite schema, atomic state + event transactions, idempotency |
@@ -22,11 +23,11 @@ policy and Runner/Callee workflow execution belong to separate applications.
 | `cmd/virfield-lume` | Independent launchd entrypoint with bounded Lume logs |
 | `internal/config`, `internal/hostlock` | Validated config/token, single host owner |
 
-There is no personal SSH key discovery, host shell endpoint, PAT storage,
+There is no personal SSH key discovery, host shell endpoint, API credential upload,
 process-name scanning or automatic Lume restart in v2. Fixed image jobs use
 allowlisted Lume CLI operations and a versioned guest VNC script. The initial
-Lume password is confined to fresh-image bootstrap and is rotated before image
-verification. API clients have no direct store or Lume dependency.
+Lume password is rotated for managed goldens. Portable registry builds keep
+public bootstrap credentials and never clone a private source disk. API clients have no direct store or Lume dependency.
 
 See [Image Manager](IMAGE-PIPELINE.md) for profiles, build, recovery and deletion.
 
@@ -64,8 +65,8 @@ connection metadata and public keys.
 An interrupted SSH isolation is never replayed. The lease becomes
 `needs_attention`, remains reserved and can be released or expire normally:
 its clone ownership and completed start are already known. An IP change after
-verification requires a new lease. Schema version 5 prevents older binaries from
-skipping readiness, resource, catalog-template and provisioning contracts. Existing leases without an SSH identity require
+verification requires a new lease. Schema version 6 prevents older binaries from
+skipping readiness, resource, catalog-template, registry and provisioning contracts. Existing leases without an SSH identity require
 release and reacquisition; the existing verified image remains usable.
 
 ## API boundary

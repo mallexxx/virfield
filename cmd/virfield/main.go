@@ -35,6 +35,9 @@ func run() error {
 Inspect: status | lease ID | job ID | events [AFTER]
 Leases:  acquire TEMPLATE TTL_SECONDS PUBLIC_KEY_FILE | renew ID RFC3339 | release ID
 SSH:     keygen DIRECTORY | ssh-config LEASE_ID IDENTITY_DIRECTORY | tunnel LEASE_ID | tunnel-close LEASE_ID
+Registry: registry-sources | registry-resolve SOURCE REPOSITORY TAG
+          image-pull ID SOURCE REPOSITORY TAG MACOS [XCODE]
+          image-publish TEMPLATE_ID SOURCE REPOSITORY NEW_TAG
 Images:  image-catalog | image-create ID MACOS [XCODE]
          image-build TEMPLATE_ID | image-provision TEMPLATE_ID EXACT_VM_NAME | image-delete TEMPLATE_ID EXACT_VM_NAME
 Recover: resolve LEASE_ID VM_NAME CONFIRM-NO-OPERATION-IN-FLIGHT
@@ -79,6 +82,47 @@ Recovery requires prior inspection that no operation remains in flight.
 	method, path := "GET", ""
 	var body any
 	switch args[0] {
+	case "registry-sources":
+		if len(args) != 1 {
+			return errors.New("usage: registry-sources")
+		}
+		path = "registry/sources"
+	case "registry-resolve":
+		if len(args) != 4 {
+			return errors.New("usage: registry-resolve SOURCE REPOSITORY TAG")
+		}
+		r := domain.RegistryResolveRequest{Source: args[1], Repository: args[2], Tag: args[3]}
+		if err := r.Validate(); err != nil {
+			return err
+		}
+		method = "POST"
+		path = "registry/resolve"
+		body = r
+	case "image-pull":
+		if (len(args) != 6 && len(args) != 7) || *key == "" {
+			return errors.New("usage: -key STABLE_KEY image-pull NEW_ID SOURCE REPOSITORY TAG MACOS [XCODE]")
+		}
+		r := domain.ImagePullRequest{ImageCreateRequest: domain.ImageCreateRequest{ID: args[1], MacOS: args[5], Security: *security}, Source: args[2], Repository: args[3], Tag: args[4]}
+		if len(args) == 7 {
+			r.Xcode = args[6]
+		}
+		if err := r.Validate(); err != nil {
+			return err
+		}
+		method = "POST"
+		path = "images/pull"
+		body = r
+	case "image-publish":
+		if len(args) != 5 || *key == "" {
+			return errors.New("usage: -key STABLE_KEY image-publish TEMPLATE SOURCE REPOSITORY NEW_TAG")
+		}
+		r := domain.ImagePublishRequest{Template: args[1], Source: args[2], Repository: args[3], Tag: args[4]}
+		if err := r.Validate(); err != nil {
+			return err
+		}
+		method = "POST"
+		path = "images/publish"
+		body = r
 	case "image-catalog":
 		if len(args) != 1 {
 			return errors.New("usage: image-catalog")

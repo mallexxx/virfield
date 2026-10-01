@@ -47,6 +47,10 @@ func New(c *control.Controller, token string, log *slog.Logger, options ...Optio
 	}
 	api.HandleFunc("GET /api/v1/status", s.status)
 	api.HandleFunc("GET /api/v1/images/catalog", s.catalog)
+	api.HandleFunc("GET /api/v1/registry/sources", s.registrySources)
+	api.HandleFunc("POST /api/v1/registry/resolve", s.registryResolve)
+	api.HandleFunc("POST /api/v1/images/pull", s.pullImage)
+	api.HandleFunc("POST /api/v1/images/publish", s.publishImage)
 	api.HandleFunc("POST /api/v1/images", s.createImage)
 	api.HandleFunc("POST /api/v1/images/{id}/delete", s.deleteImage)
 	api.HandleFunc("POST /api/v1/images/{id}/build", s.buildImage)
@@ -109,11 +113,11 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 		status = 401
 	case "forbidden":
 		status = 403
-	case "not_found":
+	case "not_found", "registry_not_found":
 		status = 404
-	case "resource_exhausted", "resource_unknown", "resource_unavailable", "ssh_key_in_use", "image_in_use", "image_exists", "capacity_exhausted", "idempotency_conflict", "operation_in_progress", "lease_expired", "lease_released", "outcome_unknown", "template_unavailable":
+	case "registry_tag_exists", "resource_exhausted", "resource_unknown", "resource_unavailable", "ssh_key_in_use", "image_in_use", "image_exists", "capacity_exhausted", "idempotency_conflict", "operation_in_progress", "lease_expired", "lease_released", "outcome_unknown", "template_unavailable":
 		status = 409
-	case "backend_unavailable", "catalog_unavailable":
+	case "backend_unavailable", "catalog_unavailable", "registry_unavailable":
 		status = 503
 	case "internal_error":
 		status = 500

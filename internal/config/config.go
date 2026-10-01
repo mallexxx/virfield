@@ -15,15 +15,16 @@ import (
 )
 
 type Config struct {
-	ResourceLimits *domain.ResourceLimits `json:"resource_limits,omitempty"`
-	StoragePaths   map[string]string      `json:"storage_paths,omitempty"`
-	ImageTools     *domain.ImageTools     `json:"image_tools,omitempty"`
-	Listen         string                 `json:"listen"`
-	LumeURL        string                 `json:"lume_url"`
-	StateDir       string                 `json:"state_dir"`
-	TokenFile      string                 `json:"token_file"`
-	MaxVMs         int                    `json:"max_vms"`
-	Templates      []domain.Template      `json:"templates"`
+	Registries     []domain.RegistrySource `json:"registries,omitempty"`
+	ResourceLimits *domain.ResourceLimits  `json:"resource_limits,omitempty"`
+	StoragePaths   map[string]string       `json:"storage_paths,omitempty"`
+	ImageTools     *domain.ImageTools      `json:"image_tools,omitempty"`
+	Listen         string                  `json:"listen"`
+	LumeURL        string                  `json:"lume_url"`
+	StateDir       string                  `json:"state_dir"`
+	TokenFile      string                  `json:"token_file"`
+	MaxVMs         int                     `json:"max_vms"`
+	Templates      []domain.Template       `json:"templates"`
 }
 
 func Load(path string) (Config, error) {
@@ -63,6 +64,16 @@ func Load(path string) (Config, error) {
 		if !domain.ValidName(name) || !filepath.IsAbs(path) {
 			return c, errors.New("storage paths must map valid names to absolute directories")
 		}
+	}
+	seenRegistries := map[string]bool{}
+	for _, source := range c.Registries {
+		if err := source.Validate(); err != nil {
+			return c, err
+		}
+		if seenRegistries[source.ID] {
+			return c, errors.New("duplicate registry source")
+		}
+		seenRegistries[source.ID] = true
 	}
 	return c, nil
 }

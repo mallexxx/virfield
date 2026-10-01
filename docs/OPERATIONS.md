@@ -33,6 +33,52 @@ same deployed binaries, config and token. Lume owns its separate VM storage
 Directories containing state or secrets must be mode 0700; token, database and
 credential files must be 0600. Do not store these files in Git.
 
+## GHCR configuration
+
+Add operator-approved sources to `config.json` before starting the service:
+
+```json
+{
+  "registries": [
+    {"id":"public-cua","organization":"trycua"},
+    {"id":"team","organization":"YOUR_LOWERCASE_GITHUB_ORG","username":"YOUR_GITHUB_USER","token_file":"/absolute/private/ghcr-token","allow_push":true}
+  ]
+}
+```
+
+This is a fragment, not a replacement configuration. Use actual lowercase
+GitHub namespace/user values. `token_file` is a regular owner-only file (0600)
+inside a private directory (0700), containing a GitHub package token, not JSON.
+Public pull needs no token. Private pull requires package read permission;
+publish needs package write permission and `allow_push: true`. Configure any
+organization SSO authorization outside Virfield. Token contents never belong in
+Git, API/MCP arguments or command-line flags. The subprocess receives only the
+selected source credential, not all host environment credentials.
+
+Configure explicit `storage_paths` for every import location. Existing VM names
+and existing registry tags are refused. Import/export use the same exclusive
+maintenance reservation as golden builds; unrelated active VMs must finish first.
+Sources are trusted software publishers: importing their disk can run their
+code inside a guest. Only Lume VM formats are supported, not arbitrary OCI/Tart
+packages. Current disk limit is 512 GiB; allow space for compressed cache and
+expanded disk. The pinned Lume decoder is not an untrusted-input sandbox.
+
+Use MCP's workflows topic for arguments and completion criteria. CLI equivalents:
+
+```sh
+virfield registry-sources
+virfield registry-resolve team macos-golden build-001
+virfield -key import-build-001 image-pull imported-golden team macos-golden build-001 15.7
+virfield -key publish-build-002 image-publish imported-golden team macos-golden build-002
+```
+
+Use your installed binary and normal `-url`/`-token-file` flags. Publication
+rebuilds the verified recipe into a portable image; it does not export private
+source-disk contents or manual modifications. The uploaded image has public
+bootstrap credentials. For package retention or remote deletion use GitHub's
+operator tooling; Virfield never silently deletes remote packages/tags. New tag
+checks do not provide an atomic lock against unrelated GHCR writers.
+
 ## Prerequisites
 
 For a source build, install Git, make, Go at least the patch pinned in `go.mod`,
@@ -136,7 +182,7 @@ not establish fresh backend inventory.
 
 For an update, first obtain an idle healthy pool with no unresolved jobs and all
 VMs stopped. Back up the state, preserve the installed binaries/config, then
-install a clean committed build. Schema 5 adds durable catalog templates; older
+install a clean committed build. Schema 6 records registry imports and portable-export jobs (schema 5 added catalog templates); older
 binaries refuse this database. Rollback requires the matching pre-upgrade backup,
 not merely replacing the executable. Restart the exact manager job; restart Lume
 only if its binary or service configuration changed. Never unload or kill Lume

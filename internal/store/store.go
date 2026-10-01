@@ -52,16 +52,20 @@ func (s *Store) migrate() error {
 	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
 		return err
 	}
-	if version > 5 {
+	if version > 6 {
 		return fmt.Errorf("database schema %d is newer than this binary", version)
 	}
-	if version == 5 {
+	if version == 6 {
 		return nil
+	}
+	if version == 5 {
+		_, err := s.db.Exec(`PRAGMA user_version=6`)
+		return err
 	}
 	if version >= 1 && version <= 4 {
 		// Version 5 persists catalog templates and Xcode manifests. Older
 		// executors must not silently ignore the new provisioning requirements.
-		_, err := s.db.Exec(`BEGIN IMMEDIATE; CREATE TABLE templates (id TEXT PRIMARY KEY, body TEXT NOT NULL); PRAGMA user_version=5; COMMIT;`)
+		_, err := s.db.Exec(`BEGIN IMMEDIATE; CREATE TABLE templates (id TEXT PRIMARY KEY, body TEXT NOT NULL); PRAGMA user_version=6; COMMIT;`)
 		return err
 	}
 	_, err := s.db.Exec(`BEGIN IMMEDIATE;
@@ -72,7 +76,7 @@ func (s *Store) migrate() error {
  CREATE INDEX events_lease ON events(lease_id,id);
  CREATE INDEX jobs_state ON jobs(state);
  CREATE TABLE templates (id TEXT PRIMARY KEY, body TEXT NOT NULL);
- PRAGMA user_version=5;
+ PRAGMA user_version=6;
  COMMIT;`)
 	return err
 }

@@ -60,6 +60,7 @@ func (r AcquireRequest) Validate() error {
 
 // Lease holds capacity until cleanup is confirmed, including after expiry/failure.
 type Lease struct {
+	Portable       bool           `json:"portable,omitempty"`
 	Resources      Resources      `json:"resources"`
 	Source         *Template      `json:"source,omitempty"`
 	ImageID        string         `json:"image_id,omitempty"`
@@ -83,17 +84,18 @@ type Lease struct {
 
 // Job is a persisted state machine. Phase is written before each external effect.
 type Job struct {
-	Image     *ImageProfile `json:"image,omitempty"`
-	Progress  string        `json:"progress,omitempty"`
-	ID        string        `json:"id"`
-	LeaseID   string        `json:"lease_id"`
-	Kind      string        `json:"kind"`
-	Phase     string        `json:"phase"`
-	State     string        `json:"state"`
-	CreatedAt time.Time     `json:"created_at"`
-	UpdatedAt time.Time     `json:"updated_at"`
-	Deadline  time.Time     `json:"deadline"`
-	Error     *Error        `json:"error,omitempty"`
+	Export    *RegistryExport `json:"export,omitempty"`
+	Image     *ImageProfile   `json:"image,omitempty"`
+	Progress  string          `json:"progress,omitempty"`
+	ID        string          `json:"id"`
+	LeaseID   string          `json:"lease_id"`
+	Kind      string          `json:"kind"`
+	Phase     string          `json:"phase"`
+	State     string          `json:"state"`
+	CreatedAt time.Time       `json:"created_at"`
+	UpdatedAt time.Time       `json:"updated_at"`
+	Deadline  time.Time       `json:"deadline"`
+	Error     *Error          `json:"error,omitempty"`
 }
 type Event struct {
 	ID      int64     `json:"event_id"`

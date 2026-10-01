@@ -17,16 +17,19 @@ import (
 	"github.com/mallexxx/virfield/internal/domain"
 	"github.com/mallexxx/virfield/internal/guestssh"
 	"github.com/mallexxx/virfield/internal/lume"
+	"github.com/mallexxx/virfield/internal/registry"
 )
 
 //go:embed assistant.py
 var assistantScript string
 
 type Engine struct {
-	Dir     string
-	Backend *lume.Client
-	Tools   domain.ImageTools
-	HTTP    *http.Client
+	Registry     *registry.Client
+	StoragePaths map[string]string
+	Dir          string
+	Backend      *lume.Client
+	Tools        domain.ImageTools
+	HTTP         *http.Client
 }
 
 func New(dir string, b *lume.Client, t domain.ImageTools) (*Engine, error) {
@@ -48,6 +51,9 @@ func (e *Engine) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile
 	timeout, known := map[string]time.Duration{"download": 3 * time.Hour, "create": 45 * time.Minute, "setup": 25 * time.Minute, "assistant": 10 * time.Minute, "sip": 20 * time.Minute, "provision": 2 * time.Hour, "verify": 10 * time.Minute, "stop": 2 * time.Minute}[step]
 	if !known {
 		return domain.Err("invalid_profile", "unsupported image pipeline stage")
+	}
+	if step == "create" && p.Registry != nil {
+		timeout = 3 * time.Hour
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -83,6 +89,16 @@ func (e *Engine) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile
 				return err
 			}
 		}
+		if p.Registry != nil {
+			source, err := e.registrySource(*p.Registry)
+			if err != nil {
+				return err
+			}
+			if _, err := registry.Credentials(source); err != nil {
+				return err
+			}
+			return progress("Registry manifest pinned; download and digest verification precede guest setup")
+		}
 		// A full restore plus a new guest and safety headroom must fit together.
 		if err := Space(e.Dir, p.Size+(48<<30)); err != nil {
 			return err
@@ -108,6 +124,9 @@ func (e *Engine) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile
 		}
 		return err
 	case "create", "setup":
+		if step == "create" && p.Registry != nil {
+			return e.pullRegistry(ctx, l, *p.Registry)
+		}
 		if step == "setup" && onlineSetupRequired(p) {
 			return e.setupOnline(ctx, l, progress)
 		}
@@ -240,7 +259,7 @@ func (e *Engine) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile
 				return err
 			}
 		}
-		evidence, _ := json.MarshalIndent(map[string]any{"macos": p.MacOS, "xcode": p.Xcode, "build": p.Build, "ipsw_sha256": p.SHA256, "sip": strings.TrimSpace(sip), "desktop": true, "scoped_image_ssh": true, "disk": disk, "provision": p.Provision, "security": p.Security, "verified_at": time.Now().UTC()}, "", "  ")
+		evidence, _ := json.MarshalIndent(map[string]any{"macos": p.MacOS, "xcode": p.Xcode, "build": p.Build, "ipsw_sha256": p.SHA256, "registry": p.Registry, "sip": strings.TrimSpace(sip), "desktop": true, "scoped_image_ssh": true, "disk": disk, "provision": p.Provision, "security": p.Security, "verified_at": time.Now().UTC()}, "", "  ")
 		return os.WriteFile(filepath.Join(folder, "verification.json"), evidence, 0600)
 	case "stop":
 		return e.stop(ctx, l)

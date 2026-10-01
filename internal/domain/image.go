@@ -9,15 +9,16 @@ import (
 // ImageProfile is a resolved immutable manifest, never a free-form client command.
 // The digest and size identify one immutable Apple restore image.
 type ImageProfile struct {
-	MacOS      string        `json:"macos,omitempty"`
-	Xcode      *XcodeRelease `json:"xcode,omitempty"`
-	Security   string        `json:"security,omitempty"`
-	Provision  string        `json:"provision,omitempty"`
-	URL        string        `json:"url"`
-	SHA256     string        `json:"sha256"`
-	Size       int64         `json:"size"`
-	Build      string        `json:"build"`
-	DisableSIP bool          `json:"disable_sip"`
+	Registry   *RegistryReference `json:"registry,omitempty"`
+	MacOS      string             `json:"macos,omitempty"`
+	Xcode      *XcodeRelease      `json:"xcode,omitempty"`
+	Security   string             `json:"security,omitempty"`
+	Provision  string             `json:"provision,omitempty"`
+	URL        string             `json:"url"`
+	SHA256     string             `json:"sha256"`
+	Size       int64              `json:"size"`
+	Build      string             `json:"build"`
+	DisableSIP bool               `json:"disable_sip"`
 }
 
 func (p ImageProfile) Validate() error {
@@ -66,6 +67,12 @@ func (p ImageProfile) Validate() error {
 		if !ValidVersion(p.MacOS) || CompareVersions(p.MacOS, p.Xcode.Requires) < 0 {
 			return Err("incompatible_versions", "Selected Xcode requires macOS "+p.Xcode.Requires+" or newer")
 		}
+	}
+	if p.Registry != nil {
+		if p.URL != "" || p.SHA256 != "" || p.Size != 0 || !ValidVersion(p.MacOS) || !ValidName(p.Build) {
+			return Err("invalid_profile", "Registry images need expected macOS/build and no competing IPSW source")
+		}
+		return p.Registry.Validate()
 	}
 	u, err := url.Parse(p.URL)
 	if err != nil || u.Scheme != "https" || u.Host != "updates.cdn-apple.com" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || !strings.HasSuffix(u.Path, ".ipsw") {

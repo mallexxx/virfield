@@ -343,7 +343,8 @@ absence. Cache media and audit history are retained; there is no hidden disk pur
 The live acceptance record is in [Verification](VERIFICATION.md). Unit tests alone do not
 establish that a particular macOS build's Setup Assistant or Recovery UI works.
 
-The deployed journal uses schema version 5; image records were introduced in
+The candidate journal uses schema version 6 for registry references and portable
+exports; the deployed runtime remains schema 5. Image records were introduced in
 schema 2. Supported migrations preserve leases, requests and events and update
 the version guard. Older binaries reject newer schemas.
 

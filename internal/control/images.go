@@ -43,7 +43,7 @@ func (c *Controller) DeleteImage(ctx context.Context, id, key, confirmName strin
 		}
 		// A template ID can be renamed while durable leases still refer to the
 		// old ID. Protect their persisted source VM identity as well.
-		usesImage := l.Purpose != "image" && (l.Template == id || (l.Source != nil && l.Source.Location == tm.Location && l.Source.Name == tm.Name))
+		usesImage := (l.Purpose != "image" && l.Template == id) || (l.Source != nil && l.Source.Location == tm.Location && l.Source.Name == tm.Name)
 		if usesImage || (l.Key() == tm.Location+"/"+tm.Name && l.State != "image_ready") {
 			return domain.Operation{}, domain.Err("image_in_use", "image has active leases or an image operation; finish them first")
 		}
@@ -83,6 +83,10 @@ func (c *Controller) advanceImageDelete(ctx context.Context, l domain.Lease, j d
 		l.State = "released"
 		j.State = "succeeded"
 		j.Phase = "done"
+		l.Error, j.Error = nil, nil
+		if j.Export != nil {
+			j.Progress = "Published registry manifest verified; temporary portable VM and credentials removed"
+		}
 		return c.save(ctx, l, j, "image.deleted", "Image absence verified in Lume")
 	}
 	if j.Phase == "queued" || j.Phase == "image_stop_dispatched" {

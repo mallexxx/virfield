@@ -29,6 +29,7 @@ import (
 	"github.com/mallexxx/virfield/internal/logging"
 	"github.com/mallexxx/virfield/internal/lume"
 	"github.com/mallexxx/virfield/internal/mcpadapter"
+	"github.com/mallexxx/virfield/internal/registry"
 	"github.com/mallexxx/virfield/internal/store"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -104,11 +105,18 @@ func run() error {
 	}
 	manager.SetResources(*cfg.ResourceLimits, func() (map[string]int64, error) { return hostresources.Disk(cfg.StoragePaths) })
 	manager.SetLeasePreparer(&guestssh.Manager{Dir: cfg.StateDir})
+	registryClient, err := registry.New(cfg.Registries)
+	if err != nil {
+		return err
+	}
+	manager.SetRegistry(registryClient)
 	if cfg.ImageTools != nil {
 		builder, err := images.New(cfg.StateDir, backend, *cfg.ImageTools)
 		if err != nil {
 			return err
 		}
+		builder.Registry = registryClient
+		builder.StoragePaths = cfg.StoragePaths
 		manager.SetImageBuilder(builder)
 		locations := []string{}
 		for name := range cfg.StoragePaths {

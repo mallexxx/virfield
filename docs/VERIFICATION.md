@@ -15,7 +15,9 @@ the deployed release or registering it in Codex and Claude Code, complete:
    Monterey/Xcode combination; the known blocker is recorded below.
 2. A fresh full image/security/Xcode workflow, pinned SSH workload, artifact
    export and confirmed cleanup, with exact versions and evidence recorded here.
-3. Install the accepted build, register `virfield` in both clients using
+3. GHCR import and portable publish → pull-back → ordinary clone → workload
+   acceptance, including credentials, exact digest and temporary-VM cleanup.
+4. Install the accepted build, register `virfield` in both clients using
    [Operations](OPERATIONS.md#register-codex-and-claude-code), and validate the
    [agent workflow](AGENT-GUIDE.md#client-registration-and-acceptance) in each.
 
@@ -113,6 +115,31 @@ directory outside the checkout: 13 tools, four documentation resources, matching
 help/resource content, server instructions and authenticated daemon status.
 This is a binary/protocol check, not Codex or Claude workflow acceptance.
 
+## GHCR candidate checks (2026-10-01)
+
+The working candidate has 17 MCP tools, including source discovery, manifest
+resolution, import and portable publication. `make check` (including race tests),
+`make build` and staticcheck passed. Tests exercise legacy/OCI formats, digest
+mismatch, redirect refusal, credential-file permissions, bounded metadata,
+imported VM resource/network normalization, durable import replay, portable
+rebuild/source protection, interrupted/ambiguous upload and cleanup ordering.
+These fixture results do not establish live guest or registry round-trip success.
+
+A read-only public GHCR probe resolved
+`ghcr.io/trycua/macos-sequoia-vanilla:latest` to
+`sha256:781469ea44dd687f5cfbb130131ea2efee799e34b0fe2a297a0ecab013427266`
+with 17,818,752,054 declared compressed bytes. No disk was pulled and no tag was
+published in this check. Reproduce with:
+
+```sh
+VIRFIELD_LIVE_REGISTRY_METADATA=1 go test ./internal/registry -run '^TestLivePublicManifest$' -count=1 -v
+```
+
+The deployed service does not yet contain these changes. Full import and
+publish/pull-back acceptance, source credential configuration, and client
+workflow checks remain release gates. Publication rebuilds a portable recipe;
+raw source-disk export and preservation of manual golden changes are not offered.
+
 ## Read-only installed-service checks
 
 ```sh
@@ -164,7 +191,7 @@ go test ./internal/control -run '^TestLiveLifecycle$' -count=1 -v -timeout=26m
 
 | Guest / policy | Evidence |
 | --- | --- |
-| Monterey 12.6 / 21G115, default protection, no Xcode | IPSW download and native Assistant passed; source boot, key-only SSH, password rotation and Finder passed. **Not accepted:** both ordinary clones stalled before SSH; FileVault is off but System/Data report encryption at rest. Both test clones were cleaned up. |
+| Monterey 12.6 / 21G115, default protection, no Xcode | IPSW download and native Assistant passed; source boot, key-only SSH, password rotation and Finder passed. **Not accepted:** both ordinary clones stalled before SSH; FileVault is off but System/Data report encryption at rest. Both test clones and the failed encrypted golden were deleted. |
 | Monterey with `automation` security | Implementation present; live acceptance blocked by the unencrypted golden requirement |
 | Xcode 13.4.1 / 13F100 | Catalog resolution and compatibility checks pass; live install awaits an authenticated Apple archive |
 | Other catalog macOS generations | Selectable; not yet a claim of live acceptance on this host |
@@ -172,8 +199,9 @@ go test ./internal/control -run '^TestLiveLifecycle$' -count=1 -v -timeout=26m
 The disk-policy probe was run in the real Monterey guest: both boot volumes
 reported `FileVault=false`, `Encryption=true`, `Locked=false`. The new pipeline
 rejects that state before completing setup and again before publication. The
-installed runtime has not yet been upgraded with that gate, and the old
-`image_ready` status is not evidence that the current disk requirement passes.
+installed runtime has not yet been upgraded with that gate, and the failed golden was deleted through the API (job
+`job-d8a05d245b9ca804b35e0212a9be87fe`, succeeded; absence confirmed in Lume).
+The registered recipe remains; there is no accepted Monterey golden.
 No clone-identity workaround is included. A fresh successful clone acceptance
 run and disk-policy validation remain required before release.
 
@@ -188,7 +216,7 @@ checking just `PasswordAuthentication` does not establish key-only access.
 
 - Remaining VM-mutation crash points, prolonged soak and VM-disk disaster recovery. Unit/mock checks and state snapshots do not replace
   these exercises.
-- Registry pull and macOS builds not explicitly recorded in the versioned-image matrix.
+- Registry pull, portable publication/pull-back and macOS builds not explicitly recorded in the versioned-image matrix.
 - Container-facing routing/TLS and per-principal authentication.
 - Broker, Runner, Callee/provider installation, Balda and Prism integration.
   The complete task → VM → execution → result → cleanup workflow from Balda

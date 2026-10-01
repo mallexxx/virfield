@@ -42,6 +42,10 @@ letters, digits, `_`, `.` or `-`. `ID` placeholders below are not interchangeabl
 | `virfield_status` | `{}` | Inventory, freshness/error, capacity, leases, active jobs, templates |
 | `image_catalog` | `{}` | Restore releases and stable Xcode versions/minimum macOS |
 | `image_create` | `{"id":"NEW_TEMPLATE_ID","macos":"VERSION_OR_BUILD_OR_CODENAME","xcode":"EXACT_VERSION","security":"automation","location":"home","idempotency_key":"NEW_KEY"}` | Durable operation; `xcode`, `security`, `location` optional; poll `job.id` |
+| `registry_sources` | `{}` | Configured GHCR namespaces, authentication availability and publish permission; no credentials |
+| `registry_resolve` | `{"source":"SOURCE_ID","repository":"PACKAGE","tag":"TAG"}` | Verified Lume manifest digest and compressed size; no VM mutation |
+| `image_pull` | `{"id":"NEW_TEMPLATE_ID","source":"SOURCE_ID","repository":"PACKAGE","tag":"TAG","macos":"EXPECTED_VERSION_OR_BUILD","xcode":"EXACT_VERSION","security":"automation","location":"home","idempotency_key":"NEW_KEY"}` | Import, prepare and verify a new golden; `xcode`, `security`, `location` optional; poll job |
+| `image_publish` | `{"template":"TEMPLATE_ID","source":"SOURCE_ID","repository":"PACKAGE","tag":"NEW_TAG","idempotency_key":"NEW_KEY"}` | Fresh portable rebuild of the verified recipe, upload and temporary-VM cleanup; poll job, retain `export.digest` |
 | `image_build` | `{"id":"TEMPLATE_ID","idempotency_key":"NEW_KEY"}` | Build an absent VM from its registered profile; poll `job.id` |
 | `vm_acquire` | `{"template":"TEMPLATE_ID","ttl_seconds":3600,"ssh_public_key":"ssh-ed25519 PUBLIC_KEY","idempotency_key":"NEW_KEY"}` | Durable operation; save `lease.id` and `job.id` |
 | `virfield_job` | `{"id":"JOB_ID"}` | Job state, phase, progress, deadline and error |
@@ -98,6 +102,45 @@ private Apple download cookie file. Do not request Apple passwords, print cookie
 or place credentials in tool arguments. Agent-provided host paths/download URLs
 are not accepted. Operator recovery resumes the failed durable job; creating a
 second image with a new name/key does not repair the first one.
+
+## Import and publish through GHCR
+
+1. Read `registry_sources`. The host operator configures permitted GitHub
+   organizations/users and private credential files. Agents cannot supply a host,
+   URL, token or token path. An empty list requires operator configuration using
+   the operations topic. Only Lume legacy LZ4 and Lume OCI VM manifests are
+   supported; a Docker container or Tart manifest is not a Lume VM.
+2. Resolve an explicit repository/tag with `registry_resolve`. Repository is one
+   lowercase package-name component (no namespace or slash); source supplies the
+   namespace. This checks metadata, not the guest, provenance or workload safety.
+   Import only images from a publisher authorized by the user/operator.
+3. With an idle pool, submit `image_pull` with the expected macOS and optional
+   Xcode/security selection. The job pins the manifest and refuses a changed tag
+   before boot. Imported files are checked; CPU/RAM become 4/8 GiB, network NAT,
+   and display 1920×1440. VM hardware identity is retained for first boot.
+   Setup, disk policy, credential isolation, exact guest versions and reboot
+   checks still apply. Require `image_ready`, then test an ordinary worker clone.
+4. For an explicitly authorized upload, call `image_publish` with a verified
+   template and a new unique tag in a push-enabled source. **This rebuilds its
+   pinned recipe; it does not snapshot the current golden disk.** Workload files
+   and manual modifications are excluded. The fresh VM uses public `lume/lume`
+   bootstrap credentials, is verified, sanitized and stopped before upload.
+   The original golden and its private credentials stay on the host. GHCR
+   visibility is controlled by the package owner; the tool does not change it.
+5. Require job `succeeded` and `export.digest`. Completion includes deletion of
+   the temporary portable VM and its private host-side files. A failed/ambiguous
+   upload may have created a tag; never repeat with a new key or overwrite it.
+   Inspect the exact tag/job using operator recovery. Acceptance requires a
+   pull-back, normal clone boot, pinned SSH workload and cleanup, not just upload.
+
+Public bootstrap credentials are intentional transport credentials, not safe
+worker access. Only acquire a worker after Virfield has re-keyed and verified the
+import. Tags are mutable: absence is checked before acceptance and upload, but
+GHCR/Lume has no atomic create-only tag transaction. Use a unique per-build tag
+and ensure no other writer uses it. Keep the resulting digest as the identity.
+Downloading compressed images executes the pinned Lume decoder; configured
+publishers must be trusted. Descriptor/space checks are not a decompression
+sandbox. Read the verification topic for the current live GHCR acceptance state.
 
 ## Acquire, execute and collect results
 

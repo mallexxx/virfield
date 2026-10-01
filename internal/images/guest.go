@@ -13,5 +13,21 @@ func (e *Engine) connect(ctx context.Context, l domain.Lease, ip string, bootstr
 	return (&guestssh.Manager{Dir: e.Dir}).ConnectReady(ctx, l, ip, bootstrap)
 }
 func (e *Engine) secure(ctx context.Context, l domain.Lease, ip string, g *guest) error {
-	return (&guestssh.Manager{Dir: e.Dir}).SecureImage(ctx, l, ip, g)
+	manager := &guestssh.Manager{Dir: e.Dir}
+	if l.Portable {
+		// This is a fresh, isolated export build. No private administrator
+		// password may ever be written into its disk, even in freed APFS blocks.
+		c, err := manager.CredentialsFor(l)
+		if err != nil {
+			return err
+		}
+		if c.Secured && c.Password != "lume" {
+			return domain.Err("invalid_profile", "Portable build contains private credentials")
+		}
+		c.Password = "lume"
+		if err := guestssh.SaveCredentials(manager.CredentialPath(l), c); err != nil {
+			return err
+		}
+	}
+	return manager.SecureImage(ctx, l, ip, g)
 }

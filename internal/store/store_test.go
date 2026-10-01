@@ -152,7 +152,7 @@ func TestUpgradeImageJournalKeepsExistingRecords(t *testing.T) {
 		t.Fatal(events, err)
 	}
 	var version int
-	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 5 {
+	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 6 {
 		t.Fatal(version, err)
 	}
 }
@@ -206,5 +206,42 @@ func TestDiskFullDoesNotPublishUncommittedTransition(t *testing.T) {
 	events, err := s.Events(ctx, 0, l.ID, 100)
 	if err != nil || len(events) != 1 {
 		t.Fatal("disk-full event leaked", err)
+	}
+}
+
+func TestSchemaFiveUpgradePreservesRecordsAndProtectsNewReaders(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "v5.db")
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	l := domain.Lease{ID: "image-portable", Purpose: "image", Portable: true, State: "image_building"}
+	j := domain.Job{ID: "job-portable", LeaseID: l.ID, Kind: "image_build", State: "running", Phase: "upload_dispatched", Export: &domain.RegistryExport{Source: "team", Organization: "team", Repository: "vm", Tag: "build-1"}}
+	if err := s.Save(ctx, l, &j, "export-key", "fp", "accepted", "safe"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`PRAGMA user_version=5`); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	s, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	op, err := s.Replay(ctx, "export-key", "fp")
+	if err != nil || !op.Lease.Portable || op.Job.Export == nil || op.Job.Export.Tag != "build-1" {
+		t.Fatal(op, err)
+	}
+	var version int
+	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 6 {
+		t.Fatal(version, err)
+	}
+	if _, err := s.db.Exec(`PRAGMA user_version=7`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.migrate(); err == nil {
+		t.Fatal("newer schema accepted")
 	}
 }

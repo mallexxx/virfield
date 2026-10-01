@@ -81,6 +81,12 @@ func (c *Controller) advanceImageBuild(ctx context.Context, l domain.Lease, j do
 	if j.Image == nil || c.imageBuilder == nil {
 		return c.attention(ctx, l, j, "invalid_profile", "Image executor or persisted profile is missing", true)
 	}
+	if j.Export != nil && (j.Phase == "stop_done" || j.Phase == "sanitize_done" || j.Phase == "sanitize_dispatched" || j.Phase == "upload_dispatched" || j.Phase == "registry_cleanup" || j.Phase == "image_delete_dispatched" || j.Phase == "image_stop_dispatched") {
+		if j.Phase == "image_delete_dispatched" || j.Phase == "image_stop_dispatched" {
+			return c.advanceImageDelete(ctx, l, j)
+		}
+		return c.advanceImageExport(ctx, l, j)
+	}
 	if j.Phase == "stop_done" {
 		v, exists := c.vm(l)
 		if !exists || v.State != "stopped" {
