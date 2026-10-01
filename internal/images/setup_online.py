@@ -113,7 +113,7 @@ def run():
             picture = folder / f'setup-{step:03}.png'
             client.captureScreen(str(picture))
             frame = Image.open(picture).convert('RGB')
-            if frame.size != (1920, 1080):
+            if frame.width < 640 or frame.height < 480:
                 raise RuntimeError('Unexpected guest resolution')
             output = subprocess.run([config['tesseract'], str(picture), 'stdout', 'tsv'], capture_output=True, text=True, timeout=30, check=True).stdout
             words = []
@@ -234,7 +234,8 @@ def run():
                 time.sleep(4)
                 terminal = folder / 'terminal-ready.png'
                 client.captureScreen(str(terminal))
-                top = Image.open(terminal).crop((0, 0, 1920, 40))
+                terminal_frame = Image.open(terminal)
+                top = terminal_frame.crop((0, 0, terminal_frame.width, 40))
                 stream = io.BytesIO()
                 top.save(stream, format='PNG')
                 menu = subprocess.run([config['tesseract'], 'stdin', 'stdout', '--psm', '7'], input=stream.getvalue(), capture_output=True, timeout=30, check=True).stdout.decode('utf-8', errors='replace')
