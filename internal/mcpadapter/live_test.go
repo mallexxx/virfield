@@ -35,9 +35,14 @@ func TestLiveInstalledMCP(t *testing.T) {
 			t.Fatal(err)
 		}
 		list, err := session.ListTools(ctx, nil)
-		if err != nil || len(list.Tools) != 12 {
+		if err != nil || len(list.Tools) != 13 {
 			session.Close()
 			t.Fatal("MCP tool discovery failed", err)
+		}
+		help, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "virfield_help", Arguments: map[string]any{}})
+		if err != nil || help.IsError || len(help.Content) == 0 {
+			session.Close()
+			t.Fatal("MCP agent guide unavailable", err)
 		}
 		result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "virfield_status", Arguments: map[string]any{}})
 		if err != nil || result.IsError {
@@ -54,5 +59,5 @@ func TestLiveInstalledMCP(t *testing.T) {
 	if resp.StatusCode != 401 {
 		t.Fatal("unauthenticated MCP accepted", resp.StatusCode)
 	}
-	t.Log("HTTP and stdio discovery/status passed; anonymous MCP rejected")
+	t.Log("HTTP and stdio discovery/guide/status passed; anonymous MCP rejected")
 }

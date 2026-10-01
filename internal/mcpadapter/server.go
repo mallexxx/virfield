@@ -53,7 +53,8 @@ func result(b json.RawMessage, err error) (*mcp.CallToolResult, any, error) {
 	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(b)}}}, nil, nil
 }
 func New(c *client.Client) *mcp.Server {
-	s := mcp.NewServer(&mcp.Implementation{Name: "virfield", Version: Version}, nil)
+	s := mcp.NewServer(&mcp.Implementation{Name: "virfield", Version: Version}, &mcp.ServerOptions{Instructions: instructions})
+	addHelp(s)
 	mcp.AddTool(s, &mcp.Tool{Name: "virfield_status", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}, Description: "Show Lume health, VM slot usage, active leases and durable jobs"}, func(ctx context.Context, _ *mcp.CallToolRequest, _ empty) (*mcp.CallToolResult, any, error) {
 		return result(c.Do(ctx, "GET", "status", nil, ""))
 	})

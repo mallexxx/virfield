@@ -192,7 +192,11 @@ is also available for clients using the default port. Configure the client entry
 restart/reconnect the client after changing its command. No npm/tsx entrypoint
 is supported. The stdio adapter calls the same authenticated daemon API.
 
-Tools: `virfield_status`, `vm_acquire`, `vm_lease`, `vm_release`, `vm_renew`,
+Start with `virfield_help` (the embedded [agent guide](AGENT-GUIDE.md)).
+Its topics `workflows`, `images`, `operations`, and `verification` also exist as
+MCP resources at `virfield://docs/TOPIC`. No checkout or Obsidian is required.
+
+Tools: `virfield_help`, `virfield_status`, `vm_acquire`, `vm_lease`, `vm_release`, `vm_renew`,
 `virfield_job`, `virfield_events`, `image_catalog`, `image_create`, `image_build`,
 `vm_tunnel`, `vm_tunnel_close`.
 Use `image_create` to select versions instead of restricting an agent to configured
@@ -204,6 +208,48 @@ TLS reverse proxy, network policy and tested routing to guest SSH or a tunnel.
 The client rejects remote cleartext HTTP and credential-bearing redirects.
 Per-principal credentials and the Balda/Broker/Runner integration are not yet
 implemented; see [verification limits](VERIFICATION.md#not-yet-accepted).
+
+### Register Codex and Claude Code
+
+Register only an accepted installed release, after the production checks in
+[Verification](VERIFICATION.md) pass. Registration does not upgrade the daemon or
+prove image readiness. Use the existing deployment's actual absolute
+`VIRFIELD_HOME` and configured `VIRFIELD_URL`; do not initialize a second pool.
+Inspect only the `virfield` entry before changing it; preserve unrelated servers.
+
+```sh
+codex mcp get virfield
+claude mcp get virfield
+```
+
+A missing entry is expected for first installation. After acceptance, register
+stdio adapters with the token **file path**, not its contents:
+
+```sh
+VIRFIELD_URL="http://127.0.0.1:7780"
+codex mcp add virfield -- "$VIRFIELD_HOME/bin/virfield-mcp" -url "$VIRFIELD_URL" -token-file "$VIRFIELD_HOME/token"
+claude mcp add --transport stdio --scope user virfield -- "$VIRFIELD_HOME/bin/virfield-mcp" -url "$VIRFIELD_URL" -token-file "$VIRFIELD_HOME/token"
+```
+
+Codex's desktop/CLI clients share MCP configuration on the same host. Claude
+Code's user scope makes the entry available across projects. If an existing entry
+conflicts, update only that entry using the client's supported configuration;
+do not overwrite the whole config or add a second server/pool. Client policies
+may require enabling/approving the server. Restart/reconnect the client and start
+a fresh task if its tool list is stale. Use `codex mcp get virfield`,
+`claude mcp get virfield`, and the client's `/mcp` status to check discovery.
+
+In each client, call `virfield_help` and `virfield_status`. Complete the agent
+workflow acceptance in [Agent guide](AGENT-GUIDE.md#client-registration-and-acceptance).
+Never use a successful registration command as evidence that tools were invoked
+in that client. Keep a release pending until both client checks pass.
+
+Claude Desktop is a separate client from Claude Code. For Desktop use the generated
+`launchd/mcp.json` entry through its MCP configuration; the `claude mcp add` command
+above configures Claude Code. No remote/container reachability is implied by either.
+
+Client references: [Codex MCP configuration](https://developers.openai.com/codex/mcp/),
+[Claude Code MCP configuration](https://code.claude.com/docs/en/mcp).
 
 ## Recovery
 

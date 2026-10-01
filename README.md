@@ -12,6 +12,7 @@ in the Git branch `v1`; it is not part of the current build or deployment.
 
 | Document | Owns |
 |---|---|
+| [Agent guide](docs/AGENT-GUIDE.md) | MCP workflows, tool arguments, pinned SSH, artifacts, retries and errors; embedded as `virfield_help` |
 | [Operations](docs/OPERATIONS.md) | Installation, paths, configuration, CLI/MCP, service operation, recovery and backups |
 | [Image pipeline](docs/IMAGE-PIPELINE.md) | Supported image profile, dependencies, build stages, guest policy and image recovery |
 | [Architecture](docs/ARCHITECTURE.md) | Modules, API boundary, lifecycle invariants and development rules |

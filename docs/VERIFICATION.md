@@ -6,6 +6,26 @@ were collected on Apple Silicon macOS through 2026-10-01 (timestamps UTC),
 using Go 1.26.8 and patched Lume 0.5.3. The full UI-test suite is verified on
 macOS 27 build `26A428`; versioned image coverage is recorded separately below.
 
+## Pending release gates
+
+The versioned-image candidate is **not production accepted**. Before replacing
+the deployed release or registering it in Codex and Claude Code, complete:
+
+1. An unencrypted golden and successful ordinary clone boot for the requested
+   Monterey/Xcode combination; the known blocker is recorded below.
+2. A fresh full image/security/Xcode workflow, pinned SSH workload, artifact
+   export and confirmed cleanup, with exact versions and evidence recorded here.
+3. Install the accepted build, register `virfield` in both clients using
+   [Operations](OPERATIONS.md#register-codex-and-claude-code), and validate the
+   [agent workflow](AGENT-GUIDE.md#client-registration-and-acceptance) in each.
+
+The agent guide and operations/image/verification runbooks are embedded in MCP
+as `virfield_help` and four read-only resources. Automated protocol tests verify
+help without a daemon, resource/help equality, startup instructions, topic
+allowlisting and documentation coverage for every exposed tool. This does not
+claim that the new tools are installed or that either client has passed live
+workflow acceptance. The release remains pending until the client checks pass.
+
 ## Accepted behavior
 
 | Check | Result and evidence |
@@ -41,11 +61,13 @@ rerun. The focused cache-release and setup-shutdown regressions passed; applying
 the versioned patch with zero fuzz to the pinned archive reproduces the built
 Swift sources. Earlier failed development attempts are not counted as passes.
 
-The accepted runtime build is commit `44a1c15` in the deployment's `release.json`.
-Repository/documentation cleanup after that acceptance does not itself upgrade
-the installed service. The live deployment remains outside the checkout at
-`~/.virfield-v2`; its `release.json` records installed binary hashes and final
-checks. Snapshot `backup-caac74afb3773d106eb2f95840c6e2c9` passed the isolated
+The full-profile acceptance above was collected on commit `44a1c15`.
+As checked on 2026-10-01, the installed runtime is candidate `7b55bcc`, with
+`release_status: catalog_candidate_pending_live_image_acceptance`. It is not the
+accepted production release. The newer disk gate and embedded agent runbooks
+have not yet been deployed. Editing or committing the checkout does not upgrade
+the service. The live deployment remains outside the checkout at `~/.virfield-v2`;
+its `release.json` records the installed commit and binary hashes. Snapshot `backup-caac74afb3773d106eb2f95840c6e2c9` passed the isolated
 integrity/identity rehearsal. VM disk restore was not part of that check.
 
 Private development evidence is archived outside the worktree under
@@ -85,6 +107,11 @@ vulnerabilities. One advisory affected an unimported OpenPGP package; that resul
 is dated acceptance evidence, not a claim about the current vulnerability feed.
 Linux cross-compilation passed. Lume-specific regression commands live with its
 [dependency recipe](IMAGE-PIPELINE.md#profile-and-dependencies).
+
+The candidate stdio adapter also passed a read-only smoke check from a working
+directory outside the checkout: 13 tools, four documentation resources, matching
+help/resource content, server instructions and authenticated daemon status.
+This is a binary/protocol check, not Codex or Claude workflow acceptance.
 
 ## Read-only installed-service checks
 
