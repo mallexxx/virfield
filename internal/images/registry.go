@@ -43,10 +43,13 @@ func (e *Engine) pullRegistry(ctx context.Context, l domain.Lease, ref domain.Re
 	if _, err := os.Lstat(destination); !os.IsNotExist(err) {
 		return domain.Err("image_exists", "Registry pull never overwrites an existing VM directory")
 	}
+	if err := Space(e.Dir, ref.Size+(80<<30)); err != nil {
+		return err
+	}
 	if err := Space(root, ref.Size+(80<<30)); err != nil {
 		return err
 	}
-	if err := lume.RegistryPull(ctx, e.Tools.Lume, l, source, ref, token, filepath.Join(e.Dir, "images", l.ID, "registry-pull.log")); err != nil {
+	if err := lume.RegistryPull(ctx, e.Tools.Lume, l, source, ref, token, filepath.Join(e.Dir, "images", l.ID, "registry-pull.log"), root); err != nil {
 		return err
 	}
 	// Pinned Lume accepts tags, not digest references. Detect a moved tag before

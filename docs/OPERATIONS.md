@@ -53,7 +53,11 @@ Public pull needs no token. Private pull requires package read permission;
 publish needs package write permission and `allow_push: true`. Configure any
 organization SSO authorization outside Virfield. Token contents never belong in
 Git, API/MCP arguments or command-line flags. The subprocess receives only the
-selected source credential, not all host environment credentials.
+selected source credential, not all host environment credentials. Each registry
+subprocess uses isolated Lume settings with the explicit configured storage path;
+personal Lume registry defaults cannot redirect an upload. Spaces in paths are
+supported; quote, backslash and line-break characters are rejected by this
+fixed YAML configuration boundary.
 
 Configure explicit `storage_paths` for every import location. Existing VM names
 and existing registry tags are refused. Import/export use the same exclusive

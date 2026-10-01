@@ -3,9 +3,11 @@ package lume
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mallexxx/virfield/internal/domain"
 )
@@ -30,9 +32,9 @@ printf '\nUSER:%s\nTOKEN:%s\nUNRELATED:%s\n' "$GITHUB_USERNAME" "$GITHUB_TOKEN" 
 		log := filepath.Join(dir, map[bool]string{false: "pull.log", true: "push.log"}[push])
 		var err error
 		if push {
-			err = RegistryPush(context.Background(), binary, l, s, r.Repository, r.Tag, "fixture-secret", log)
+			err = RegistryPush(context.Background(), binary, l, s, r.Repository, r.Tag, "fixture-secret", log, dir)
 		} else {
-			err = RegistryPull(context.Background(), binary, l, s, r, "fixture-secret", log)
+			err = RegistryPull(context.Background(), binary, l, s, r, "fixture-secret", log, dir)
 		}
 		if err != nil {
 			t.Fatal(err)
@@ -49,7 +51,69 @@ printf '\nUSER:%s\nTOKEN:%s\nUNRELATED:%s\n' "$GITHUB_USERNAME" "$GITHUB_TOKEN" 
 		}
 	}
 	l.Portable = false
-	if err := RegistryPush(context.Background(), binary, l, s, "vm", "v1", "secret", filepath.Join(dir, "rejected.log")); err == nil {
+	if err := RegistryPush(context.Background(), binary, l, s, "vm", "v1", "secret", filepath.Join(dir, "rejected.log"), dir); err == nil {
 		t.Fatal("raw managed VM export allowed")
+	}
+}
+
+func TestRegistrySettingsDoNotInheritHostRegistryOrStorage(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", "/unrelated/operator/settings")
+	env, cleanup, err := registryEnvironment(domain.Lease{Location: "custom"}, domain.RegistrySource{ID: "public", Organization: "trycua"}, "", filepath.Join(dir, "private logs", "pull.log"), filepath.Join(dir, "VM storage"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	settings := ""
+	for _, entry := range env {
+		if strings.HasPrefix(entry, "XDG_CONFIG_HOME=") {
+			settings = strings.TrimPrefix(entry, "XDG_CONFIG_HOME=")
+		}
+	}
+	if settings == "" || settings == "/unrelated/operator/settings" {
+		t.Fatal("host config inherited")
+	}
+	b, err := os.ReadFile(filepath.Join(settings, "lume", "config.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`defaultLocationName: "custom"`, `registry: "ghcr.io"`, `organization: "trycua"`, `telemetryEnabled: false`, filepath.Join(dir, "VM storage")} {
+		if !strings.Contains(string(b), want) {
+			t.Fatal("missing isolated setting", want)
+		}
+	}
+	cleanup()
+	if _, err := os.Stat(settings); !os.IsNotExist(err) {
+		t.Fatal("private settings not removed")
+	}
+}
+
+func TestLiveRegistrySettingsWithPinnedLume(t *testing.T) {
+	binary := os.Getenv("VIRFIELD_LIVE_REGISTRY_LUME_BINARY")
+	if binary == "" {
+		t.Skip("read-only config probe needs pinned Lume binary")
+	}
+	dir := t.TempDir()
+	storage := filepath.Join(dir, "VM storage")
+	if err := os.Mkdir(storage, 0700); err != nil {
+		t.Fatal(err)
+	}
+	env, cleanup, err := registryEnvironment(domain.Lease{Location: "custom"}, domain.RegistrySource{ID: "public", Organization: "trycua"}, "", filepath.Join(dir, "logs", "pull.log"), storage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, binary, "config", "get")
+	cmd.Env = env
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal("pinned Lume config probe failed", err)
+	}
+	for _, want := range []string{"Default VM storage: custom (" + storage + ")", "Registry type: ghcr", "Registry: ghcr.io/trycua", "Telemetry enabled: false"} {
+		if !strings.Contains(string(out), want) {
+			t.Fatal("pinned Lume did not respect isolated configuration", want)
+		}
 	}
 }

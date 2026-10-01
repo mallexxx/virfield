@@ -74,7 +74,7 @@ func (e *Engine) ExportStep(ctx context.Context, l domain.Lease, target domain.R
 	if err != nil {
 		return "", err
 	}
-	if err := lume.RegistryPush(ctx, e.Tools.Lume, l, source, target.Repository, target.Tag, token, filepath.Join(e.Dir, "images", l.ID, "registry-push.log")); err != nil {
+	if err := lume.RegistryPush(ctx, e.Tools.Lume, l, source, target.Repository, target.Tag, token, filepath.Join(e.Dir, "images", l.ID, "registry-push.log"), e.StoragePaths[l.Location]); err != nil {
 		return "", err
 	}
 	ref, err := e.Registry.Resolve(ctx, request)
