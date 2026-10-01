@@ -142,15 +142,18 @@ def run():
             unchanged = 0
             previous = signature
 
-            def tap(phrase, optional=False):
+            def tap(phrase, optional=False, first=False):
                 candidates = find(words, phrase)
                 if not candidates:
                     if optional:
                         return False
                     raise RuntimeError(f'Expected visible control not found: {phrase}')
-                x, y, *_ = max(candidates, key=lambda m: m[1])
+                x, y, *_ = (min if first else max)(candidates, key=lambda m: m[1])
                 client.mouseMove(x, y)
-                client.mousePress(1)
+                time.sleep(0.1)
+                client.mouseDown(1)
+                time.sleep(0.1)
+                client.mouseUp(1)
                 return True
 
             def uncheck(phrase):
@@ -168,7 +171,7 @@ def run():
                 return True
 
             if action == 'language':
-                tap('English')
+                tap('English', first=True)
                 client.keyPress('enter')
             elif action == 'region':
                 tap('United States')

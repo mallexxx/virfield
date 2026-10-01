@@ -116,7 +116,13 @@ func (e *Engine) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile
 				return err
 			}
 		}
-		return lume.ImageCommand(ctx, e.Tools.Lume, e.Tools.VNCBin, folder, step, l, ipsw)
+		display := "1920x1080"
+		if onlineSetupRequired(p) {
+			// Native Monterey Assistant needs more than 540 logical pixels of
+			// height on Lume's Retina display, otherwise its buttons are clipped.
+			display = "1920x1440"
+		}
+		return lume.ImageCommand(ctx, e.Tools.Lume, e.Tools.VNCBin, folder, step, l, ipsw, display)
 	case "assistant":
 		vm, err := e.boot(ctx, l)
 		if err != nil {
