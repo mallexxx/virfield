@@ -162,8 +162,17 @@ and worker clones. Full checks, build and staticcheck passed; gitleaks found no
 secrets, and govulncheck found no vulnerabilities in used code/imported packages
 (one advisory affects an unused package in a required module).
 
-The next acceptance step is the two-clone isolation/capacity/SCP test; approval
-for creation and automatic deletion of those disposable clones is pending.
+`TestLiveLeaseSSH` passed on this golden in 55.36 seconds (2026-10-01), using
+`lease-54c01094abd7c71b4bde58c715ce0095` and
+`lease-568d0c97a002f56a81fadeea55c2373b`. Both ordinary clones booted, reported the
+exact macOS/build and unencrypted boot volumes, passed Finder/SIP/Gatekeeper/AMFI
+probes, and exported the expected file with SCP. Distinct host pins, own-key
+acceptance, cross-lease/image-key rejection, authenticated tunnels, idempotency
+and third-lease capacity refusal passed. API responses contained none of the
+checked private credentials. Both disposable VMs, private identities and tunnels
+were cleaned up; final pool capacity was 0/2 used with no active jobs. The golden
+was preserved. Private test output is in the deployment's
+`acceptance-sequoia-clones-20261001.log`.
 Fresh full import and publish → pull-back → ordinary clone/workload acceptance
 and client workflow checks remain release gates. Publication rebuilds a portable
 recipe; raw source-disk export and preservation of manual golden changes are not
@@ -221,7 +230,7 @@ go test ./internal/control -run '^TestLiveLifecycle$' -count=1 -v -timeout=26m
 | Guest / policy | Evidence |
 | --- | --- |
 | Monterey 12.6 / 21G115, default protection, no Xcode | IPSW download and native Assistant passed; source boot, key-only SSH, password rotation and Finder passed. **Not accepted:** both ordinary clones stalled before SSH; FileVault is off but System/Data report encryption at rest. Both test clones and the failed encrypted golden were deleted. |
-| Sequoia 15.2 / 24C101, GHCR import, `automation`, no Xcode | Recovered import reached `image_ready`; both boot volumes unencrypted, rotated SSH/autologin, Finder, SIP/Gatekeeper/AMFI/TCC and reboot verification passed. Ordinary clone and clean round-trip acceptance still pending. |
+| Sequoia 15.2 / 24C101, GHCR import, `automation`, no Xcode | Recovered import reached `image_ready`; both boot volumes unencrypted, rotated SSH/autologin, Finder, SIP/Gatekeeper/AMFI/TCC and reboot verification passed. Two ordinary clones passed isolation, capacity, disk, workload/SCP and cleanup checks. Clean full import/round-trip acceptance still pending. |
 | Monterey with `automation` security | Implementation present; live acceptance blocked by the unencrypted golden requirement |
 | Xcode 13.4.1 / 13F100 | Catalog resolution and compatibility checks pass; live install awaits an authenticated Apple archive |
 | Other catalog macOS generations | Selectable; not yet a claim of live acceptance on this host |
