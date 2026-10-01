@@ -147,6 +147,7 @@ def run():
         try:
             for c in value:
                 client.keyPress(c)
+                time.sleep(0.05)
             client.keyPress('enter')
         finally:
             client.disconnect()

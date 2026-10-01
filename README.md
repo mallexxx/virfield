@@ -73,3 +73,8 @@ Create a golden by version with MCP `image_catalog` / `image_create`, or CLI
 `image-create NEW_ID monterey 13.4.1`. Versions are resolved from catalogs and
 pinned in the journal; they are not limited to preconfigured templates. See
 [image version selection and Xcode authentication](docs/IMAGE-PIPELINE.md#choose-macos-and-xcode-versions).
+
+Use MCP `security: "automation"` (CLI `-security automation`) to apply guest SIP,
+Gatekeeper, AMFI and Terminal/SSH TCC policy independently of Xcode selection.
+See the [security policy contract](docs/IMAGE-PIPELINE.md#guest-security-policy)
+and [verified scope](docs/VERIFICATION.md) for supported and tested combinations.

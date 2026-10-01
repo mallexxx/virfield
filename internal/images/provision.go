@@ -161,6 +161,15 @@ sudo /usr/bin/xcodebuild -runFirstLaunch
 	}
 	if p.Xcode != nil {
 		if p.Security == "automation" {
+			automation := `set -eu
+sudo -n /usr/sbin/DevToolsSecurity -enable
+sudo -n /usr/sbin/dseditgroup -o edit -a lume -t user _developer
+sudo -n /usr/bin/automationmodetool enable-automationmode-without-authentication
+`
+			if out, err := g.Run(ctx, "/bin/bash -c "+shellQuote(automation), c.Password+"\n"); err != nil {
+				_ = e.provisionLog(l, "xcode-automation", out)
+				return domain.Err("tool_provision_failed", "Guest Xcode automation mode could not be enabled")
+			}
 			if err := e.securityPolicy(ctx, l, g, "apply"); err != nil {
 				return err
 			}

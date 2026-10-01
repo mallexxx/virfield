@@ -53,6 +53,10 @@ func TestCatalogImagePersistsAndReplaysWithoutNetwork(t *testing.T) {
 	if err != nil || !replay.Replayed || replay.Job.ID != first.Job.ID || cat.calls != 1 {
 		t.Fatal(replay, err, cat.calls)
 	}
+	r.Security = "automation"
+	_, err = restarted.CreateImage(ctx, r, "create-monterey-one")
+	code(t, err, "idempotency_conflict")
+	r.Security = ""
 	r.Xcode = "13.4.1"
 	_, err = restarted.CreateImage(ctx, r, "create-monterey-one")
 	code(t, err, "idempotency_conflict")

@@ -43,7 +43,9 @@ if want system; then
   # Disable AMFI (Apple Mobile File Integrity) enforcement so development-signed
   # apps (Apple Development cert, unnotarized) launch without provisioning profile checks.
   # Takes effect on next boot — the golden image carries this NVRAM setting.
-  sudo nvram boot-args="amfi_get_out_of_my_way=1"
+  _boot_args="$(sudo nvram boot-args 2>/dev/null | cut -f2- || true)"
+  _boot_args="$(printf '%s\n' "$_boot_args" | awk '{for(i=1;i<=NF;i++) if($i !~ /^amfi_get_out_of_my_way=/) printf "%s ",$i}')"
+  sudo nvram boot-args="${_boot_args}amfi_get_out_of_my_way=1"
   echo "  AMFI: amfi_get_out_of_my_way=1 set in NVRAM (active after next boot)"
 
   # Disable sleep/screensaver (critical for Aqua session persistence in tests)

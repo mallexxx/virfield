@@ -54,6 +54,8 @@ class OnlineSetupTests(unittest.TestCase):
             ('The account name is already in use', 'error'),
             ('I have read and agree to the terms Agree', 'confirm_terms'),
             ('Finder File Edit View Go Window Help', 'desktop'),
+            ('Terminal Shell Edit View Window Help', 'desktop'),
+            ('Select Your Time Zone Closest City Cupertino Continue', 'continue'),
             ('A dialog never seen before Continue', 'unknown'),
             ('Creating your account', 'busy'),
             ('Create a Computer Account Full name Creating account...', 'busy'),

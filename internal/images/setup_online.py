@@ -3,7 +3,9 @@
 Only recognized screens and visible OCR text anchors may drive input. Lifecycle,
 SSH authentication, password rotation and final readiness remain in Go.
 """
+import base64
 import re
+import time
 
 
 def compact(text):
@@ -12,6 +14,8 @@ def compact(text):
 
 def classify(text):
     t = compact(text)
+    if 'searchtheweb' in t or 'spotlightsearch' in t:
+        return 'dismiss_search'
     if any(compact(x) in t for x in ('account name is already', 'passwords do not match', 'password did not match')):
         return 'error'
     if 'creatingyouraccount' in t or 'creatingaccount' in t or 'settingupyourmac' in t:
@@ -94,6 +98,7 @@ def type_text(client, value):
             client.keyPress('shift-' + ('minus' if shifted[char] == '-' else shifted[char]))
         else:
             client.keyPress(char)
+        time.sleep(0.05)
 
 
 def blue_controls(frame):
@@ -216,6 +221,11 @@ def run():
                     words.append(item)
             text = ' '.join(w['text'] for w in words)
             action = classify(text)
+            menu_stream = io.BytesIO()
+            frame.crop((0, 0, frame.width, 48)).save(menu_stream, format='PNG')
+            menu_text = subprocess.run([config['tesseract'], 'stdin', 'stdout', '--psm', '7'], input=menu_stream.getvalue(), capture_output=True, timeout=30, check=True).stdout.decode('utf-8', errors='replace')
+            if action == 'unknown' and classify(menu_text) == 'desktop':
+                action = 'desktop'
             hello = hello_button(frame)
             if hello is not None:
                 action = 'hello'
@@ -310,7 +320,11 @@ def run():
                     return
                 raise RuntimeError(f'Expected default button not recognized: {label}')
 
-            if action == 'hello':
+            if action == 'dismiss_search':
+                for key in ('enter', 'shift', 'alt', 'ctrl', 'meta'):
+                    client.keyUp(key)
+                client.keyPress('esc')
+            elif action == 'hello':
                 client.mouseMove(*hello)
                 time.sleep(0.1)
                 client.mouseDown(1)
@@ -391,11 +405,18 @@ def run():
                 # Bootstrap only the fresh guest's fixed account. The Go stage
                 # validates SSH, rotates this public bootstrap password, sets
                 # automatic login, and verifies the desktop after reboot.
-                client.keyPress('alt-space')
-                time.sleep(2)
-                type_text(client, 'Terminal')
-                client.keyPress('enter')
-                time.sleep(4)
+                for key in ('enter', 'shift', 'alt', 'ctrl', 'meta'):
+                    client.keyUp(key)
+                client.keyPress('esc')
+                time.sleep(0.2)
+                client.keyPress('esc')
+                time.sleep(0.5)
+                if 'terminal' not in compact(menu_text):
+                    client.keyPress('alt-space')
+                    time.sleep(2)
+                    type_text(client, 'Terminal')
+                    client.keyPress('enter')
+                    time.sleep(4)
                 terminal = folder / 'terminal-ready.png'
                 client.disconnect()
                 client = api.connect(f'{endpoint.hostname}::{endpoint.port}', password=unquote(endpoint.password or ''), timeout=30, factory_class=SetupVNCFactory)
@@ -407,11 +428,13 @@ def run():
                 stream = io.BytesIO()
                 top.save(stream, format='PNG')
                 menu = subprocess.run([config['tesseract'], 'stdin', 'stdout', '--psm', '7'], input=stream.getvalue(), capture_output=True, timeout=30, check=True).stdout.decode('utf-8', errors='replace')
-                if 'terminal' not in compact(menu):
+                body = subprocess.run([config['tesseract'], str(terminal), 'stdout', '--psm', '11'], capture_output=True, text=True, timeout=30, check=True).stdout
+                if 'terminal' not in compact(menu) or classify(body) == 'dismiss_search' or not any(x in body.lower() for x in ('zsh', 'bash')):
                     raise RuntimeError('Terminal is not the foreground guest app; refusing shell input')
                 client = api.connect(f'{endpoint.hostname}::{endpoint.port}', password=unquote(endpoint.password or ''), timeout=30, factory_class=SetupVNCFactory)
                 client.keyPress('ctrl-c')
-                type_text(client, BOOTSTRAP_COMMAND)
+                time.sleep(0.3)
+                type_text(client, '/bin/echo ' + base64.b64encode(BOOTSTRAP_COMMAND.encode()).decode('ascii') + ' | /usr/bin/base64 -D | /bin/bash')
                 client.keyPress('enter')
                 time.sleep(5)
                 return

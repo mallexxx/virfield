@@ -15,10 +15,18 @@ system_db='/Library/Application Support/com.apple.TCC/TCC.db'
 user_db='/Users/lume/Library/Application Support/com.apple.TCC/TCC.db'
 # Newer macOS moves the user database into a protected container. Discover the
 # exact file opened by this user's tccd, rather than assuming a host path.
-pid="$(launchctl print "gui/$uid/com.apple.tccd" | awk '$1=="pid" && $2=="=" {print $3; exit}')"
-[[ "$pid" =~ ^[0-9]+$ && "$(ps -p "$pid" -o uid= | tr -d ' ')" == "$uid" ]] || exit 66
-opened="$(lsof -a -p "$pid" -Fn | sed -n 's/^n//p' | grep '/Library/Application Support/com.apple.TCC/TCC.db$' | sort -u)"
-[[ -n "$opened" && "$opened" != *$'\n'* ]] || exit 66
+launchctl kickstart "gui/$uid/com.apple.tccd"
+opened=""
+for ((attempt=0; attempt<20; attempt++)); do
+  pid="$(launchctl print "gui/$uid/com.apple.tccd" | awk '$1=="pid" && $2=="=" {print $3; exit}')"
+  if [[ "$pid" =~ ^[0-9]+$ ]]; then
+    [[ "$(ps -p "$pid" -o uid= | tr -d ' ')" == "$uid" ]] || exit 66
+    opened="$(lsof -a -p "$pid" -Fn | sed -n 's/^n//p' | grep '/Library/Application Support/com.apple.TCC/TCC.db$' | sort -u || true)"
+    [[ -n "$opened" ]] && break
+  fi
+  sleep 1
+done
+[[ -n "$opened" && "$opened" != *$'\n'* ]] || { echo 'User TCC database did not become available'; exit 66; }
 case "$opened" in "$user_db"|/private/var/containers/Data/ProtectedSystem/*/Data/Library/Application\ Support/com.apple.TCC/TCC.db) user_db="$opened" ;; *) exit 66 ;; esac
 
 if [[ "$mode" == apply ]]; then
