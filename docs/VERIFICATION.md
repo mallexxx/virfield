@@ -64,7 +64,7 @@ the versioned patch with zero fuzz to the pinned archive reproduces the built
 Swift sources. Earlier failed development attempts are not counted as passes.
 
 The full-profile acceptance above was collected on commit `44a1c15`.
-As checked on 2026-10-01, the installed runtime is candidate `674e9c5`, with
+As checked on 2026-10-01, the installed runtime is candidate `9d0860e`, with
 `release_status: registry_candidate_pending_live_acceptance` and schema 6.
 The disk gate, 17 MCP tools and embedded agent runbooks are deployed. Installed
 HTTP/stdio discovery, authenticated status and anonymous rejection passed.
@@ -138,18 +138,36 @@ published in this check. Reproduce with:
 VIRFIELD_LIVE_REGISTRY_METADATA=1 go test ./internal/registry -run '^TestLivePublicManifest$' -count=1 -v
 ```
 
-The deployed candidate imported `macos-sequoia-vanilla:15.2` at that same digest
-(job `job-81880fd34056b9c0186af4b3624b4865`). Download and digest validation passed.
-Both System and Data reported FileVault=false, Encryption=false, Locked=false.
-The job stopped at credential rotation (`sysadminctl -14915`) after offline setup
-replaced the imported native account record. It did not publish a ready golden.
-The installed fix (`674e9c5`) uses SSH bootstrap for imported accounts and
-reserves offline setup for fresh IPSW installations. Full checks and staticcheck
-passed. The failed guest was shut down cleanly; deletion authorization and a
-clean import rerun are still required to establish the fix.
-Full import and publish/pull-back acceptance and client workflow checks remain
-release gates. Publication rebuilds a portable recipe;
-raw source-disk export and preservation of manual golden changes are not offered.
+Live import of `macos-sequoia-vanilla:15.2` at that digest reached `image_ready`
+(job `job-6706c89cabe70b931d162903b6f89ff1`, image
+`image-d99fdbe7a626a10f84a265ab297b38b5`, verified 2026-10-01T08:21:19Z).
+Guest macOS 15.2 / 24C101, both unencrypted/unlocked boot volumes, rotated
+credentials, key-only SSH, Finder and autologin passed. Paired Recovery committed
+SIP disable; Gatekeeper, AMFI and Terminal/SSH TCC grants passed after reboot,
+including the System Events probe. Final clean shutdown was confirmed. No Xcode
+was selected in this import. Ten API reads during download took at most 11.59 ms.
+
+This was a recovered development run, **not a clean full-run acceptance**.
+The previous failed import was explicitly deleted (cleanup job
+`job-58fd5ef0b56242701d5178eb73cc1a8d`, succeeded; VM absence confirmed).
+The clean replacement demonstrated that preserving the native imported account
+fixes password rotation and retains Secure Token. It then exposed two additional
+issues: moving the cursor after opening Recovery menus could select Apple-menu
+items, and headless Sequoia's `sysadminctl -autologin` could report exit status zero
+while retaining the old password. The fixed Recovery driver was retried through
+operator recovery. The corrected `SecureImage` code repaired and verified the
+same guest's private autologin cache before the provisioning retry. The deployed
+`9d0860e` includes both fixes and applies cache verification to all new images
+and worker clones. Full checks, build and staticcheck passed; gitleaks found no
+secrets, and govulncheck found no vulnerabilities in used code/imported packages
+(one advisory affects an unused package in a required module).
+
+The next acceptance step is the two-clone isolation/capacity/SCP test; approval
+for creation and automatic deletion of those disposable clones is pending.
+Fresh full import and publish → pull-back → ordinary clone/workload acceptance
+and client workflow checks remain release gates. Publication rebuilds a portable
+recipe; raw source-disk export and preservation of manual golden changes are not
+offered. No GHCR tag has been published in this acceptance run.
 
 ## Read-only installed-service checks
 
@@ -203,6 +221,7 @@ go test ./internal/control -run '^TestLiveLifecycle$' -count=1 -v -timeout=26m
 | Guest / policy | Evidence |
 | --- | --- |
 | Monterey 12.6 / 21G115, default protection, no Xcode | IPSW download and native Assistant passed; source boot, key-only SSH, password rotation and Finder passed. **Not accepted:** both ordinary clones stalled before SSH; FileVault is off but System/Data report encryption at rest. Both test clones and the failed encrypted golden were deleted. |
+| Sequoia 15.2 / 24C101, GHCR import, `automation`, no Xcode | Recovered import reached `image_ready`; both boot volumes unencrypted, rotated SSH/autologin, Finder, SIP/Gatekeeper/AMFI/TCC and reboot verification passed. Ordinary clone and clean round-trip acceptance still pending. |
 | Monterey with `automation` security | Implementation present; live acceptance blocked by the unencrypted golden requirement |
 | Xcode 13.4.1 / 13F100 | Catalog resolution and compatibility checks pass; live install awaits an authenticated Apple archive |
 | Other catalog macOS generations | Selectable; not yet a claim of live acceptance on this host |
