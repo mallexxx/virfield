@@ -18,6 +18,19 @@ def word(words, expected):
     return matches[0] if matches else None
 
 
+def click_control(client, found, pause=time.sleep):
+    # Recovery coalesces rapid pointer events. Keep the pointer at the observed
+    # control through mouse-down/up; moving it away immediately can switch the
+    # newly opened menu to a different menu-bar item (observed on Sequoia).
+    client.mouseMove(int(found['left']) + int(found['width']) // 2,
+                     int(found['top']) + int(found['height']) // 2)
+    pause(0.2)
+    client.mouseDown(1)
+    pause(0.1)
+    client.mouseUp(1)
+    pause(0.2)
+
+
 def run_recovery(wait_for, click_word, keys, type_line, password):
     _, words = wait_for('boot-picker', lambda text, words: word(words, 'Options') is not None, 120)
     click_word(words, 'Options')
@@ -124,9 +137,7 @@ def run():
             raise RuntimeError('Required Recovery control not recognized: ' + expected)
         client = connect()
         try:
-            client.mouseMove(int(found['left']) + int(found['width']) // 2, int(found['top']) + int(found['height']) // 2)
-            client.mousePress(1)
-            client.mouseMove(20, 100)
+            click_control(client, found)
         finally:
             client.disconnect()
         time.sleep(2)

@@ -1,5 +1,5 @@
 import unittest
-from recovery import run_recovery, word
+from recovery import click_control, run_recovery, word
 
 
 def screen(text):
@@ -7,6 +7,19 @@ def screen(text):
 
 
 class RecoveryTransitions(unittest.TestCase):
+    def test_menu_click_keeps_pointer_at_observed_control_until_release(self):
+        events = []
+
+        class Client:
+            def mouseMove(self, x, y): events.append(('move', x, y))
+            def mouseDown(self, button): events.append(('down', button))
+            def mouseUp(self, button): events.append(('up', button))
+
+        click_control(Client(), {'left': '442', 'top': '12', 'width': '87', 'height': '27'},
+                      lambda duration: events.append(('pause', duration)))
+        self.assertEqual(events, [('move', 485, 25), ('pause', 0.2), ('down', 1),
+                                  ('pause', 0.1), ('up', 1), ('pause', 0.2)])
+
     def drive(self, overrides=None):
         states = {
             'boot-picker': 'Macintosh HD Options',
