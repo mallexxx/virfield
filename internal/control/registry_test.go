@@ -214,3 +214,36 @@ func TestInterruptedExportIsQuarantinedWithoutReplay(t *testing.T) {
 		})
 	}
 }
+
+func TestPortableImportRebuildPreservesPinnedXcode(t *testing.T) {
+	c, b := imageController(t)
+	ctx := context.Background()
+	t0 := c.templates["test"]
+	x := domain.XcodeRelease{Version: "16.2", Build: "16C5032a", Requires: "14.5", URL: "https://download.developer.apple.com/Developer_Tools/Xcode_16.2/Xcode_16.2.xip", SHA1: strings.Repeat("a", 40)}
+	p := domain.ImageProfile{MacOS: "15.2", Build: "24C101", Xcode: &x, Security: "automation", DisableSIP: true, Provision: "developer-v1", Registry: &domain.RegistryReference{Source: "team", Organization: "team", Repository: "vm", Tag: "original", Digest: "sha256:" + strings.Repeat("a", 64), Size: 100}}
+	t0.Image = &p
+	c.templates["test"] = t0
+	if _, err := c.BuildImage(ctx, "test", "imported-source"); err != nil {
+		t.Fatal(err)
+	}
+	for range 9 {
+		tick(t, c)
+	}
+	changedXcode := x
+	changedXcode.SHA1 = strings.Repeat("b", 40)
+	cat := &fakeCatalog{p: domain.ImageProfile{MacOS: p.MacOS, Build: p.Build, URL: "https://updates.cdn-apple.com/restore.ipsw", SHA256: strings.Repeat("b", 64), Size: 123, Xcode: &changedXcode}}
+	c.SetImageCatalog(cat, []string{"home"})
+	c.SetImageBuilder(&fakeExporter{fakeImageBuilder: b})
+	c.SetRegistry(&fakeRegistry{missing: true})
+	op, err := c.PublishImage(ctx, domain.ImagePublishRequest{Template: "test", Source: "team", Repository: "vm", Tag: "new"}, "export-original-pins")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := op.Job.Image
+	if got.Registry != nil || got.URL != cat.p.URL || got.Xcode.SHA1 != x.SHA1 || got.Security != p.Security || got.Provision != p.Provision {
+		t.Fatal("original recipe changed", got)
+	}
+	if err := got.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}

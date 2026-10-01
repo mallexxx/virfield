@@ -53,10 +53,18 @@ func (c *Controller) PublishImage(ctx context.Context, r domain.ImagePublishRequ
 		if p.Xcode != nil {
 			selection.Xcode = p.Xcode.Version
 		}
-		p, err = c.imageCatalog.Resolve(ctx, selection)
+		restore, err := c.imageCatalog.Resolve(ctx, selection)
 		if err != nil {
 			return domain.Operation{}, err
 		}
+		if restore.Build != p.Build || restore.MacOS != p.MacOS {
+			return domain.Operation{}, domain.Err("catalog_changed", "Portable rebuild must resolve the source recipe's exact macOS build")
+		}
+		// Only the Apple restore source is missing on an imported recipe. Keep
+		// its original Xcode digest/build and guest policy even if catalog
+		// metadata for that Xcode version changes after import acceptance.
+		p.Registry = nil
+		p.URL, p.SHA256, p.Size = restore.URL, restore.SHA256, restore.Size
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
