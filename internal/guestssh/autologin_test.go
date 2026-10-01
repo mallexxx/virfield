@@ -33,3 +33,15 @@ func TestCredentialScriptsParse(t *testing.T) {
 		}
 	}
 }
+
+func TestAutologinRejectsStaleSecretAndAcceptsNativeRandomPadding(t *testing.T) {
+	if !matchesLoginPassword(loginPassword("rotated-password"), "rotated-password") || matchesLoginPassword(loginPassword("lume"), "rotated-password") || matchesLoginPassword("invalid", "") {
+		t.Fatal("incorrect autologin verification")
+	}
+	b, _ := base64.StdEncoding.DecodeString(loginPassword("lume"))
+	// Native kcpassword may contain random padding after the NUL terminator.
+	b[len(b)-1] ^= 0x5a
+	if !matchesLoginPassword(base64.StdEncoding.EncodeToString(b), "lume") {
+		t.Fatal("valid native padding rejected")
+	}
+}

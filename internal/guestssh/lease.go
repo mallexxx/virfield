@@ -95,6 +95,9 @@ func (e *Manager) Prepare(ctx context.Context, l domain.Lease) (domain.SSHConnec
 		return result, err
 	}
 	defer verified.Close()
+	if err := VerifyAutoLogin(ctx, verified, c.Password); err != nil {
+		return result, err
+	}
 	keys, err := verified.Run(ctx, "/bin/cat ~/.ssh/authorized_keys", "")
 	if err != nil {
 		return result, err

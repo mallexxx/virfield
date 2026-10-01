@@ -306,6 +306,9 @@ IFS= read -r kcpassword
 	if err := runSecret("autologin", autologin, c.Password+"\n"+loginPassword(c.Password)+"\n"); err != nil {
 		return err
 	}
+	if err := VerifyAutoLogin(ctx, g, c.Password); err != nil {
+		return err
+	}
 	harden := `IFS= read -r new
 printf '%s\n' "$new" | sudo -S -p '' /bin/sh -c 'umask 077; mkdir -p /etc/ssh/sshd_config.d; printf "PasswordAuthentication no\nKbdInteractiveAuthentication no\nChallengeResponseAuthentication no\n" > /etc/ssh/sshd_config.d/000-virfield.conf; /usr/sbin/sshd -t'
 `

@@ -273,6 +273,10 @@ bootstrap account. Their setup runs through SSH and preserves directory-service
 records and volume ownership; offline setup is only for fresh IPSW installations. After Assistant completes,
 the manager establishes generated image-specific credentials, disables SSH password
 authentication, checks effective `sshd -T` policy and creates a VM-local workspace.
+Automatic login is configured through the guest's root-only `kcpassword` and
+loginwindow preference. The manager verifies the decoded password over pinned SSH
+without returning it; `sysadminctl -autologin` exit status is insufficient on
+headless Sequoia. This verification also applies to each worker clone.
 This happens before Recovery; the Recovery driver receives the generated password
 on private stdin. Final verification checks guest build, canonical SIP status,
 credentials and Finder after another reboot. Credentials remain in private 0600 files under
