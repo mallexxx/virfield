@@ -47,6 +47,28 @@ func TestDownloadResumeAndDigest(t *testing.T) {
 		t.Fatal("partial not atomically promoted")
 	}
 }
+func TestDownloadCorruptResumedBytesRetryFromZero(t *testing.T) {
+	data := "correct restore image"
+	p := profile(data)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, p.SHA256+".ipsw.partial"), []byte("wrong"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	c := &http.Client{Transport: transport(func(r *http.Request) (*http.Response, error) {
+		calls++
+		if calls == 1 {
+			return &http.Response{StatusCode: 206, ContentLength: int64(len(data) - 5), Header: http.Header{"Content-Range": {fmt.Sprintf("bytes 5-%d/%d", len(data)-1, len(data))}}, Body: io.NopCloser(strings.NewReader(data[5:]))}, nil
+		}
+		if r.Header.Get("Range") != "" {
+			t.Fatal("retry used bad range")
+		}
+		return &http.Response{StatusCode: 200, ContentLength: int64(len(data)), Header: http.Header{}, Body: io.NopCloser(strings.NewReader(data))}, nil
+	})}
+	if _, err := Download(context.Background(), c, dir, p, func(string) error { return nil }); err != nil || calls != 2 {
+		t.Fatal(err, calls)
+	}
+}
 func TestDownloadRejectsCorruptionAndBadRange(t *testing.T) {
 	for _, badRange := range []bool{false, true} {
 		t.Run(fmt.Sprint(badRange), func(t *testing.T) {

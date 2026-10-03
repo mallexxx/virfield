@@ -11,14 +11,16 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/mallexxx/virfield/internal/domain"
 )
 
 type Client struct {
-	base, token string
-	http        *http.Client
+	base  string
+	token atomic.Value
+	http  *http.Client
 }
 
 func New(base, token string) (*Client, error) {
@@ -34,9 +36,18 @@ func New(base, token string) (*Client, error) {
 	if token == "" {
 		return nil, fmt.Errorf("API token is required")
 	}
-	return &Client{base: strings.TrimRight(base, "/"), token: token, http: &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}}, nil
+	c := &Client{base: strings.TrimRight(base, "/"), http: &http.Client{CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}}
+	c.token.Store(token)
+	return c, nil
 }
+func (c *Client) SetToken(token string) { c.token.Store(token) }
 func (c *Client) Do(ctx context.Context, method, path string, body any, key string) (json.RawMessage, error) {
+	budget := 10 * time.Second
+	if path == "registry/resolve" {
+		budget = 70 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(ctx, budget)
+	defer cancel()
 	var r io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
@@ -49,7 +60,7 @@ func (c *Client) Do(ctx context.Context, method, path string, body any, key stri
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Authorization", "Bearer "+c.token.Load().(string))
 	req.Header.Set("Content-Type", "application/json")
 	if key != "" {
 		req.Header.Set("Idempotency-Key", key)

@@ -2,6 +2,8 @@ package control
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"testing"
@@ -47,7 +49,8 @@ func TestBackupUsesConfiguredExternalPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, want := range map[string]string{"config.json": "configured settings", "token": "configured secret"} {
+	digest := sha256.Sum256([]byte("configured secret"))
+	for name, want := range map[string]string{"config.json": "configured settings", "token.sha256": hex.EncodeToString(digest[:]) + "\n"} {
 		path := filepath.Join(dir, "backups", id, name)
 		got, err := os.ReadFile(path)
 		if err != nil || string(got) != want {
@@ -57,5 +60,8 @@ func TestBackupUsesConfiguredExternalPaths(t *testing.T) {
 		if err != nil || info.Mode().Perm() != 0600 {
 			t.Fatal("backup secret permissions", err)
 		}
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "backups", id, "token")); !os.IsNotExist(err) {
+		t.Fatal("raw owner token was copied into backup")
 	}
 }

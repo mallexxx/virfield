@@ -60,6 +60,13 @@ func (e *Engine) pullRegistry(ctx context.Context, l domain.Lease, ref domain.Re
 	if err != nil {
 		return err
 	}
+	current, err := e.Registry.Resolve(ctx, domain.RegistryResolveRequest{Source: ref.Source, Repository: ref.Repository, Tag: ref.Tag})
+	if err != nil {
+		return err
+	}
+	if current.Digest != ref.Digest {
+		return domain.Err("registry_digest_mismatch", "Registry tag changed after image request; refusing to download a different manifest")
+	}
 	token, err := registry.Credentials(source)
 	if err != nil {
 		return err

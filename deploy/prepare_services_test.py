@@ -23,6 +23,10 @@ class DeploymentTests(unittest.TestCase):
             path = self.root / 'bin' / name
             path.write_text('#!/bin/sh\nexit 0\n')
             path.chmod(0o700)
+        browser = self.root / 'bin' / 'VirfieldAppleBrowser.app' / 'Contents' / 'MacOS' / 'VirfieldAppleBrowser'
+        browser.parent.mkdir(parents=True)
+        browser.write_text('#!/bin/sh\nexit 0\n')
+        browser.chmod(0o700)
         (self.root / 'token').write_text('fixture-token-never-published')
         (self.root / 'token').chmod(0o600)
         self.config = dict(state_dir=str(self.root), token_file=str(self.root / 'token'),
@@ -45,6 +49,9 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(manager['GroupName'], 'vm-group')
         self.assertEqual(manager['EnvironmentVariables']['HOME'], '/srv/VM Owner')
         self.assertEqual(manager['ProgramArguments'][-1], str(self.root / 'config.json'))
+        self.assertIn('-config', lume['ProgramArguments'])
+        self.assertIn(str(self.root / 'config.json'), lume['ProgramArguments'])
+        self.assertNotIn('-binary', lume['ProgramArguments'])
         self.assertEqual(lume['ProgramArguments'][-2:], ['-port', '18777'])
         self.assertEqual(mcp['args'][:2], ['-url', 'http://127.0.0.1:18780'])
         self.assertNotIn(b'fixture-token', b''.join(result.values()))

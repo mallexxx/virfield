@@ -77,7 +77,7 @@ func TestRegistrySettingsDoNotInheritHostRegistryOrStorage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`defaultLocationName: "custom"`, `registry: "ghcr.io"`, `organization: "trycua"`, `telemetryEnabled: false`, filepath.Join(dir, "VM storage")} {
+	for _, want := range []string{`defaultLocationName: "custom"`, `registry: "ghcr.io"`, `organization: "trycua"`, `telemetryEnabled: false`, `cachingEnabled: false`, filepath.Join(dir, "VM storage")} {
 		if !strings.Contains(string(b), want) {
 			t.Fatal("missing isolated setting", want)
 		}

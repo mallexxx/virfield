@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -21,6 +22,21 @@ type Client struct {
 	base string
 	http *http.Client
 }
+
+type SharedDirectory string
+
+type StartOptions struct {
+	SharedDirectories []SharedDirectory
+}
+
+// RejectedMutation means Lume returned a validation/not-found response, so
+// the requested mutation was not accepted. Transport failures remain ambiguous.
+type RejectedMutation struct{ Status int }
+
+func (e *RejectedMutation) Error() string {
+	return fmt.Sprintf("Lume rejected mutation with HTTP %d", e.Status)
+}
+func (e *RejectedMutation) Definitive() bool { return true }
 
 func New(base string) (*Client, error) {
 	u, err := url.Parse(base)
@@ -56,6 +72,9 @@ func (c *Client) request(ctx context.Context, method, path string, body any, res
 	defer resp.Body.Close()
 	// Do not copy upstream bodies into events: they may contain credentials/paths.
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusUnprocessableEntity {
+			return &RejectedMutation{Status: resp.StatusCode}
+		}
 		return fmt.Errorf("lume %s returned HTTP %d", method, resp.StatusCode)
 	}
 	b, err := io.ReadAll(io.LimitReader(resp.Body, 4*1024*1024+1))
@@ -124,7 +143,28 @@ func (c *Client) Clone(ctx context.Context, t domain.Template, l domain.Lease) e
 	return c.request(ctx, "POST", "/lume/vms/clone", map[string]string{"name": t.Name, "newName": l.VMName, "sourceLocation": t.Location, "destLocation": l.Location}, nil)
 }
 func (c *Client) Start(ctx context.Context, l domain.Lease) error {
-	return c.request(ctx, "POST", "/lume/vms/"+url.PathEscape(l.VMName)+"/run", map[string]any{"noDisplay": true, "storage": l.Location}, nil)
+	return c.StartWithOptions(ctx, l, StartOptions{})
+}
+func (c *Client) StartWithOptions(ctx context.Context, l domain.Lease, opts StartOptions) error {
+	for _, dir := range opts.SharedDirectories {
+		if !filepath.IsAbs(string(dir)) {
+			return domain.Err("invalid_profile", "shared VM directory must be an absolute host path")
+		}
+	}
+	body := struct {
+		NoDisplay              bool              `json:"noDisplay"`
+		NoDisplayVapor         bool              `json:"no_display"`
+		Storage                string            `json:"storage"`
+		SharedDirectories      []SharedDirectory `json:"sharedDirectories,omitempty"`
+		SharedDirectoriesVapor []SharedDirectory `json:"shared_directories,omitempty"`
+	}{
+		NoDisplay:              true,
+		NoDisplayVapor:         true,
+		Storage:                l.Location,
+		SharedDirectories:      opts.SharedDirectories,
+		SharedDirectoriesVapor: opts.SharedDirectories,
+	}
+	return c.request(ctx, "POST", "/lume/vms/"+url.PathEscape(l.VMName)+"/run", body, nil)
 }
 func (c *Client) Stop(ctx context.Context, l domain.Lease) error {
 	return c.request(ctx, "POST", "/lume/vms/"+url.PathEscape(l.VMName)+"/stop", map[string]string{"storage": l.Location}, nil)

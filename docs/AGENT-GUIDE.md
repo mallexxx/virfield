@@ -25,8 +25,11 @@ Virfield builds golden images and leases disposable VMs. It does not execute
 arbitrary shell commands through MCP. Run work over pinned SSH from your agent's
 shell/Runner. Without a shell or an SSH-capable Runner, report that limitation;
 MCP alone cannot upload a repository, run a build, or retrieve artifacts.
-Balda/Broker/Runner integration is not supplied by Virfield. All clients share
-the same host capacity and owner API, not separate pools or tenant identities.
+Balda reaches image catalog/build/job/Apple-link actions through the Execution
+Broker MCP tools `virfield_image_catalog`, `virfield_image_create`,
+`virfield_image_build`, `virfield_image_job` and `virfield_image_apple_auth`.
+It does not call Virfield directly. The same host capacity is shared with
+Broker worker leases; separate tenant identities are still a release gap.
 
 ## Tool reference
 
@@ -40,7 +43,7 @@ letters, digits, `_`, `.` or `-`. `ID` placeholders below are not interchangeabl
 | --- | --- | --- |
 | `virfield_help` | `{"topic":"workflows"}`; topic optional | Read the requested embedded runbook |
 | `virfield_status` | `{}` | Inventory, freshness/error, capacity, leases, active jobs, templates |
-| `image_catalog` | `{}` | Restore releases and stable Xcode versions/minimum macOS |
+| `image_catalog` | `{}` | Restore releases and stable Xcode versions/minimum macOS; each Xcode has `local_state` (`available`, `downloaded`, `installed`) and ready `installed_images` |
 | `image_create` | `{"id":"NEW_TEMPLATE_ID","macos":"VERSION_OR_BUILD_OR_CODENAME","xcode":"EXACT_VERSION","security":"automation","location":"home","idempotency_key":"NEW_KEY"}` | Durable operation; `xcode`, `security`, `location` optional; poll `job.id` |
 | `registry_sources` | `{}` | Configured GHCR namespaces, authentication availability and publish permission; no credentials |
 | `registry_resolve` | `{"source":"SOURCE_ID","repository":"PACKAGE","tag":"TAG"}` | Verified Lume manifest digest and compressed size; no VM mutation |
@@ -49,6 +52,7 @@ letters, digits, `_`, `.` or `-`. `ID` placeholders below are not interchangeabl
 | `image_build` | `{"id":"TEMPLATE_ID","idempotency_key":"NEW_KEY"}` | Build an absent VM from its registered profile; poll `job.id` |
 | `vm_acquire` | `{"template":"TEMPLATE_ID","ttl_seconds":3600,"ssh_public_key":"ssh-ed25519 PUBLIC_KEY","idempotency_key":"NEW_KEY"}` | Durable operation; save `lease.id` and `job.id` |
 | `virfield_job` | `{"id":"JOB_ID"}` | Job state, phase, progress, deadline and error |
+| `image_apple_auth` | `{"id":"JOB_ID"}` | For `apple_auth_required`, issue a 15-minute local launcher link for Apple's website and that exact job; send it privately to the user on the Virfield Mac |
 | `vm_lease` | `{"id":"LEASE_OR_IMAGE_RECORD_ID"}` | Durable record; a ready worker includes `ip`, `ssh`, `expires_at` |
 | `virfield_events` | `{"after":0,"lease_id":"LEASE_OR_IMAGE_RECORD_ID"}`; both optional | Ordered events and `next_cursor`; persist cursor after processing |
 | `vm_renew` | `{"id":"LEASE_ID","expires_at":"ABSOLUTE_RFC3339_TIMESTAMP"}` | Updated lease; deadline must be in the future, at most 24 hours ahead |
@@ -82,10 +86,10 @@ Never substitute a VM name for a lease ID or an image-record ID for a template I
    does not prove cloning or the requested workload works; report clone/workload
    results separately.
 
-Request example (selection syntax, **not a Monterey acceptance claim**):
+Request example (check that both versions appear in the current catalog):
 
 ```json
-{"id":"monterey-xcode1341","macos":"monterey","xcode":"13.4.1","security":"automation","idempotency_key":"monterey-xcode1341-build-001"}
+{"id":"sequoia-xcode162","macos":"15.2","xcode":"16.2","security":"automation","idempotency_key":"sequoia-xcode162-build-001"}
 ```
 
 Omit `xcode` for a base desktop. Omit `security` or use `default` to keep SIP and
@@ -96,12 +100,16 @@ Golden System/Data volumes must be unencrypted and unlocked; FileVault off alone
 is not enough. Read the current verification topic before treating Monterey or
 any other catalog release as production accepted.
 
-For `apple_auth_required`, the operator supplies the official exact
-`Xcode_VERSION.xip` in configured `image_tools.xcode_archives`, or refreshes the
-private Apple download cookie file. Do not request Apple passwords, print cookies,
-or place credentials in tool arguments. Agent-provided host paths/download URLs
-are not accepted. Operator recovery resumes the failed durable job; creating a
-second image with a new name/key does not repair the first one.
+For `apple_auth_required`, call `image_apple_auth` with the failed `job.id` and
+send its `url` privately to the user on the same Mac as Virfield. The local
+page launches the native Apple browser; credentials and 2FA are entered on
+`developer.apple.com`, not on the Virfield page. Do not ask for or relay
+those values through Mattermost, MCP, job arguments or logs. The link expires in
+15 minutes; a new call revokes the old link. Successful sign-in stores only a
+private Apple download session and automatically retries the exact job's download
+stage. Poll `virfield_job` until it succeeds or reports another error. The user
+must open a new link after a daemon restart. A selected Xcode version may still
+fail Apple authorization or host compatibility; do not substitute another version.
 
 ## Import and publish through GHCR
 
@@ -246,7 +254,7 @@ make guest commands idempotent.
 | `unknown_template`, `template_unavailable`, `ssh_profile_missing` | Check IDs, profile and matching verified build; use catalog/image workflow if absent |
 | `image_in_use`, `operation_in_progress` | Inspect current jobs; do not start a competing image operation |
 | `idempotency_conflict`, `ssh_key_in_use` | Correct request tracking/key ownership; do not silently create a duplicate |
-| `apple_auth_required` | Operator imports exact Apple-signed archive or renews private authorization, then inspects/retries the failed stage |
+| `apple_auth_required` | Call `image_apple_auth`, send the local link privately, then poll the same job after the user signs in |
 | `registry_bootstrap_failed` | Import requires native `lume`/`lume` SSH access; retain the failed job and use a compatible portable source. Do not overwrite its account offline. |
 | `disk_encrypted`, `disk_locked`, `disk_policy_unknown` | Golden cannot be published; report disk verification failure without bypassing it |
 | `unsupported_policy`, setup/recovery/security verification failure | Read image runbook and private diagnostics; no guessed key presses or unsupported OS substitutions |

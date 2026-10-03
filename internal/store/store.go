@@ -17,9 +17,17 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-type Store struct{ db *sql.DB }
+type Store struct {
+	db   *sql.DB
+	path string
+}
 
 func Open(path string) (*Store, error) {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+	path = absolute
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return nil, err
 	}
@@ -39,7 +47,7 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
-	s := &Store{db: db}
+	s := &Store{db: db, path: path}
 	if err := s.migrate(); err != nil {
 		db.Close()
 		return nil, err
@@ -52,20 +60,25 @@ func (s *Store) migrate() error {
 	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
 		return err
 	}
-	if version > 6 {
+	if version > 7 {
 		return fmt.Errorf("database schema %d is newer than this binary", version)
 	}
-	if version == 6 {
+	if version == 7 {
 		return nil
 	}
-	if version == 5 {
-		_, err := s.db.Exec(`PRAGMA user_version=6`)
+	if version > 0 {
+		if err := s.snapshotBeforeMigration(version); err != nil {
+			return fmt.Errorf("pre-migration backup failed: %w", err)
+		}
+	}
+	if version == 5 || version == 6 {
+		_, err := s.db.Exec(`BEGIN IMMEDIATE; CREATE INDEX IF NOT EXISTS jobs_lease ON jobs(lease_id); CREATE INDEX IF NOT EXISTS events_at ON events(at); PRAGMA user_version=7; COMMIT;`)
 		return err
 	}
 	if version >= 1 && version <= 4 {
 		// Version 5 persists catalog templates and Xcode manifests. Older
 		// executors must not silently ignore the new provisioning requirements.
-		_, err := s.db.Exec(`BEGIN IMMEDIATE; CREATE TABLE templates (id TEXT PRIMARY KEY, body TEXT NOT NULL); PRAGMA user_version=6; COMMIT;`)
+		_, err := s.db.Exec(`BEGIN IMMEDIATE; CREATE TABLE templates (id TEXT PRIMARY KEY, body TEXT NOT NULL); CREATE INDEX IF NOT EXISTS jobs_lease ON jobs(lease_id); CREATE INDEX IF NOT EXISTS events_at ON events(at); PRAGMA user_version=7; COMMIT;`)
 		return err
 	}
 	_, err := s.db.Exec(`BEGIN IMMEDIATE;
@@ -74,9 +87,11 @@ func (s *Store) migrate() error {
  CREATE TABLE requests (key TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, lease_id TEXT NOT NULL REFERENCES leases(id), job_id TEXT NOT NULL REFERENCES jobs(id));
  CREATE TABLE events (id INTEGER PRIMARY KEY AUTOINCREMENT, lease_id TEXT NOT NULL REFERENCES leases(id), job_id TEXT NOT NULL, type TEXT NOT NULL, message TEXT NOT NULL, at TEXT NOT NULL);
  CREATE INDEX events_lease ON events(lease_id,id);
+ CREATE INDEX events_at ON events(at);
  CREATE INDEX jobs_state ON jobs(state);
+ CREATE INDEX jobs_lease ON jobs(lease_id);
  CREATE TABLE templates (id TEXT PRIMARY KEY, body TEXT NOT NULL);
- PRAGMA user_version=6;
+ PRAGMA user_version=7;
  COMMIT;`)
 	return err
 }
@@ -145,6 +160,21 @@ func (s *Store) Job(ctx context.Context, id string) (domain.Job, error) {
 	}
 	err = json.Unmarshal([]byte(b), &j)
 	return j, err
+}
+func (s *Store) CleanupJob(ctx context.Context, leaseID string) (*domain.Job, error) {
+	var body string
+	err := s.db.QueryRowContext(ctx, `SELECT body FROM jobs WHERE lease_id=? AND json_extract(body,'$.kind')='cleanup' ORDER BY rowid DESC LIMIT 1`, leaseID).Scan(&body)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var j domain.Job
+	if err := json.Unmarshal([]byte(body), &j); err != nil {
+		return nil, err
+	}
+	return &j, nil
 }
 func (s *Store) Replay(ctx context.Context, key, fp string) (*domain.Operation, error) {
 	var actual, lid, jid string

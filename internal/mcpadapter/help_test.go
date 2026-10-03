@@ -2,6 +2,7 @@ package mcpadapter
 
 import (
 	"context"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -92,6 +93,24 @@ func TestHelpDiscoveryWithoutDaemonAndDocumentationCoverage(t *testing.T) {
 		}
 		if tool.Name == "virfield_help" && (tool.Annotations == nil || !tool.Annotations.ReadOnlyHint) {
 			t.Error("help not marked read-only")
+		}
+	}
+	operations, err := docs.Files.ReadFile("OPERATIONS.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	parts := strings.SplitN(string(operations), "Tools: ", 2)
+	if len(parts) != 2 {
+		t.Fatal("operations tool list missing")
+	}
+	toolList := strings.SplitN(parts[1], "\nUse `image_create`", 2)[0]
+	listedNames := regexp.MustCompile("`[a-z_]+`").FindAllString(toolList, -1)
+	if len(listedNames) != len(listed.Tools) {
+		t.Fatalf("operations lists %d tools, server exposes %d", len(listedNames), len(listed.Tools))
+	}
+	for _, tool := range listed.Tools {
+		if !strings.Contains(toolList, "`"+tool.Name+"`") {
+			t.Errorf("operations omitted tool %s", tool.Name)
 		}
 	}
 	for _, topic := range []string{"../OPERATIONS.md", "/etc/passwd", "unknown"} {

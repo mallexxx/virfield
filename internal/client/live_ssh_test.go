@@ -17,7 +17,7 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// TestLiveLeaseSSH creates and deletes ONLY two disposable leases using the API.
+// TestLiveLeaseSSH creates and deletes one or two disposable leases using the API.
 // Guest probes are fixed commands; UI-test probes write only disposable guest
 // artifacts. The golden image is preserved.
 func TestLiveLeaseSSH(t *testing.T) {
@@ -62,6 +62,10 @@ func TestLiveLeaseSSH(t *testing.T) {
 	}
 	if profile == nil {
 		t.Fatal("requires a registered image recipe")
+	}
+	cloneCount := 2
+	if os.Getenv("VIRFIELD_LIVE_CLONE_COUNT") == "1" {
+		cloneCount = 1
 	}
 	type owned struct {
 		op      domain.Operation
@@ -143,7 +147,7 @@ func TestLiveLeaseSSH(t *testing.T) {
 		identityDirs[ssh.FingerprintSHA256(signer.PublicKey())] = dir
 		return signer, domain.AcquireRequest{Template: os.Getenv("VIRFIELD_LIVE_TEMPLATE_ID"), TTLSeconds: 900, SSHPublicKey: string(ssh.MarshalAuthorizedKey(signer.PublicKey()))}
 	}
-	for range 2 {
+	for range cloneCount {
 		signer, r := fresh()
 		key := domain.NewID("live-ssh-")
 		b, err := c.Do(ctx, "POST", "leases", r, key)
@@ -157,13 +161,15 @@ func TestLiveLeaseSSH(t *testing.T) {
 		leases = append(leases, owned{op: op, signer: signer, request: r, key: key})
 		t.Log("accepted", op.Lease.ID)
 	}
-	_, r := fresh()
-	_, err = c.Do(ctx, "POST", "leases", r, domain.NewID("live-ssh-third-"))
-	var failure *domain.Error
-	if !errors.As(err, &failure) || failure.Code != "capacity_exhausted" {
-		t.Fatal("third lease did not report capacity_exhausted", err)
+	if cloneCount == 2 {
+		_, r := fresh()
+		_, err = c.Do(ctx, "POST", "leases", r, domain.NewID("live-ssh-third-"))
+		var failure *domain.Error
+		if !errors.As(err, &failure) || failure.Code != "capacity_exhausted" {
+			t.Fatal("third lease did not report capacity_exhausted", err)
+		}
+		t.Log(failure.Message)
 	}
-	t.Log(failure.Message)
 	for i := range leases {
 		l := &leases[i]
 		if err := wait(ctx, l.op.Job.ID); err != nil {
@@ -186,7 +192,7 @@ func TestLiveLeaseSSH(t *testing.T) {
 	}
 	// Optional operator-controlled hard restart: the harness never kills an external process.
 	if marker := os.Getenv("VIRFIELD_LIVE_RESTART_MARKER"); marker != "" {
-		if err := os.WriteFile(marker, []byte("two leases ready\n"), 0600); err != nil {
+		if err := os.WriteFile(marker, []byte("leases ready\n"), 0600); err != nil {
 			t.Fatal(err)
 		}
 		t.Log("ready for daemon restart; awaiting operator resume marker")
@@ -213,7 +219,7 @@ func TestLiveLeaseSSH(t *testing.T) {
 		}
 		t.Log("daemon restart preserved ready leases and host pins")
 	}
-	if leases[0].ready.SSH.HostKey == leases[1].ready.SSH.HostKey {
+	if cloneCount == 2 && leases[0].ready.SSH.HostKey == leases[1].ready.SSH.HostKey {
 		t.Fatal("clones share host identity")
 	}
 	dialAt := func(l domain.Lease, signer ssh.Signer, address string) (*ssh.Client, error) {
@@ -305,6 +311,24 @@ printf "automation-security-ok\\n"
 				t.Fatal("cloned automation security failed", err, string(out))
 			}
 		}
+		if profile.Provision == "developer-v1" {
+			if profile.Xcode == nil {
+				g.Close()
+				t.Fatal("developer profile has no pinned Xcode")
+			}
+			s, err = g.NewSession()
+			if err != nil {
+				g.Close()
+				t.Fatal(err)
+			}
+			out, err = s.CombinedOutput("set -eu; /usr/bin/xcodebuild -version; /usr/bin/xcrun swift -e 'print(\"virfield-clone-swift-ok\")'")
+			s.Close()
+			if err != nil || !strings.Contains(string(out), "Xcode "+profile.Xcode.Version+"\nBuild version "+profile.Xcode.Build+"\n") || !strings.Contains(string(out), "virfield-clone-swift-ok") {
+				g.Close()
+				t.Fatal("cloned Xcode version/build or Swift execution failed", err, string(out))
+			}
+			t.Log("cloned exact Xcode version/build and Swift execution passed", l.ready.ID)
+		}
 		if fullProfile {
 			s, err = g.NewSession()
 			if err != nil {
@@ -346,7 +370,9 @@ printf 'virfield-ui-profile-ok\n'
 			t.Fatal("tunneled SSH authentication failed", err)
 		}
 		tunneled.Close()
-		deny(l.ready, leases[1-i].signer)
+		if cloneCount == 2 {
+			deny(l.ready, leases[1-i].signer)
+		}
 		source, err := guestssh.LoadCredentials(filepath.Join(os.Getenv("VIRFIELD_LIVE_STATE_DIR"), "images", l.ready.ImageID, "credentials.json"))
 		if err != nil {
 			t.Fatal(err)
@@ -392,7 +418,7 @@ printf 'virfield-ui-profile-ok\n'
 			t.Fatal("exported artifact mismatch", err)
 		}
 		t.Log("exact version, unencrypted boot volumes and SCP artifact export passed", l.ready.ID)
-		t.Log("own key authenticated; other lease and image keys rejected", l.ready.ID)
+		t.Log("own key authenticated; image key rejected", l.ready.ID)
 	}
-	t.Log("PASS: two distinct authenticated host identities, cross-lease denial, image-key denial, Finder/SIP probes, capacity refusal and idempotency")
+	t.Log("PASS: exact guest version, disk policy, pinned SSH, Finder/SIP probes, workload, artifact export and cleanup")
 }

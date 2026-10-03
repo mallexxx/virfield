@@ -1,11 +1,13 @@
 """Build a clean macOS/arm64 release with source, dependency notices and checksums."""
 
 import argparse
+import gzip
 import hashlib
 import io
 import json
 import os
 from pathlib import Path
+import platform
 import re
 import shutil
 import subprocess
@@ -27,11 +29,32 @@ def json_stream(text):
         text = text.lstrip()[end:]
 
 
+def write_reproducible_archive(package, archive_path):
+    """Pack a tree without filesystem mtimes, owners or traversal-order drift."""
+    with archive_path.open('wb') as output:
+        with gzip.GzipFile(filename='', mode='wb', fileobj=output, mtime=0) as compressed:
+            with tarfile.open(fileobj=compressed, mode='w', format=tarfile.PAX_FORMAT) as archive:
+                for path in [package, *sorted(package.rglob('*'))]:
+                    name = str(path.relative_to(package.parent))
+                    info = archive.gettarinfo(str(path), arcname=name)
+                    info.uid = info.gid = 0
+                    info.uname = info.gname = ''
+                    info.mtime = 0
+                    info.mode = 0o755 if path.is_dir() or info.mode & 0o111 else 0o644
+                    if info.isfile():
+                        with path.open('rb') as content:
+                            archive.addfile(info, content)
+                    else:
+                        archive.addfile(info)
+
+
 def build(version, destination):
     if not re.fullmatch(r'v\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?', version):
         raise ValueError('Use a release version such as v2.0.0')
     if run('git', 'status', '--porcelain').strip():
         raise ValueError('Commit all changes before packaging')
+    if platform.system() != 'Darwin':
+        raise ValueError('The native Apple sign-in browser requires a macOS release builder')
     revision = run('git', 'rev-parse', 'HEAD', text=True).strip()
     tagged = subprocess.run(['git', 'rev-parse', '--verify', f'refs/tags/{version}^{{commit}}'], cwd=ROOT, capture_output=True, text=True)
     if tagged.returncode == 0 and tagged.stdout.strip() != revision:
@@ -53,7 +76,8 @@ def build(version, destination):
         subprocess.run(['go', 'build', '-trimpath', '-mod=readonly', '-ldflags',
                         f'-X github.com/mallexxx/virfield/internal/mcpadapter.Version={version.removeprefix("v")}',
                         '-o', str(package / 'bin') + '/', './cmd/...'],
-                       cwd=ROOT, env=environment, check=True)
+                       cwd=package, env=environment, check=True)
+        subprocess.run(['sh', 'deploy/build-apple-browser.sh'], cwd=package, check=True)
         notices = package / 'THIRD_PARTY_NOTICES'
         notices.mkdir()
         modules = {}
@@ -78,12 +102,11 @@ def build(version, destination):
         shutil.copyfile(goroot / 'LICENSE', notices / 'Go-LICENSE')
         manifest = {'version': version, 'commit': revision, 'target': 'darwin/arm64',
                     'go': run('go', 'version', text=True).strip(),
-                    'binaries': {file.name: hashlib.sha256(file.read_bytes()).hexdigest()
-                                 for file in sorted((package / 'bin').iterdir())},
+                    'binaries': {str(file.relative_to(package / 'bin')): hashlib.sha256(file.read_bytes()).hexdigest()
+                                 for file in sorted((package / 'bin').rglob('*')) if file.is_file()},
                     'modules': {p: m['Version'] for p, m in sorted(modules.items())}}
         (package / 'release.json').write_text(json.dumps(manifest, indent=2) + '\n')
-        with tarfile.open(archive_path, 'w:gz') as archive:
-            archive.add(package, arcname=name)
+        write_reproducible_archive(package, archive_path)
     checksum_path.write_text(f'{hashlib.sha256(archive_path.read_bytes()).hexdigest()}  {archive_path.name}\n')
     print(f'Created {archive_path} from {revision}; checksums: {checksum_path}')
 

@@ -60,8 +60,10 @@ supported; quote, backslash and line-break characters are rejected by this
 fixed YAML configuration boundary.
 
 Configure explicit `storage_paths` for every import location. Existing VM names
-and existing registry tags are refused. Import/export use the same exclusive
-maintenance reservation as golden builds; unrelated active VMs must finish first.
+and existing registry tags are refused. Import/export admission requires an idle
+pool. An accepted image job reserves its own VM slot; another verified image
+can lease the remaining slot. `/status.image_reservations` names each reserved
+image, job, start time and deadline. The deadline is a timeout, not an ETA.
 Sources are trusted software publishers: importing their disk can run their
 code inside a guest. Only Lume VM formats are supported, not arbitrary OCI/Tart
 packages. Current disk limit is 512 GiB; allow space for compressed cache and
@@ -82,6 +84,9 @@ source-disk contents or manual modifications. The uploaded image has public
 bootstrap credentials. For package retention or remote deletion use GitHub's
 operator tooling; Virfield never silently deletes remote packages/tags. New tag
 checks do not provide an atomic lock against unrelated GHCR writers.
+For catalog create/pull into a configured nondefault storage location, pass
+`-location LOCATION` before the command. `events` accepts `-lease-id ID`,
+`-tail` and `-limit N` (1–500) before the command.
 
 ## Prerequisites
 
@@ -99,7 +104,7 @@ initial image/download plus space for Xcode and clones; admission enforces the
 actual configured disk/CPU/RAM reserve. Two simultaneous 4-CPU/8-GiB guests need
 at least 12 logical host CPUs and 32 GiB RAM under the default 25% reserve.
 
-The release archive includes four prebuilt macOS/arm64 binaries, source, docs,
+The published v2.0.0 release archive includes four prebuilt macOS/arm64 binaries, source, docs,
 deployment tools, dependency license notices and a revision manifest. Verify its
 `SHA256SUMS` before extraction. These are Go/ad-hoc-signed binaries, not an Apple
 notarized installer. Lume, Python packages, Tesseract, Xcode and IPSW media are
@@ -116,6 +121,8 @@ installed separately; none are taken from the release author's machine.
    ./bin/virfield init "$VIRFIELD_HOME" macos27 macos-27-golden home
    mkdir -m 700 "$VIRFIELD_HOME/bin"
    install -m 755 bin/virfield bin/virfieldd bin/virfield-mcp bin/virfield-lume "$VIRFIELD_HOME/bin/"
+   cp -R bin/VirfieldAppleBrowser.app "$VIRFIELD_HOME/bin/"
+   /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$VIRFIELD_HOME/bin/VirfieldAppleBrowser.app"
    ```
 
 2. Prepare the pinned Lume and image dependencies using
@@ -123,6 +130,19 @@ installed separately; none are taken from the release author's machine.
    `config.json` with that document's image profile and absolute `image_tools`
    paths. `init` creates a skeleton, not a verified image. For the full UI-test
    profile, configure `provision: uitest-27-v1` and a compatible Xcode source.
+
+   `make build` also builds `VirfieldAppleBrowser.app`, a private WebKit window
+   that opens Apple's Developer website. Its URL scheme must be registered with
+   LaunchServices after installation. The browser passes only the scoped Apple
+   download session to `state_dir/apple-auth/cookies.txt` (mode 0600); Apple
+   Account credentials and 2FA are entered on Apple's site. The API remains
+   loopback-only: open the one-time link on the Virfield Mac and send it privately.
+   The API also returns `deep_link` for a direct native-app launch. Its `url`
+   field is a one-click HTTP fallback that redirects to the app without a launch
+   page; append `?manual=1` only if the browser blocks the redirect. The app
+   closes after a successful session or when its window is closed. Install the
+   app under `state_dir/bin`: it reads the adjacent `config.json` and refuses
+   deeplinks that point to a different loopback port.
 
 3. Generate the service and MCP files from the completed configuration, running
    as the VM owner without sudo:
@@ -151,6 +171,23 @@ per browser poll. A cold or failed observation blocks admission.
 
 ## System services
 
+Give Broker a separate token through the optional `principals` configuration:
+
+```json
+{"principals":[{"name":"execution-broker","token_file":"/absolute/private/broker-token","scopes":["lease:own","image:build"]}]}
+```
+
+Point Broker's Virfield worker `token_file` at that same private file. Its
+`lease:own` scope permits only leases it created, including `GET /api/v1/leases`
+for orphan discovery; an operator can filter that endpoint with `?owner=NAME`.
+`image:build` permits catalog,
+create/build, image-job reads and Apple-link issuance. Recovery, deletion,
+publication, backup, status and direct MCP remain operator-only. Existing
+unowned leases remain operator-only. Replace token files atomically and send
+`SIGHUP` to `virfieldd` to reload owner and principal tokens; a failed reload
+leaves the previous credentials active. The Broker plugin's image tools use this
+REST principal through its authenticated MCP connection.
+
 Use system LaunchDaemons running as the existing VM-owning user, never root.
 A GUI LaunchAgent can be denied guest SSH by macOS Local Network Privacy even
 when the same terminal command works. See Apple's
@@ -165,9 +202,12 @@ config/token permissions. Paths with spaces are preserved as individual argument
 It starts no services and never copies a token value into MCP configuration.
 
 Use absolute paths: launchd does not expand shell variables or `~`. The managed
-Lume endpoint is `http://127.0.0.1:PORT`; its wrapper requires explicit `-binary`
-and `-log` paths and accepts `-port`. Check both generated plists with
-`plutil -lint` before registration.
+Lume endpoint is `http://127.0.0.1:PORT`; its wrapper takes the stable
+`-config` path, reads `image_tools.lume` when launchd starts it, requires an
+explicit `-log` path and accepts `-port`. This keeps the root LaunchDaemon stable
+across Lume binary upgrades; update the private config or stable tool path and
+restart the service. Check both generated plists with `plutil -lint` before
+registration.
 
 For a **new installation only**, administrator authorization is required:
 
@@ -186,8 +226,13 @@ not establish fresh backend inventory.
 
 For an update, first obtain an idle healthy pool with no unresolved jobs and all
 VMs stopped. Back up the state, preserve the installed binaries/config, then
-install a clean committed build. Schema 6 records registry imports and portable-export jobs (schema 5 added catalog templates); older
-binaries refuse this database. Rollback requires the matching pre-upgrade backup,
+install a clean committed build. Schema 7 adds retention indexes; schema 6
+records registry imports and portable-export jobs (schema 5 added catalog
+templates). The manager creates and checks a private SQLite snapshot in
+`migration-backups/` before changing an existing database. The migration fails
+closed if that snapshot cannot be written or verified. Ensure enough free disk
+for a full extra database copy. Older binaries refuse schema 7. Rollback
+requires the matching pre-upgrade backup,
 not merely replacing the executable. Restart the exact manager job; restart Lume
 only if its binary or service configuration changed. Never unload or kill Lume
 while a VM is active. Verify both services, fresh inventory and MCP before
@@ -247,7 +292,8 @@ Its topics `workflows`, `images`, `operations`, and `verification` also exist as
 MCP resources at `virfield://docs/TOPIC`. No checkout or Obsidian is required.
 
 Tools: `virfield_help`, `virfield_status`, `vm_acquire`, `vm_lease`, `vm_release`, `vm_renew`,
-`virfield_job`, `virfield_events`, `image_catalog`, `image_create`, `image_build`,
+`virfield_job`, `virfield_events`, `image_catalog`, `image_create`, `image_apple_auth`,
+`image_build`, `image_pull`, `image_publish`, `registry_sources`, `registry_resolve`,
 `vm_tunnel`, `vm_tunnel_close`.
 Use `image_create` to select versions instead of restricting an agent to configured
 templates; see [version selection and Apple authentication](IMAGE-PIPELINE.md#choose-macos-and-xcode-versions).
@@ -256,8 +302,9 @@ HTTP MCP is served at `/mcp` and requires the same owner bearer token.
 The daemon binds only to loopback. Broker/container access needs an explicit
 TLS reverse proxy, network policy and tested routing to guest SSH or a tunnel.
 The client rejects remote cleartext HTTP and credential-bearing redirects.
-Per-principal credentials and the Balda/Broker/Runner integration are not yet
-implemented; see [verification limits](VERIFICATION.md#not-yet-accepted).
+Scoped principals and Broker image tools are implemented in the source, but
+container ingress and the full Balda workflow still need live acceptance; see
+[verification limits](VERIFICATION.md#not-yet-accepted).
 
 ### Register Codex and Claude Code
 
@@ -319,6 +366,13 @@ the reservation and restore that service separately. Image recovery has its own
 
 ## Quotas and backups
 
+Portable GHCR images contain a known `lume/lume` guest account with password SSH
+and passwordless sudo. Automation images may also have SIP, Gatekeeper and AMFI
+disabled. Treat each image as a privileged machine snapshot: keep its registry
+package private and restrict pull access. The isolated per-lease SSH identity is
+installed only when Virfield clones the image; it does not change the published
+base image's credentials.
+
 `resource_limits` configures CPU, RAM and host disk reserve; `storage_paths` maps
 Lume location names to absolute directories. Defaults leave 25% of CPU/RAM and
 20 GiB disk free. Admission includes external VMs and reservations. Unknown
@@ -326,11 +380,21 @@ resources block admission. Sparse/APFS clone disks still reserve full potential
 growth, not just their current allocated blocks.
 
 `backup` requires an idle healthy pool and no unresolved jobs. It snapshots
-SQLite, the actual configured config/token files and active image identities to
-an owner-only directory in `backups/`; five completed snapshots are retained.
+SQLite, the configured settings, a SHA-256 fingerprint of the owner token, and
+active image identities to an owner-only directory in `backups/`; five completed
+snapshots are retained. The raw owner token is never copied into a backup.
 **VM disks and the IPSW cache are not included.** Back them up separately.
 
+The manager prunes journal history at startup and every 24 hours. It removes
+released leases last updated more than 30 days ago, their completed jobs and
+idempotency requests, and events older than 30 days. An unfinished job keeps its
+lease, jobs and request keys. Active leases, their jobs and request keys remain
+until release. Reusing an expired idempotency key after pruning starts a new
+request. Migration snapshots are kept in `migration-backups/` for operator
+rollback; this policy does not delete them or media caches.
+
 To restore, stop the manager, preserve current state and copy a complete snapshot
-into a new private directory. Adjust `state_dir` and `token_file`, verify the
+into a new private directory. Generate a new owner token, adjust `state_dir` and
+`token_file`, reconfigure clients with that new token, and verify the
 corresponding stopped Lume disks still exist and start exactly one manager.
 Never restore older credentials against a VM whose SSH identity has since changed.

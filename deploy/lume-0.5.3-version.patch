@@ -1,0 +1,10 @@
+--- a/src/Main.swift
++++ b/src/Main.swift
+@@ -19,7 +19,7 @@
+ // MARK: - Version Management
+ extension Lume {
+     enum Version {
+-        static let current: String = "0.5.3" // x-release-please-version
++        static let current: String = "0.5.3-virfield6" // Virfield patch set; never present in stock Lume
+     }
+ }

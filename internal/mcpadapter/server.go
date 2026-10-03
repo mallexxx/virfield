@@ -5,10 +5,12 @@ package mcpadapter
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/url"
 	"strconv"
 
 	"github.com/mallexxx/virfield/internal/client"
+	"github.com/mallexxx/virfield/internal/domain"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -19,8 +21,8 @@ type empty struct{}
 type createImageArgs struct {
 	Security string `json:"security,omitempty" jsonschema:"Guest policy: default keeps protections; sip-disabled disables SIP; automation also configures Gatekeeper, AMFI and Terminal/SSH TCC grants. Applied only inside the VM and verified after reboot."`
 	ID       string `json:"id" jsonschema:"New golden image ID and VM name"`
-	MacOS    string `json:"macos" jsonschema:"macOS exact version, build or codename such as monterey; inspect image_catalog first"`
-	Xcode    string `json:"xcode,omitempty" jsonschema:"Optional exact stable Xcode version, such as 13.4.1"`
+	MacOS    string `json:"macos" jsonschema:"macOS exact version, build or codename such as sequoia; inspect image_catalog first"`
+	Xcode    string `json:"xcode,omitempty" jsonschema:"Optional exact stable Xcode version, such as 16.2"`
 	Location string `json:"location,omitempty" jsonschema:"Operator-configured storage name; default home"`
 	Key      string `json:"idempotency_key"`
 }
@@ -48,18 +50,24 @@ type eventsArgs struct {
 
 func result(b json.RawMessage, err error) (*mcp.CallToolResult, any, error) {
 	if err != nil {
+		var fault *domain.Error
+		if errors.As(err, &fault) {
+			body, _ := json.Marshal(map[string]any{"error": fault})
+			return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: string(body)}}, StructuredContent: json.RawMessage(body)}, nil, nil
+		}
 		return nil, nil, err
 	}
-	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(b)}}}, nil, nil
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(b)}}, StructuredContent: json.RawMessage(b)}, nil, nil
 }
 func New(c *client.Client) *mcp.Server {
 	s := mcp.NewServer(&mcp.Implementation{Name: "virfield", Version: Version}, &mcp.ServerOptions{Instructions: instructions})
+	additive := false
 	addHelp(s)
 	addRegistryTools(s, c)
 	mcp.AddTool(s, &mcp.Tool{Name: "virfield_status", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}, Description: "Show Lume health, VM slot usage, active leases and durable jobs"}, func(ctx context.Context, _ *mcp.CallToolRequest, _ empty) (*mcp.CallToolResult, any, error) {
 		return result(c.Do(ctx, "GET", "status", nil, ""))
 	})
-	mcp.AddTool(s, &mcp.Tool{Name: "vm_acquire", Annotations: &mcp.ToolAnnotations{IdempotentHint: true}, Description: "Reserve one of at most two VM slots and asynchronously clone/start a verified golden image. Use image_create if the desired macOS/Xcode is not in templates. Supply a fresh per-lease Ed25519 public key; keep its private key local. Use the SAME idempotency key on retries. Returns capacity_exhausted when full."}, func(ctx context.Context, _ *mcp.CallToolRequest, a acquireArgs) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(s, &mcp.Tool{Name: "vm_acquire", Annotations: &mcp.ToolAnnotations{IdempotentHint: true, DestructiveHint: &additive}, Description: "Reserve one of at most two VM slots and asynchronously clone/start a verified golden image. Use image_create if the desired macOS/Xcode is not in templates. Supply a fresh per-lease Ed25519 public key; keep its private key local. Use the SAME idempotency key on retries. Returns capacity_exhausted when full."}, func(ctx context.Context, _ *mcp.CallToolRequest, a acquireArgs) (*mcp.CallToolResult, any, error) {
 		return result(c.Do(ctx, "POST", "leases", map[string]any{"template": a.Template, "ttl_seconds": a.TTLSeconds, "ssh_public_key": a.SSHPublicKey}, a.Key))
 	})
 	mcp.AddTool(s, &mcp.Tool{Name: "vm_lease", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}, Description: "Read a durable lease, readiness and error"}, func(ctx context.Context, _ *mcp.CallToolRequest, a idArgs) (*mcp.CallToolResult, any, error) {
@@ -74,16 +82,19 @@ func New(c *client.Client) *mcp.Server {
 	mcp.AddTool(s, &mcp.Tool{Name: "virfield_job", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}, Description: "Read a durable job and diagnostic state"}, func(ctx context.Context, _ *mcp.CallToolRequest, a idArgs) (*mcp.CallToolResult, any, error) {
 		return result(c.Do(ctx, "GET", "jobs/"+url.PathEscape(a.ID), nil, ""))
 	})
+	mcp.AddTool(s, &mcp.Tool{Name: "image_apple_auth", Description: "For an image job waiting with apple_auth_required, issue a 15-minute local link that opens Apple's Developer website in the native Virfield browser. Send the link privately to the human on the same Mac. Apple Account, password, 2FA and session never enter MCP. Successful sign-in automatically resumes the exact download job.", Annotations: &mcp.ToolAnnotations{IdempotentHint: false}}, func(ctx context.Context, _ *mcp.CallToolRequest, a idArgs) (*mcp.CallToolResult, any, error) {
+		return result(c.Do(ctx, "POST", "jobs/"+url.PathEscape(a.ID)+"/apple-auth", empty{}, ""))
+	})
 	mcp.AddTool(s, &mcp.Tool{Name: "virfield_events", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}, Description: "Read ordered durable events after a cursor; persist next_cursor after processing"}, func(ctx context.Context, _ *mcp.CallToolRequest, a eventsArgs) (*mcp.CallToolResult, any, error) {
 		return result(c.Do(ctx, "GET", "events?after="+strconv.FormatInt(a.After, 10)+"&lease_id="+url.QueryEscape(a.LeaseID), nil, ""))
 	})
-	mcp.AddTool(s, &mcp.Tool{Name: "image_catalog", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}, Description: "List downloadable Apple silicon macOS restore versions and stable Xcode releases with minimum macOS requirements. Not limited to existing templates. Xcode archives may require Apple Developer authentication configured by the host operator."}, func(ctx context.Context, _ *mcp.CallToolRequest, _ empty) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(s, &mcp.Tool{Name: "image_catalog", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}, Description: "List Apple silicon macOS restore versions and stable Xcode releases with minimum macOS and local_state: available, downloaded or installed. installed_images names verified ready golden templates. Metadata availability does not prove download authorization or VM acceptance."}, func(ctx context.Context, _ *mcp.CallToolRequest, _ empty) (*mcp.CallToolResult, any, error) {
 		return result(c.Do(ctx, "GET", "images/catalog", nil, ""))
 	})
-	mcp.AddTool(s, &mcp.Tool{Name: "image_create", Annotations: &mcp.ToolAnnotations{IdempotentHint: true}, Description: "Create and build a new golden image by macOS version/build/codename and optional exact Xcode version. Example: macos monterey, xcode 13.4.1. Resolves and pins official Apple downloads; persists the template across restart. Requires all leases released. Select security default, sip-disabled or automation. Omission keeps SIP enabled. No arbitrary host paths, no overwriting VMs. Poll virfield_job for progress and actionable download/authentication errors. Retry with the same idempotency key."}, func(ctx context.Context, _ *mcp.CallToolRequest, a createImageArgs) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(s, &mcp.Tool{Name: "image_create", Annotations: &mcp.ToolAnnotations{IdempotentHint: true, DestructiveHint: &additive}, Description: "Create and build a new golden image by macOS version/build/codename and optional exact Xcode version. Example: macos 15.2, xcode 16.2. Resolves and pins official Apple downloads; persists the template across restart. Requires one available VM slot. Select security default, sip-disabled or automation. Omission keeps SIP enabled. No arbitrary host paths, no overwriting VMs. Poll virfield_job for progress and actionable download/authentication errors. Retry with the same idempotency key."}, func(ctx context.Context, _ *mcp.CallToolRequest, a createImageArgs) (*mcp.CallToolResult, any, error) {
 		return result(c.Do(ctx, "POST", "images", map[string]string{"id": a.ID, "macos": a.MacOS, "xcode": a.Xcode, "location": a.Location, "security": a.Security}, a.Key))
 	})
-	mcp.AddTool(s, &mcp.Tool{Name: "image_build", Annotations: &mcp.ToolAnnotations{IdempotentHint: true}, Description: "Build an absent VM from an already registered pinned image profile. To choose macOS/Xcode versions, use image_create instead. Downloads and installs macOS, completes setup, applies the operator-configured guest SIP policy and verifies credentials. Requires no active leases. Never overwrites an existing VM. Use the same idempotency key on retries."}, func(ctx context.Context, _ *mcp.CallToolRequest, a releaseArgs) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(s, &mcp.Tool{Name: "image_build", Annotations: &mcp.ToolAnnotations{IdempotentHint: true, DestructiveHint: &additive}, Description: "Build an absent VM from an already registered pinned image profile. To choose macOS/Xcode versions, use image_create instead. Downloads and installs macOS, completes setup, applies the operator-configured guest SIP policy and verifies credentials. Requires one available VM slot. Never overwrites an existing VM. Use the same idempotency key on retries."}, func(ctx context.Context, _ *mcp.CallToolRequest, a releaseArgs) (*mcp.CallToolResult, any, error) {
 		return result(c.Do(ctx, "POST", "images/"+url.PathEscape(a.ID)+"/build", empty{}, a.Key))
 	})
 	mcp.AddTool(s, &mcp.Tool{Name: "vm_tunnel", Description: "Open or return an ephemeral loopback TCP tunnel to this ready lease's SSH port. SSH authentication and pinned host key remain mandatory. Reopen after daemon restart.", Annotations: &mcp.ToolAnnotations{IdempotentHint: true}}, func(ctx context.Context, _ *mcp.CallToolRequest, a idArgs) (*mcp.CallToolResult, any, error) {

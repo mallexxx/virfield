@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net"
+	"strconv"
 	"sync"
 	"time"
 
@@ -17,6 +18,7 @@ type tunnel struct {
 	listener    net.Listener
 	mu          sync.Mutex
 	connections map[net.Conn]bool
+	clients     int
 	lease       domain.Lease
 }
 
@@ -39,8 +41,12 @@ func (c *Controller) OpenTunnel(ctx context.Context, id string) (domain.Tunnel, 
 	if err := c.healthy(); err != nil {
 		return domain.Tunnel{}, err
 	}
-	if l.State != "ready" || l.SSH == nil || !l.ExpiresAt.After(c.now()) {
+	if l.State != "ready" || l.SSH == nil || l.SSH.Port < 1 || l.SSH.Port > 65535 || !l.ExpiresAt.After(c.now()) {
 		return domain.Tunnel{}, domain.Err("lease_unavailable", "SSH tunnel requires a ready unexpired lease")
+	}
+	vm, exists := c.vm(l)
+	if !exists || vm.State != "running" || vm.IP != l.IP {
+		return domain.Tunnel{}, domain.Err("lease_unavailable", "SSH tunnel requires a running VM at the lease address")
 	}
 	if c.tunnels == nil {
 		c.tunnels = map[string]*tunnel{}
@@ -73,7 +79,8 @@ func (c *Controller) reconcileTunnels(ls []domain.Lease) {
 	for id, t := range c.tunnels {
 		keep := false
 		for _, l := range ls {
-			if l.ID == id && l.State == "ready" && l.IP == t.lease.IP && l.ExpiresAt.After(c.now()) {
+			vm, exists := c.vm(l)
+			if l.ID == id && l.State == "ready" && l.IP == t.lease.IP && l.ExpiresAt.After(c.now()) && exists && vm.State == "running" && vm.IP == l.IP {
 				keep = true
 				break
 			}
@@ -99,16 +106,17 @@ func (t *tunnel) serve() {
 			return
 		}
 		t.mu.Lock()
-		if t.closed || len(t.connections) >= 32 {
+		if t.closed || t.clients >= 32 {
 			t.mu.Unlock()
 			in.Close()
 			continue
 		}
 		t.connections[in] = true
+		t.clients++
 		t.mu.Unlock()
 		go func() {
-			defer func() { in.Close(); t.mu.Lock(); delete(t.connections, in); t.mu.Unlock() }()
-			out, err := net.DialTimeout("tcp", net.JoinHostPort(t.lease.IP, "22"), 5*time.Second)
+			defer func() { in.Close(); t.mu.Lock(); delete(t.connections, in); t.clients--; t.mu.Unlock() }()
+			out, err := net.DialTimeout("tcp", net.JoinHostPort(t.lease.IP, strconv.Itoa(t.lease.SSH.Port)), 5*time.Second)
 			if err != nil {
 				return
 			}
@@ -121,9 +129,6 @@ func (t *tunnel) serve() {
 			t.connections[out] = true
 			t.mu.Unlock()
 			defer func() { t.mu.Lock(); delete(t.connections, out); t.mu.Unlock() }()
-			deadline := time.Now().Add(24 * time.Hour)
-			in.SetDeadline(deadline)
-			out.SetDeadline(deadline)
 			done := make(chan struct{})
 			go func() {
 				io.Copy(out, in)

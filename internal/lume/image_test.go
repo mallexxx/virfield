@@ -48,3 +48,19 @@ func TestPrivateProcessCancellationKillsOnlyOwnedGroup(t *testing.T) {
 		t.Fatal("owned descendant survived cancellation", err)
 	}
 }
+
+func TestImagePipelineRejectsStockLumeVersion(t *testing.T) {
+	for _, tc := range []struct {
+		version  string
+		accepted bool
+	}{{"0.5.3", false}, {"0.5.3-virfield6", true}} {
+		path := filepath.Join(t.TempDir(), "lume")
+		if err := os.WriteFile(path, []byte("#!/bin/sh\necho "+tc.version+"\n"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		err := VerifyImageVersion(context.Background(), path)
+		if (err == nil) != tc.accepted {
+			t.Fatal(tc.version, err)
+		}
+	}
+}

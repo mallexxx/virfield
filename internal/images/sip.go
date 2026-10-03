@@ -46,7 +46,12 @@ func (e *Engine) disableSIP(ctx context.Context, l domain.Lease) error {
 		return domain.Err("image_credentials_missing", "Recovery requires image-specific credentials established by the Assistant stage")
 	}
 	folder := filepath.Join(e.Dir, "images", l.ID, "recovery", time.Now().UTC().Format("20060102T150405.000000000Z"))
-	return e.Backend.Recovery(ctx, e.Tools.Lume, folder, l, func(ctx context.Context, endpoint string) error {
+	storageRoot, ok := e.StoragePaths[l.Location]
+	if !ok || !filepath.IsAbs(storageRoot) {
+		return domain.Err("invalid_profile", "Recovery requires an explicit VM storage path")
+	}
+	sessionPath := filepath.Join(storageRoot, l.VMName, "sessions.json")
+	return e.Backend.Recovery(ctx, e.Tools.Lume, folder, sessionPath, l, func(ctx context.Context, endpoint string) error {
 		input, _ := json.Marshal(map[string]string{"url": endpoint, "directory": folder, "tesseract": e.Tools.Tesseract, "admin_password": credentials.Password})
 		cmd := exec.CommandContext(ctx, e.Tools.Python, "-c", recoveryScript)
 		cmd.Stdin = bytes.NewReader(input)

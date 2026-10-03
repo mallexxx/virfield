@@ -22,8 +22,8 @@
 	<key>ProgramArguments</key>
 	<array>
 		<string>/ABSOLUTE/DEPLOYMENT/bin/virfield-lume</string>
-		<string>-binary</string>
-		<string>/ABSOLUTE/DEPLOYMENT/tools/lume/lume</string>
+		<string>-config</string>
+		<string>/ABSOLUTE/DEPLOYMENT/config.json</string>
 		<string>-log</string>
 		<string>/ABSOLUTE/DEPLOYMENT/lume.log</string>
 	</array>

@@ -56,7 +56,7 @@ func TestMCPProxiesToAPIAndPreservesIdempotency(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list.Tools) != 17 {
+	if len(list.Tools) != 18 {
 		t.Fatal(len(list.Tools))
 	}
 	for _, tool := range list.Tools {
@@ -74,6 +74,10 @@ func TestMCPProxiesToAPIAndPreservesIdempotency(t *testing.T) {
 	text, ok := res.Content[0].(*mcp.TextContent)
 	if !ok || !strings.Contains(text.Text, "capacity_exhausted") {
 		t.Fatal(res)
+	}
+	structured, _ := json.Marshal(res.StructuredContent)
+	if !strings.Contains(string(structured), `"retryable":false`) || !strings.Contains(string(structured), `"code":"capacity_exhausted"`) {
+		t.Fatal("structured MCP error was lost", string(structured))
 	}
 	if calls != 1 {
 		t.Fatal(calls)
@@ -118,6 +122,39 @@ func TestMCPVersionSelectionReachesAPI(t *testing.T) {
 	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "image_create", Arguments: map[string]any{"id": "monterey-xcode", "macos": "monterey", "xcode": "13.4.1", "security": "automation", "idempotency_key": "monterey-xcode-request"}})
 	if err != nil || res.IsError || calls != 1 {
 		t.Fatal(res, err, calls)
+	}
+}
+
+func TestMCPAppleAuthIssuesLinkForExactJob(t *testing.T) {
+	calls := 0
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.Method != "POST" || r.URL.Path != "/api/v1/jobs/job-one/apple-auth" || r.Header.Get("Authorization") != "Bearer secret" {
+			t.Error(r.Method, r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"url":"http://127.0.0.1:7780/apple-auth/one-time","expires_at":"2026-10-02T12:00:00Z"}`)
+	}))
+	defer api.Close()
+	c, err := client.New(api.URL, "secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, ct := mcp.NewInMemoryTransports()
+	ctx := context.Background()
+	ss, err := New(c).Connect(ctx, st, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ss.Close()
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil).Connect(ctx, ct, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cs.Close()
+	response, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "image_apple_auth", Arguments: map[string]any{"id": "job-one"}})
+	if err != nil || response.IsError || calls != 1 || !strings.Contains(response.Content[0].(*mcp.TextContent).Text, "one-time") {
+		t.Fatal(response, err, calls)
 	}
 }
 

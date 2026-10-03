@@ -12,7 +12,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -23,6 +23,8 @@ jobs:
           cache: true
       - run: make check
       - run: make build
+      - if: runner.os == 'macOS'
+        run: bash deploy/build-lume.sh "$RUNNER_TEMP/virfield-lume-check"
       - run: go run honnef.co/go/tools/cmd/staticcheck@v0.7.0 ./...
       - run: go mod verify
       - run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...

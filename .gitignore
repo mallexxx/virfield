@@ -1,5 +1,7 @@
 # Local build outputs
 /bin/
+/apple-auth/.build/
+/apple-auth/.swiftpm/
 /dist/
 coverage.out
 

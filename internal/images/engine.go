@@ -24,12 +24,13 @@ import (
 var assistantScript string
 
 type Engine struct {
-	Registry     *registry.Client
-	StoragePaths map[string]string
-	Dir          string
-	Backend      *lume.Client
-	Tools        domain.ImageTools
-	HTTP         *http.Client
+	Registry       *registry.Client
+	StoragePaths   map[string]string
+	Dir            string
+	AuthCookiePath string
+	Backend        *lume.Client
+	Tools          domain.ImageTools
+	HTTP           *http.Client
 }
 
 func New(dir string, b *lume.Client, t domain.ImageTools) (*Engine, error) {
@@ -44,7 +45,9 @@ func New(dir string, b *lume.Client, t domain.ImageTools) (*Engine, error) {
 		}
 	}
 	tr := &http.Transport{Proxy: http.ProxyFromEnvironment, DialContext: (&net.Dialer{Timeout: 15 * time.Second}).DialContext, TLSHandshakeTimeout: 15 * time.Second, ResponseHeaderTimeout: 30 * time.Second, IdleConnTimeout: 30 * time.Second, DisableCompression: true}
-	client := &http.Client{Transport: tr, Timeout: 90 * time.Minute, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
+	// The stage context bounds transfers; a shorter client timeout would cut off
+	// valid multi-hour IPSW and Xcode downloads while their bodies are streaming.
+	client := &http.Client{Transport: tr, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
 	return &Engine{Dir: dir, Backend: b, Tools: t, HTTP: client}, nil
 }
 func (e *Engine) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile, step string, progress func(string) error) error {
@@ -270,6 +273,49 @@ func (e *Engine) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile
 	return domain.Err("invalid_profile", "unsupported image pipeline stage")
 }
 func (e *Engine) boot(ctx context.Context, l domain.Lease) (domain.VM, error) {
+	return e.bootWithOptions(ctx, l, nil)
+}
+func (e *Engine) bootWithSharedDirectory(ctx context.Context, l domain.Lease, hostPath string) (domain.VM, error) {
+	o, err := e.Backend.Observe(ctx)
+	if err != nil {
+		return domain.VM{}, err
+	}
+	found := false
+	for _, v := range o.VMs {
+		if v.Key() == l.Key() {
+			found = true
+			if v.State == "running" {
+				stopCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+				err := e.Backend.Stop(stopCtx, l)
+				cancel()
+				if err != nil {
+					return domain.VM{}, err
+				}
+				if err := e.waitStopped(ctx, l, 2*time.Minute); err != nil {
+					return domain.VM{}, err
+				}
+			} else if v.State != "stopped" {
+				return domain.VM{}, domain.Err("unexpected_state", "Image VM cannot be booted from current state")
+			}
+		}
+	}
+	if !found {
+		return domain.VM{}, domain.Err("vm_missing", "Image VM is absent")
+	}
+	cmd, runDone, err := e.startWithSharedDirectory(ctx, l, hostPath)
+	if err != nil {
+		return domain.VM{}, err
+	}
+	vm, err := e.waitRunningIPWithProcess(ctx, l, runDone)
+	if err != nil {
+		if cmd != nil && cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		return domain.VM{}, err
+	}
+	return vm, nil
+}
+func (e *Engine) bootWithOptions(ctx context.Context, l domain.Lease, opts *lume.StartOptions) (domain.VM, error) {
 	o, err := e.Backend.Observe(ctx)
 	if err != nil {
 		return domain.VM{}, err
@@ -279,7 +325,20 @@ func (e *Engine) boot(ctx context.Context, l domain.Lease) (domain.VM, error) {
 		if v.Key() == l.Key() {
 			found = true
 			if v.State == "stopped" {
-				if err := e.Backend.Start(ctx, l); err != nil {
+				if err := e.start(ctx, l, opts); err != nil {
+					return domain.VM{}, err
+				}
+			} else if v.State == "running" && opts != nil {
+				stopCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+				err := e.Backend.Stop(stopCtx, l)
+				cancel()
+				if err != nil {
+					return domain.VM{}, err
+				}
+				if err := e.waitStopped(ctx, l, 2*time.Minute); err != nil {
+					return domain.VM{}, err
+				}
+				if err := e.start(ctx, l, opts); err != nil {
 					return domain.VM{}, err
 				}
 			} else if v.State != "running" {
@@ -290,19 +349,89 @@ func (e *Engine) boot(ctx context.Context, l domain.Lease) (domain.VM, error) {
 	if !found {
 		return domain.VM{}, domain.Err("vm_missing", "Image VM is absent")
 	}
+	return e.waitRunningIP(ctx, l)
+}
+func (e *Engine) start(ctx context.Context, l domain.Lease, opts *lume.StartOptions) error {
+	if opts == nil {
+		return e.Backend.Start(ctx, l)
+	}
+	return e.Backend.StartWithOptions(ctx, l, *opts)
+}
+func (e *Engine) startWithSharedDirectory(ctx context.Context, l domain.Lease, hostPath string) (*exec.Cmd, <-chan error, error) {
+	if !filepath.IsAbs(hostPath) {
+		return nil, nil, domain.Err("invalid_profile", "shared VM directory must be an absolute host path")
+	}
+	args := lumeRunSharedArgs(l, hostPath)
+	cmd := exec.CommandContext(ctx, e.Tools.Lume, args...)
+	logPath := filepath.Join(e.Dir, "images", l.ID, "provision-lume-run.log")
+	log, err := os.OpenFile(logPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
+	if err != nil {
+		return nil, nil, err
+	}
+	cmd.Stdout = log
+	cmd.Stderr = log
+	if err := cmd.Start(); err != nil {
+		_ = log.Close()
+		return nil, nil, domain.Err("lume_run_failed", "Lume run with shared directory failed to start; inspect private stage log")
+	}
+	_, _ = fmt.Fprintf(log, "started lume run pid=%d args=%q\n", cmd.Process.Pid, args)
+	done := make(chan error, 1)
+	go func() {
+		err := cmd.Wait()
+		_, _ = fmt.Fprintf(log, "\nlume run exited: %v\n", err)
+		_ = log.Close()
+		done <- err
+		close(done)
+	}()
+	return cmd, done, nil
+}
+func lumeRunSharedArgs(l domain.Lease, hostPath string) []string {
+	return []string{"run", l.VMName, "--storage", l.Location, "--no-display", "--shared-dir", hostPath}
+}
+func (e *Engine) waitRunningIP(ctx context.Context, l domain.Lease) (domain.VM, error) {
+	return e.waitRunningIPWithProcess(ctx, l, nil)
+}
+func (e *Engine) waitRunningIPWithProcess(ctx context.Context, l domain.Lease, runDone <-chan error) (domain.VM, error) {
 	wait, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 	for {
+		select {
+		case err, ok := <-runDone:
+			if ok {
+				if err != nil {
+					return domain.VM{}, domain.Err("lume_run_failed", "Lume run with shared directory exited before guest reached IP; inspect private stage log")
+				}
+				return domain.VM{}, domain.Err("lume_run_failed", "Lume run with shared directory stopped before guest reached IP; inspect private stage log")
+			}
+		default:
+		}
 		o, err := e.Backend.Observe(wait)
 		if err == nil {
 			for _, v := range o.VMs {
-				if v.Key() == l.Key() && v.State == "running" && net.ParseIP(v.IP) != nil && v.SSHAvailable {
+				if v.Key() == l.Key() && v.State == "running" && net.ParseIP(v.IP) != nil {
 					return v, nil
 				}
 			}
 		}
 		if err := pause(wait, 2*time.Second); err != nil {
-			return domain.VM{}, domain.Err("guest_timeout", "Image did not reach SSH readiness within five minutes")
+			return domain.VM{}, domain.Err("guest_timeout", "Image did not reach guest IP readiness within five minutes")
+		}
+	}
+}
+func (e *Engine) waitStopped(ctx context.Context, l domain.Lease, timeout time.Duration) error {
+	wait, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	for {
+		o, err := e.Backend.Observe(wait)
+		if err == nil {
+			for _, v := range o.VMs {
+				if v.Key() == l.Key() && v.State == "stopped" {
+					return nil
+				}
+			}
+		}
+		if err := pause(wait, 2*time.Second); err != nil {
+			return domain.Err("guest_timeout", "Image did not stop before restarting with shared folders")
 		}
 	}
 }

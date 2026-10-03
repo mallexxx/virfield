@@ -55,9 +55,10 @@ def render(directory, account, group):
     executable(str(Path(tools["vnc_bin"]) / "vncdotool"))
     for binary in ("virfield", "virfieldd", "virfield-mcp", "virfield-lume"):
         executable(str(directory / "bin" / binary))
+    executable(str(directory / "bin" / "VirfieldAppleBrowser.app" / "Contents" / "MacOS" / "VirfieldAppleBrowser"))
     args = {
         "virfieldd": [str(directory / "bin/virfieldd"), "-config", str(config_path)],
-        "lume": [str(directory / "bin/virfield-lume"), "-binary", tools["lume"],
+        "lume": [str(directory / "bin/virfield-lume"), "-config", str(config_path),
                  "-log", str(directory / "lume.log"), "-port", str(lume.port)],
     }
     artifacts = {}

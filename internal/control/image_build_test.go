@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mallexxx/virfield/internal/domain"
 )
@@ -68,15 +69,75 @@ func TestImageDeletionWaitsForPrivateDataCleanup(t *testing.T) {
 }
 
 type fakeImageBuilder struct {
-	backend *fakeBackend
-	steps   []string
-	fail    string
+	backend  *fakeBackend
+	steps    []string
+	fail     string
+	failCode string
+	cached   bool
 }
+
+type shutdownImageBuilder struct {
+	started chan struct{}
+	check   chan struct{}
+	seen    chan error
+	release chan struct{}
+}
+
+func (b *shutdownImageBuilder) Step(ctx context.Context, _ domain.Lease, _ domain.ImageProfile, _ string, progress func(string) error) error {
+	close(b.started)
+	<-b.check
+	b.seen <- ctx.Err()
+	<-b.release
+	return progress("stage completed during shutdown")
+}
+
+func TestGracefulShutdownKeepsImageStageAliveUntilConfirmed(t *testing.T) {
+	c, _ := imageController(t)
+	b := &shutdownImageBuilder{started: make(chan struct{}), check: make(chan struct{}), seen: make(chan error, 1), release: make(chan struct{})}
+	c.SetImageBuilder(b)
+	op, err := c.BuildImage(context.Background(), "test", "shutdown-image")
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCtx, cancel := context.WithCancel(context.Background())
+	if err := c.Tick(runCtx); err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	select {
+	case <-b.started:
+	case <-time.After(2 * time.Second):
+		cancel()
+		t.Fatal("image stage did not start")
+	}
+	cancel()
+	close(b.check)
+	select {
+	case err := <-b.seen:
+		if err != nil {
+			t.Fatal("shutdown canceled an in-flight image stage", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("image stage did not check its operation context")
+	}
+	close(b.release)
+	c.wg.Wait()
+	j, err := c.Job(context.Background(), op.Job.ID)
+	if err != nil || j.Phase != "download_done" || j.State != "running" {
+		t.Fatal("completed stage was not persisted", j, err)
+	}
+}
+
+func (b *fakeImageBuilder) CachedXcode(domain.XcodeRelease) bool { return b.cached }
 
 func (b *fakeImageBuilder) Step(_ context.Context, l domain.Lease, _ domain.ImageProfile, step string, progress func(string) error) error {
 	b.steps = append(b.steps, step)
 	if step == b.fail {
-		return domain.Err("injected_failure", "interrupted stage")
+		code := b.failCode
+		if code == "" {
+			code = "injected_failure"
+		}
+		return domain.Err(code, "interrupted stage")
 	}
 	if step == "create" {
 		b.backend.mu.Lock()
@@ -130,6 +191,68 @@ func TestImageBuildJournalPromotionAndDelete(t *testing.T) {
 	tick(t, c)
 	if _, err := c.BuildImage(ctx, "test", "image-build-again"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestImageBuildPersistsLegacyUUID(t *testing.T) {
+	c, _ := imageController(t)
+	legacyUUID := "123e4567-e89b-12d3-a456-426614174000"
+	tm := c.templates["test"]
+	tm.LegacyUUID = legacyUUID
+	c.templates["test"] = tm
+	op, err := c.BuildImage(context.Background(), "test", "legacy-image-build")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if op.Lease.LegacyUUID != legacyUUID {
+		t.Fatalf("image build lease lost legacy UUID: %#v", op.Lease)
+	}
+}
+
+func TestImageBuildReservesOnlyItsOwnSlot(t *testing.T) {
+	c, builder := imageController(t)
+	c.templates["other"] = domain.Template{ID: "other", Name: "other-golden", Location: "home"}
+	builder.backend.mu.Lock()
+	builder.backend.vms["home/other-golden"] = domain.VM{Name: "other-golden", Location: "home", OS: "macOS", State: "stopped"}
+	builder.backend.mu.Unlock()
+	tick(t, c)
+	image, err := c.BuildImage(context.Background(), "test", "build-one-slot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, err := c.Status(context.Background())
+	if err != nil || status.Capacity.Used != 1 || status.Capacity.Available != 1 {
+		t.Fatal(status.Capacity, err)
+	}
+	if len(status.ImageReservations) != 1 || status.ImageReservations[0].ImageID != image.Lease.ID || status.ImageReservations[0].JobID != image.Job.ID || status.ImageReservations[0].Deadline.IsZero() {
+		t.Fatal("image reservation missing from status", status.ImageReservations)
+	}
+	worker, err := c.Acquire(context.Background(), "other-during-image", domain.AcquireRequest{Template: "other", TTLSeconds: 3600})
+	if err != nil || worker.Lease.ID == "" {
+		t.Fatal(worker, err)
+	}
+	_, err = c.Acquire(context.Background(), "same-during-image", domain.AcquireRequest{Template: "test", TTLSeconds: 3600})
+	code(t, err, "image_in_use")
+	_ = image
+}
+func TestImageBuildStartsWithOtherReadyLease(t *testing.T) {
+	c, builder := imageController(t)
+	c.templates["other"] = domain.Template{ID: "other", Name: "other-golden", Location: "home"}
+	builder.backend.mu.Lock()
+	builder.backend.vms["home/other-golden"] = domain.VM{Name: "other-golden", Location: "home", OS: "macOS", State: "stopped"}
+	builder.backend.mu.Unlock()
+	tick(t, c)
+	worker, err := c.Acquire(context.Background(), "other-before-image", domain.AcquireRequest{Template: "other", TTLSeconds: 3600})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ready(t, c, worker)
+	if _, err := c.BuildImage(context.Background(), "test", "build-alongside-worker"); err != nil {
+		t.Fatal(err)
+	}
+	status, err := c.Status(context.Background())
+	if err != nil || status.Capacity.Used != 2 || status.Capacity.Available != 0 {
+		t.Fatal(status.Capacity, err)
 	}
 }
 func TestImageFailureDoesNotReplayMutation(t *testing.T) {
@@ -188,6 +311,42 @@ func TestImageRecoveryRequiresInspectionAndCannotSkipSetup(t *testing.T) {
 		t.Fatal(jobs, err)
 	}
 }
+
+func TestImageRecoveryAdoptsLegacyUUID(t *testing.T) {
+	c, b := imageController(t)
+	ctx := context.Background()
+	legacyUUID := "123e4567-e89b-12d3-a456-426614174000"
+	tm := c.templates["test"]
+	tm.LegacyUUID = legacyUUID
+	c.templates["test"] = tm
+	op, err := c.BuildImage(ctx, "test", "legacy-recovery-build")
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := op.Lease
+	l.State = "needs_attention"
+	l.UpdatedAt = c.now().Add(-time.Minute)
+	j := op.Job
+	j.State = "needs_attention"
+	j.Phase = "setup_dispatched"
+	j.Image.MacOS = "12.6"
+	j.UpdatedAt = l.UpdatedAt
+	if err := c.store.Save(ctx, l, &j, "", "", "test.legacy_recovery", "fixture"); err != nil {
+		t.Fatal(err)
+	}
+	b.backend.mu.Lock()
+	b.backend.vms[l.Key()] = domain.VM{Name: l.VMName, Location: l.Location, OS: "macOS", State: "stopped"}
+	b.backend.mu.Unlock()
+	tick(t, c)
+	recovered, err := c.RecoverImage(ctx, l.ID, "legacy-recovery-key", l.VMName, "setup-online", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recovered.Lease.LegacyUUID != legacyUUID {
+		t.Fatalf("recovery did not adopt legacy UUID: %#v", recovered.Lease)
+	}
+}
+
 func TestImageRecoveryRetriesDownloadWithoutChangingIdentity(t *testing.T) {
 	c, b := imageController(t)
 	b.fail = "download"

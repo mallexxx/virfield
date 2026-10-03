@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"github.com/mallexxx/virfield/internal/domain"
+	"sort"
 )
 
 type ImageCatalog interface {
@@ -21,7 +22,72 @@ func (c *Controller) ImageCatalog(ctx context.Context) (domain.ImageCatalog, err
 	if c.imageCatalog == nil {
 		return domain.ImageCatalog{}, domain.Err("image_dependency", "Image catalog is not configured")
 	}
-	return c.imageCatalog.List(ctx)
+	v, err := c.imageCatalog.List(ctx)
+	if err != nil {
+		return v, err
+	}
+	v.Xcode = append([]domain.XcodeRelease(nil), v.Xcode...)
+	leases, err := c.store.Leases(ctx)
+	if err != nil {
+		return domain.ImageCatalog{}, err
+	}
+	ready := make(map[string]string)
+	for _, l := range leases {
+		if l.Purpose == "image" && l.State == "image_ready" {
+			ready[l.Template] = l.ImageManifest
+		}
+	}
+	c.mu.Lock()
+	templates := make([]domain.Template, 0, len(c.templates))
+	inventory := domain.ImageInventory{Verified: c.healthy() == nil, ObservedAt: c.observation.At, VMs: []domain.InventoryVM{}, ConfiguredImages: []domain.ConfiguredImage{}}
+	present := make(map[string]bool, len(c.observation.VMs))
+	for _, vm := range c.observation.VMs {
+		inventory.VMs = append(inventory.VMs, domain.InventoryVM{Name: vm.Name, Location: vm.Location, OS: vm.OS, State: vm.State})
+		present[vm.Key()] = true
+	}
+	sort.Slice(inventory.VMs, func(i, j int) bool {
+		if inventory.VMs[i].Location == inventory.VMs[j].Location {
+			return inventory.VMs[i].Name < inventory.VMs[j].Name
+		}
+		return inventory.VMs[i].Location < inventory.VMs[j].Location
+	})
+	for _, t := range c.templates {
+		if t.Image == nil {
+			continue
+		}
+		item := domain.ConfiguredImage{ID: t.ID, Name: t.Name, Location: t.Location, MacOS: t.Image.MacOS, Present: present[t.Location+"/"+t.Name]}
+		if t.Image.Xcode != nil {
+			item.Xcode = t.Image.Xcode.Version
+		}
+		item.Ready = item.Present && ready[t.ID] != "" && ready[t.ID] == imageFingerprint(t.Image)
+		inventory.ConfiguredImages = append(inventory.ConfiguredImages, item)
+		if item.Ready && t.Image.Xcode != nil {
+			templates = append(templates, t)
+		}
+	}
+	sort.Slice(inventory.ConfiguredImages, func(i, j int) bool { return inventory.ConfiguredImages[i].ID < inventory.ConfiguredImages[j].ID })
+	builder := c.imageBuilder
+	c.mu.Unlock()
+	v.Inventory = inventory
+	cache, _ := builder.(interface {
+		CachedXcode(domain.XcodeRelease) bool
+	})
+	for i := range v.Xcode {
+		x := &v.Xcode[i]
+		x.InstalledImages = nil
+		x.LocalState = "available"
+		if cache != nil && cache.CachedXcode(*x) {
+			x.LocalState = "downloaded"
+		}
+		for _, t := range templates {
+			if t.Image.Xcode.Version == x.Version && t.Image.Xcode.Build == x.Build && t.Image.Xcode.SHA1 == x.SHA1 {
+				x.InstalledImages = append(x.InstalledImages, t.ID)
+				x.LocalState = "installed"
+			}
+		}
+		sort.Strings(x.InstalledImages)
+	}
+	return v, nil
 }
 func (c *Controller) CreateImage(ctx context.Context, r domain.ImageCreateRequest, key string) (domain.Operation, error) {
 	if err := validKey(key); err != nil {

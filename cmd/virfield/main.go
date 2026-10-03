@@ -9,6 +9,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -28,11 +29,15 @@ func run() error {
 	base := flag.String("url", "http://127.0.0.1:7780", "daemon URL")
 	tokenFile := flag.String("token-file", "", "owner-only API token file")
 	security := flag.String("security", "", "image-create guest policy: default, sip-disabled or automation")
+	location := flag.String("location", "", "operator-configured image storage location")
+	eventsLease := flag.String("lease-id", "", "events filter: lease or image record ID")
+	eventsTail := flag.Bool("tail", false, "events: return the newest page")
+	eventsLimit := flag.Int("limit", 100, "events page size, 1–500")
 	key := flag.String("key", "", "stable idempotency key; required for acquire, release, resolve and image mutations")
 	flag.Usage = func() {
 		fmt.Fprint(os.Stderr, `Usage: virfield [flags] COMMAND [arguments]
 
-Inspect: status | lease ID | job ID | events [AFTER]
+Inspect: status | lease ID | job ID | events [AFTER] (-lease-id ID, -tail, -limit N)
 Leases:  acquire TEMPLATE TTL_SECONDS PUBLIC_KEY_FILE | renew ID RFC3339 | release ID
 SSH:     keygen DIRECTORY | ssh-config LEASE_ID IDENTITY_DIRECTORY | tunnel LEASE_ID | tunnel-close LEASE_ID
 Registry: registry-sources | registry-resolve SOURCE REPOSITORY TAG
@@ -102,7 +107,7 @@ Recovery requires prior inspection that no operation remains in flight.
 		if (len(args) != 6 && len(args) != 7) || *key == "" {
 			return errors.New("usage: -key STABLE_KEY image-pull NEW_ID SOURCE REPOSITORY TAG MACOS [XCODE]")
 		}
-		r := domain.ImagePullRequest{ImageCreateRequest: domain.ImageCreateRequest{ID: args[1], MacOS: args[5], Security: *security}, Source: args[2], Repository: args[3], Tag: args[4]}
+		r := domain.ImagePullRequest{ImageCreateRequest: domain.ImageCreateRequest{ID: args[1], MacOS: args[5], Security: *security, Location: *location}, Source: args[2], Repository: args[3], Tag: args[4]}
 		if len(args) == 7 {
 			r.Xcode = args[6]
 		}
@@ -132,7 +137,7 @@ Recovery requires prior inspection that no operation remains in flight.
 		if (len(args) != 3 && len(args) != 4) || *key == "" {
 			return errors.New("usage: -key STABLE_KEY image-create NEW_ID MACOS_VERSION_OR_CODENAME [XCODE_VERSION]")
 		}
-		req := domain.ImageCreateRequest{ID: args[1], MacOS: args[2], Security: *security}
+		req := domain.ImageCreateRequest{ID: args[1], MacOS: args[2], Security: *security, Location: *location}
 		if len(args) == 4 {
 			req.Xcode = args[3]
 		}
@@ -237,16 +242,27 @@ Recovery requires prior inspection that no operation remains in flight.
 		}
 	case "events":
 		if len(args) > 2 {
-			return errors.New("usage: events [AFTER]")
+			return errors.New("usage: events [AFTER] with optional -lease-id, -tail and -limit")
 		}
-		path = "events"
+		if *eventsLimit < 1 || *eventsLimit > 500 || (*eventsLease != "" && !domain.ValidName(*eventsLease)) || (*eventsTail && len(args) == 2) {
+			return errors.New("events requires limit 1–500, a valid lease ID, and no AFTER with -tail")
+		}
+		query := url.Values{}
+		query.Set("limit", strconv.Itoa(*eventsLimit))
+		if *eventsLease != "" {
+			query.Set("lease_id", *eventsLease)
+		}
+		if *eventsTail {
+			query.Set("tail", "true")
+		}
 		if len(args) == 2 {
 			n, err := strconv.ParseInt(args[1], 10, 64)
 			if err != nil || n < 0 {
 				return errors.New("AFTER must be a nonnegative integer")
 			}
-			path += "?after=" + args[1]
+			query.Set("after", args[1])
 		}
+		path = "events?" + query.Encode()
 	case "release":
 		if len(args) != 2 || !domain.ValidName(args[1]) || *key == "" {
 			return errors.New("usage: -key STABLE_KEY release LEASE_ID (permanently deletes the leased VM)")

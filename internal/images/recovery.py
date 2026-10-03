@@ -129,7 +129,8 @@ def run():
         while time.monotonic() < deadline:
             try:
                 text, words = observe(label)
-            except (TimeoutError, ConnectionError, OSError):
+            except (TimeoutError, ConnectionError, OSError,
+                    subprocess.TimeoutExpired, subprocess.CalledProcessError):
                 time.sleep(2)
                 continue
             if predicate(text, words):

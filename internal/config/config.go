@@ -9,12 +9,15 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/mallexxx/virfield/internal/domain"
 )
 
 type Config struct {
+	AllowedHosts   []string                `json:"allowed_hosts,omitempty"`
+	Principals     []Principal             `json:"principals,omitempty"`
 	Registries     []domain.RegistrySource `json:"registries,omitempty"`
 	ResourceLimits *domain.ResourceLimits  `json:"resource_limits,omitempty"`
 	StoragePaths   map[string]string       `json:"storage_paths,omitempty"`
@@ -25,6 +28,12 @@ type Config struct {
 	TokenFile      string                  `json:"token_file"`
 	MaxVMs         int                     `json:"max_vms"`
 	Templates      []domain.Template       `json:"templates"`
+}
+
+type Principal struct {
+	Name      string   `json:"name"`
+	TokenFile string   `json:"token_file"`
+	Scopes    []string `json:"scopes"`
 }
 
 func Load(path string) (Config, error) {
@@ -56,6 +65,25 @@ func Load(path string) (Config, error) {
 	}
 	if c.MaxVMs < 1 || c.MaxVMs > 2 {
 		return c, errors.New("max_vms must be 1 or 2")
+	}
+	for _, allowed := range c.AllowedHosts {
+		host, port, err := net.SplitHostPort(allowed)
+		n, nerr := strconv.Atoi(port)
+		if err != nil || host == "" || nerr != nil || n < 1 || n > 65535 || strings.ContainsAny(host, "/@\\ ") {
+			return c, errors.New("allowed_hosts must contain exact host:port authorities")
+		}
+	}
+	seenPrincipals := map[string]bool{}
+	for _, p := range c.Principals {
+		if !domain.ValidName(p.Name) || p.Name == "operator" || seenPrincipals[p.Name] || !filepath.IsAbs(p.TokenFile) || len(p.Scopes) == 0 {
+			return c, errors.New("principals need unique names, absolute token files and scopes")
+		}
+		seenPrincipals[p.Name] = true
+		for _, scope := range p.Scopes {
+			if scope != "lease:own" && scope != "image:build" {
+				return c, errors.New("principal scope must be lease:own or image:build")
+			}
+		}
 	}
 	if c.ResourceLimits != nil && (c.ResourceLimits.CPU < 1 || c.ResourceLimits.MemoryBytes < 1 || c.ResourceLimits.DiskReserveBytes < 1) {
 		return c, errors.New("resource limits must be positive")

@@ -132,7 +132,7 @@ func TestUpgradeImageJournalKeepsExistingRecords(t *testing.T) {
 	}
 	// Journal schema versions 1 and 2 have identical table layouts; the version protects old readers
 	// from treating permanent images as expiring leases.
-	if _, err := s.db.Exec(`DROP TABLE templates; PRAGMA user_version=1`); err != nil {
+	if _, err := s.db.Exec(`DROP TABLE templates; DROP INDEX jobs_lease; DROP INDEX events_at; PRAGMA user_version=1`); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Close(); err != nil {
@@ -152,7 +152,7 @@ func TestUpgradeImageJournalKeepsExistingRecords(t *testing.T) {
 		t.Fatal(events, err)
 	}
 	var version int
-	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 6 {
+	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 7 {
 		t.Fatal(version, err)
 	}
 }
@@ -221,7 +221,7 @@ func TestSchemaFiveUpgradePreservesRecordsAndProtectsNewReaders(t *testing.T) {
 	if err := s.Save(ctx, l, &j, "export-key", "fp", "accepted", "safe"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.db.Exec(`PRAGMA user_version=5`); err != nil {
+	if _, err := s.db.Exec(`DROP INDEX jobs_lease; DROP INDEX events_at; PRAGMA user_version=5`); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()
@@ -235,10 +235,10 @@ func TestSchemaFiveUpgradePreservesRecordsAndProtectsNewReaders(t *testing.T) {
 		t.Fatal(op, err)
 	}
 	var version int
-	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 6 {
+	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 7 {
 		t.Fatal(version, err)
 	}
-	if _, err := s.db.Exec(`PRAGMA user_version=7`); err != nil {
+	if _, err := s.db.Exec(`PRAGMA user_version=8`); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.migrate(); err == nil {

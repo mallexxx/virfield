@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha1" // Catalog legacy checksum; Apple's XIP signature is also mandatory.
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -23,6 +24,62 @@ const maxXcodeArchive = 32 << 30
 
 // The leading = selects inline requirement syntax; otherwise codesign opens a file.
 const appleCodeRequirement = "=anchor apple"
+
+// CachedXcode reports archives verified by the download stage. The marker is
+// tied to file metadata; use still rechecks the full checksum.
+func (e *Engine) CachedXcode(x domain.XcodeRelease) bool {
+	if x.Validate() != nil {
+		return false
+	}
+	path := filepath.Join(e.Dir, "cache", "xcode", x.SHA1+".xip")
+	return xcodeVerifiedMarker(path)
+}
+
+func xcodeVerifiedMarker(path string) bool {
+	st, err := os.Lstat(path)
+	if err != nil || !st.Mode().IsRegular() {
+		return false
+	}
+	marker, err := os.ReadFile(path + ".verified")
+	return err == nil && string(marker) == fmt.Sprintf("%d:%d\n", st.Size(), st.ModTime().UnixNano())
+}
+
+func markXcodeVerified(path string) {
+	st, err := os.Lstat(path)
+	if err != nil || !st.Mode().IsRegular() {
+		return
+	}
+	marker := path + ".verified"
+	tmp := marker + ".tmp"
+	if err := os.WriteFile(tmp, []byte(fmt.Sprintf("%d:%d\n", st.Size(), st.ModTime().UnixNano())), 0600); err == nil {
+		_ = os.Rename(tmp, marker)
+	}
+}
+
+func xcodeBundleVerifiedMarker(ctx context.Context, app string, x domain.XcodeRelease) bool {
+	if !xcodeBundleMatches(ctx, app, x) {
+		return false
+	}
+	st, err := os.Lstat(filepath.Join(app, "Contents", "version.plist"))
+	if err != nil || !st.Mode().IsRegular() {
+		return false
+	}
+	marker, err := os.ReadFile(filepath.Join(filepath.Dir(app), ".xcode-bundle.verified"))
+	return err == nil && string(marker) == fmt.Sprintf("%s:%s:%d:%d\n", x.Version, x.Build, st.Size(), st.ModTime().UnixNano())
+}
+
+func markXcodeBundleVerified(app string, x domain.XcodeRelease) {
+	st, err := os.Lstat(filepath.Join(app, "Contents", "version.plist"))
+	if err != nil || !st.Mode().IsRegular() {
+		return
+	}
+	marker := filepath.Join(filepath.Dir(app), ".xcode-bundle.verified")
+	tmp := marker + ".tmp"
+	body := fmt.Sprintf("%s:%s:%d:%d\n", x.Version, x.Build, st.Size(), st.ModTime().UnixNano())
+	if err := os.WriteFile(tmp, []byte(body), 0600); err == nil {
+		_ = os.Rename(tmp, marker)
+	}
+}
 
 // Apple credentials are operator-owned files, never API fields or durable job data.
 func appleCookies(path string) (string, error) {
@@ -52,14 +109,14 @@ func appleCookies(path string) (string, error) {
 			continue
 		}
 		host := strings.TrimPrefix(fields[0], ".")
-		if host != "download.developer.apple.com" && !(fields[1] == "TRUE" && (host == "developer.apple.com" || host == "apple.com")) {
+		if host != "download.developer.apple.com" && host != "developer.apple.com" && !(fields[1] == "TRUE" && host == "apple.com") {
 			continue
 		}
 		expiry, err := strconv.ParseInt(fields[4], 10, 64)
 		if err != nil || (expiry != 0 && expiry < time.Now().Unix()) {
 			continue
 		}
-		if fields[2] != "/" && !strings.HasPrefix("/Developer_Tools/", fields[2]) {
+		if fields[2] != "/" && !strings.HasPrefix(fields[2], "/Developer_Tools/") {
 			continue
 		}
 		cookie := &http.Cookie{Name: fields[5], Value: fields[6]}
@@ -109,6 +166,24 @@ func verifyXcodeArchive(ctx context.Context, path string, x domain.XcodeRelease)
 	return nil
 }
 func (e *Engine) xcodeArchive(ctx context.Context, x domain.XcodeRelease, progress func(string) error) (string, error) {
+	for attempt := 0; attempt < 3; attempt++ {
+		path, err := e.xcodeArchiveOnce(ctx, x, progress)
+		var failure *domain.Error
+		if err == nil || !errors.As(err, &failure) || failure.Code != "download_failed" || attempt == 2 {
+			return path, err
+		}
+		wait := time.NewTimer(time.Duration(attempt+1) * time.Second)
+		select {
+		case <-ctx.Done():
+			wait.Stop()
+			return "", ctx.Err()
+		case <-wait.C:
+		}
+	}
+	return "", domain.Err("download_failed", "Xcode download attempts exhausted")
+}
+
+func (e *Engine) xcodeArchiveOnce(ctx context.Context, x domain.XcodeRelease, progress func(string) error) (string, error) {
 	if err := x.Validate(); err != nil {
 		return "", err
 	}
@@ -117,20 +192,35 @@ func (e *Engine) xcodeArchive(ctx context.Context, x domain.XcodeRelease, progre
 		return "", err
 	}
 	final := filepath.Join(dir, x.SHA1+".xip")
-	if _, err := os.Lstat(final); err == nil {
-		return final, verifyXcodeArchive(ctx, final, x)
+	if st, err := os.Lstat(final); err == nil {
+		if !st.Mode().IsRegular() {
+			return "", domain.Err("unsafe_cache", "Xcode download cache is not a regular file")
+		}
+		if err := verifyXcodeArchive(ctx, final, x); err == nil {
+			markXcodeVerified(final)
+			return final, nil
+		} else if !isIntegrityError(err) {
+			return "", err
+		}
+		if err := quarantineCache(final); err != nil {
+			return "", err
+		}
+		_ = os.Remove(final + ".verified")
 	} else if !os.IsNotExist(err) {
 		return "", err
 	}
 	partial := final + ".partial"
-	if st, err := os.Lstat(partial); err == nil && !st.Mode().IsRegular() {
-		return "", domain.Err("unsafe_cache", "Xcode download cache is not a regular file")
-	}
-	if err := verifyXcodeArchive(ctx, partial, x); err == nil {
-		if err := os.Rename(partial, final); err != nil {
-			return "", err
+	if st, err := os.Lstat(partial); err == nil {
+		if !st.Mode().IsRegular() {
+			return "", domain.Err("unsafe_cache", "Xcode download cache is not a regular file")
 		}
-		return final, nil
+		if st.Size() > maxXcodeArchive {
+			if err := quarantineCache(partial); err != nil {
+				return "", err
+			}
+		}
+	} else if !os.IsNotExist(err) {
+		return "", err
 	}
 	var source *os.File
 	if e.Tools.XcodeArchives != "" {
@@ -158,6 +248,7 @@ func (e *Engine) xcodeArchive(ctx context.Context, x domain.XcodeRelease, progre
 		return "", err
 	}
 	offset := st.Size()
+	resumed := offset > 0
 	if offset > maxXcodeArchive {
 		return "", domain.Err("download_integrity", "Partial Xcode archive is too large")
 	}
@@ -180,7 +271,15 @@ func (e *Engine) xcodeArchive(ctx context.Context, x domain.XcodeRelease, progre
 			return "", err
 		}
 		req.Header.Set("Accept-Encoding", "identity")
-		cookies, err := appleCookies(e.Tools.AppleCookies)
+		cookiePath := e.Tools.AppleCookies
+		if e.AuthCookiePath != "" {
+			if _, statErr := os.Lstat(e.AuthCookiePath); statErr == nil {
+				cookiePath = e.AuthCookiePath
+			} else if !os.IsNotExist(statErr) {
+				return "", domain.Err("apple_auth_required", "Cannot inspect the private Apple session")
+			}
+		}
+		cookies, err := appleCookies(cookiePath)
 		if err != nil {
 			return "", err
 		}
@@ -190,16 +289,49 @@ func (e *Engine) xcodeArchive(ctx context.Context, x domain.XcodeRelease, progre
 		if offset > 0 {
 			req.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
 		}
-		// Never forward developer cookies through a redirect, including a login page.
+		// Apple may send a signed CDN redirect after authentication. Follow only
+		// HTTPS Apple hosts, and never forward the developer session onward.
 		client := *e.HTTP
-		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+		client.CheckRedirect = func(next *http.Request, via []*http.Request) error {
+			host := strings.ToLower(next.URL.Hostname())
+			if len(via) >= 5 || next.URL.Scheme != "https" || next.URL.User != nil ||
+				!(host == "apple.com" || strings.HasSuffix(host, ".apple.com") || strings.HasSuffix(host, ".cdn-apple.com")) ||
+				host == "idmsa.apple.com" || strings.Contains(next.URL.Path, "/unauthorized") {
+				return http.ErrUseLastResponse
+			}
+			next.Header.Del("Cookie")
+			next.Header.Del("Authorization")
+			next.Header.Del("Referer")
+			return nil
+		}
 		res, err := client.Do(req)
 		if err != nil {
 			return "", domain.Err("download_failed", "Xcode download interrupted; partial bytes retained")
 		}
 		defer res.Body.Close()
+		if res.StatusCode == http.StatusRequestedRangeNotSatisfiable && offset > 0 {
+			if err := verifyXcodeArchive(ctx, partial, x); err == nil {
+				if err := f.Close(); err != nil {
+					return "", err
+				}
+				if err := os.Rename(partial, final); err != nil {
+					return "", err
+				}
+				markXcodeVerified(final)
+				return final, nil
+			} else if !isIntegrityError(err) {
+				return "", err
+			}
+			if err := f.Close(); err != nil {
+				return "", err
+			}
+			if err := quarantineCache(partial); err != nil {
+				return "", err
+			}
+			return e.xcodeArchiveOnce(ctx, x, progress)
+		}
 		if res.StatusCode == 401 || res.StatusCode == 403 || (res.StatusCode >= 300 && res.StatusCode < 400) || strings.Contains(res.Header.Get("Content-Type"), "text/html") {
-			return "", domain.Err("apple_auth_required", "Apple requires sign-in to download Xcode "+x.Version+". Configure image_tools.apple_cookies (private Netscape file), or download Xcode_"+x.Version+".xip from Apple Developer into image_tools.xcode_archives; retry the download stage afterward")
+			return "", domain.Err("apple_auth_required", "Apple requires sign-in to download Xcode "+x.Version+". Call image_apple_auth for this job, send its local link privately, and wait for automatic download retry")
 		}
 		if res.StatusCode == 200 {
 			offset = 0
@@ -269,21 +401,30 @@ func (e *Engine) xcodeArchive(ctx context.Context, x domain.XcodeRelease, progre
 		return "", err
 	}
 	if err := verifyXcodeArchive(ctx, partial, x); err != nil {
+		if isIntegrityError(err) {
+			if quarantineErr := quarantineCache(partial); quarantineErr != nil {
+				return "", quarantineErr
+			}
+			if resumed && source == nil {
+				return e.xcodeArchiveOnce(ctx, x, progress)
+			}
+		}
 		return "", err
 	}
 	if err := os.Rename(partial, final); err != nil {
 		return "", err
 	}
+	markXcodeVerified(final)
 	return final, nil
 }
 func (e *Engine) xcodeSource(ctx context.Context, x domain.XcodeRelease, progress func(string) error) (string, error) {
 	// An operator may already own the selected signed bundle. Read metadata
 	// without executing it; an unrelated host Xcode never constrains selection.
 	if e.Tools.Xcode != "" && xcodeBundleMatches(ctx, e.Tools.Xcode, x) {
-		if err := progress("Verifying the operator's matching Xcode " + x.Version + " bundle"); err != nil {
+		if err := progress("Checking the operator's matching Xcode " + x.Version + " bundle"); err != nil {
 			return "", err
 		}
-		return e.Tools.Xcode, checkXcodeBundle(ctx, e.Tools.Xcode, x)
+		return e.Tools.Xcode, checkOperatorXcodeBundle(ctx, e.Tools.Xcode, x)
 	}
 	archive, err := e.xcodeArchive(ctx, x, progress)
 	if err != nil {
@@ -303,8 +444,19 @@ func (e *Engine) xcodeSource(ctx context.Context, x domain.XcodeRelease, progres
 			return "", err
 		}
 		defer os.RemoveAll(temp)
-		cmd := exec.CommandContext(ctx, "/usr/bin/xip", "--expand", archive)
+		// xip needs the login bootstrap and Darwin temporary directory. A
+		// LaunchDaemon with the same UID is still in a different session.
+		userTempOut, err := exec.CommandContext(ctx, "/usr/bin/getconf", "DARWIN_USER_TEMP_DIR").Output()
+		userTemp := strings.TrimSpace(string(userTempOut))
+		if err != nil || !filepath.IsAbs(userTemp) {
+			return "", domain.Err("image_dependency", "Cannot locate the macOS user temporary directory for Xcode expansion")
+		}
+		if st, err := os.Stat(userTemp); err != nil || !st.IsDir() {
+			return "", domain.Err("image_dependency", "The macOS user temporary directory is unavailable for Xcode expansion")
+		}
+		cmd := exec.CommandContext(ctx, "/bin/launchctl", "asuser", strconv.Itoa(os.Getuid()), "/usr/bin/xip", "--expand", archive)
 		cmd.Dir = temp
+		cmd.Env = xipEnvironment(os.Environ(), userTemp)
 		// xip verifies the Apple signature before expansion. Output stays private.
 		if err := lume.RunPrivate(ctx, cmd, filepath.Join(e.Dir, "cache", "xcode", x.SHA1+"-expand.log")); err != nil {
 			return "", domain.Err("xcode_signature_failed", "Apple XIP verification or expansion failed; check archive and available disk space")
@@ -312,14 +464,43 @@ func (e *Engine) xcodeSource(ctx context.Context, x domain.XcodeRelease, progres
 		if err := checkXcodeBundle(ctx, filepath.Join(temp, "Xcode.app"), x); err != nil {
 			return "", err
 		}
+		markXcodeBundleVerified(filepath.Join(temp, "Xcode.app"), x)
 		if err := os.Rename(temp, dir); err != nil {
 			return "", err
 		}
 	} else if err != nil {
 		return "", err
 	}
-	return app, checkXcodeBundle(ctx, app, x)
+	if xcodeBundleVerifiedMarker(ctx, app, x) {
+		if err := progress("Using verified cached Xcode " + x.Version + " for VirtioFS transfer"); err != nil {
+			return "", err
+		}
+		return app, nil
+	}
+	if err := progress("Checking cached Xcode " + x.Version + " before VirtioFS transfer"); err != nil {
+		return "", err
+	}
+	if err := checkXcodeBundle(ctx, app, x); err != nil {
+		return "", err
+	}
+	markXcodeBundleVerified(app, x)
+	return app, nil
 }
+
+func xipEnvironment(base []string, temp string) []string {
+	cleaned := []string{}
+	for _, entry := range base {
+		if strings.HasPrefix(entry, "TMPDIR=") || strings.HasPrefix(entry, "TMP=") || strings.HasPrefix(entry, "TEMP=") {
+			continue
+		}
+		cleaned = append(cleaned, entry)
+	}
+	if !strings.HasSuffix(temp, string(os.PathSeparator)) {
+		temp += string(os.PathSeparator)
+	}
+	return append(cleaned, "TMPDIR="+temp, "TMP="+temp, "TEMP="+temp)
+}
+
 func checkXcodeBundle(ctx context.Context, app string, x domain.XcodeRelease) error {
 	st, err := os.Lstat(app)
 	if err != nil || !st.IsDir() {
@@ -328,10 +509,26 @@ func checkXcodeBundle(ctx context.Context, app string, x domain.XcodeRelease) er
 	if !xcodeBundleMatches(ctx, app, x) {
 		return domain.Err("xcode_version_mismatch", "Xcode bundle version/build differs from the selected release")
 	}
-	probe, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	return nil
+}
+
+func checkOperatorXcodeBundle(ctx context.Context, app string, x domain.XcodeRelease) error {
+	if err := checkXcodeBundle(ctx, app, x); err != nil {
+		return err
+	}
+	probe, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	if err := exec.CommandContext(probe, "/usr/bin/codesign", "--verify", "--deep", "--strict", "-R", appleCodeRequirement, app).Run(); err != nil {
-		return domain.Err("xcode_signature_failed", "Xcode must have an intact Apple signature")
+	cmd := exec.CommandContext(probe, "/usr/bin/codesign", "--verify", "--strict", "-R", appleCodeRequirement, app)
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Xcode host signature check failed: %v\n", err)
+		if errors.Is(probe.Err(), context.DeadlineExceeded) {
+			return domain.Err("image_dependency", "Timed out checking the operator Xcode signature on the host")
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return domain.Err("xcode_signature_failed", "Operator Xcode must have an intact Apple signature")
 	}
 	return nil
 }

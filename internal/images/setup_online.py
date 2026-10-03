@@ -60,6 +60,8 @@ def classify(text):
         return 'continue'
     if 'getstarted' in t or 'welcometomac' in t:
         return 'welcome'
+    if 'lume' in t and 'enterpassword' in t:
+        return 'login'
     if ('finder' in t and 'file' in t and 'edit' in t) or ('terminal' in t and 'shell' in t and 'edit' in t):
         return 'desktop'
     if 'language' in t and 'english' in t:
@@ -120,8 +122,32 @@ def blue_controls(frame):
     for band in bands:
         left, right = min(row[0] for row in band), max(row[2] for row in band)
         top, bottom = band[0][1], band[-1][1]
-        if 20 <= bottom - top <= 90 and 80 <= right - left <= 500:
-            result.append((left, top, right + 1, bottom + 1))
+        if not 20 <= bottom - top <= 90:
+            continue
+        # Adjacent controls can share one horizontal band: Monterey draws a
+        # blue outline around "Don't Skip" next to the filled "Skip" button.
+        # An outline contributes only a few blue pixels per column, while a
+        # filled button contributes most of its height. Split by that density
+        # before OCR so the two labels cannot be merged into one crop.
+        minimum = max(15, (bottom - top + 1) * 35 // 100)
+        filled = []
+        for x in range(left, right + 1):
+            count = sum(1 for y in range(top, bottom + 1)
+                        if pixels[x, y][2] > 120 and pixels[x, y][2] > pixels[x, y][0] * 1.4
+                        and pixels[x, y][2] > pixels[x, y][1] * 1.1)
+            if count >= minimum:
+                filled.append(x)
+        if not filled:
+            continue
+        start = last = filled[0]
+        for x in filled[1:]:
+            if x - last > 8:
+                if 80 <= last - start <= 500:
+                    result.append((start, top, last + 1, bottom + 1))
+                start = x
+            last = x
+        if 80 <= last - start <= 500:
+            result.append((start, top, last + 1, bottom + 1))
     return result
 
 
@@ -153,7 +179,9 @@ def language_button(frame):
         return None
     actual = 0
     for r, g, b in frame.crop((1663, 1232, 1723, 1292)).convert('RGB').getdata():
-        actual = (actual << 1) | int(max(r, g, b) < 180 and max(r, g, b) - min(r, g, b) < 8)
+        # Monterey renders the same arrow in light gray while its spinner is
+        # visible; match its shape against the lighter panel background.
+        actual = (actual << 1) | int(max(r, g, b) < 215 and max(r, g, b) - min(r, g, b) < 8)
     expected = _LANGUAGE_ARROW.bit_count()
     if (actual & _LANGUAGE_ARROW).bit_count() < expected * 0.90:
         return None
@@ -162,7 +190,39 @@ def language_button(frame):
     return (1693, 1262)
 
 
-BOOTSTRAP_COMMAND = """printf 'lume\\n' | sudo -S -p '' /bin/sh -c '{ /usr/sbin/dseditgroup -o read com.apple.access_ssh >/dev/null 2>&1 || /usr/sbin/dseditgroup -o create com.apple.access_ssh; } && /usr/sbin/dseditgroup -o edit -a lume -t user com.apple.access_ssh && /bin/launchctl enable system/com.openssh.sshd && { /bin/launchctl print system/com.openssh.sshd >/dev/null 2>&1 || /bin/launchctl bootstrap system /System/Library/LaunchDaemons/ssh.plist; } && /usr/bin/pmset -a sleep 0 displaysleep 0' && echo VIRFIELD_BOOTSTRAP_DONE"""
+def login_password_field(frame):
+    """Find Monterey's centered login password field when OCR misses it."""
+    if frame.size != (1920, 1440):
+        return None
+    pixels = frame.load()
+    x0, y0, x1, y1 = 600, 760, 1320, 1010
+    bands = []
+    current = []
+    for y in range(y0, y1):
+        xs = []
+        for x in range(x0, x1):
+            r, g, b = pixels[x, y]
+            if r > 130 and g > 80 and b > 145 and b >= r * 0.9 and max(r, g, b) - min(r, g, b) < 120:
+                xs.append(x)
+        if len(xs) >= 180:
+            current.append((min(xs), y, max(xs)))
+        elif current:
+            bands.append(current)
+            current = []
+    if current:
+        bands.append(current)
+    candidates = []
+    for band in bands:
+        left, right = min(row[0] for row in band), max(row[2] for row in band)
+        top, bottom = band[0][1], band[-1][1]
+        width, height = right - left + 1, bottom - top + 1
+        cx, cy = (left + right) // 2, (top + bottom) // 2
+        if 250 <= width <= 420 and 35 <= height <= 75 and 850 <= cx <= 1070 and 830 <= cy <= 960:
+            candidates.append((cx, cy))
+    return candidates[0] if len(candidates) == 1 else None
+
+
+BOOTSTRAP_COMMAND = """printf 'lume\\n' | sudo -S -p '' /bin/sh -c '{ /usr/sbin/dseditgroup -o read com.apple.access_ssh >/dev/null 2>&1 || /usr/sbin/dseditgroup -o create com.apple.access_ssh; } && /usr/sbin/dseditgroup -o edit -a lume -t user com.apple.access_ssh && /bin/launchctl enable system/com.openssh.sshd && { /bin/launchctl print system/com.openssh.sshd >/dev/null 2>&1 || /bin/launchctl bootstrap system /System/Library/LaunchDaemons/ssh.plist; } && /bin/launchctl kickstart -k system/com.openssh.sshd && /usr/bin/pmset -a sleep 0 displaysleep 0' && echo VIRFIELD_BOOTSTRAP_DONE"""
 
 
 def run():
@@ -183,6 +243,20 @@ def run():
         shared = False
 
     config = json.load(sys.stdin)
+
+    def read_ocr(arguments, payload=None):
+        # OCR reads screenshots only. A loaded host can stall one process; retry
+        # that read before treating the visible setup state as unavailable.
+        for attempt in range(2):
+            try:
+                result = subprocess.run([config['tesseract'], *arguments], input=payload,
+                                        capture_output=True, timeout=30, check=True)
+                return result.stdout.decode('utf-8', errors='replace')
+            except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as exc:
+                if attempt == 1:
+                    raise RuntimeError('Setup OCR unavailable after two bounded attempts') from exc
+                time.sleep(2)
+
     endpoint = urlparse(config['url'])
     if endpoint.scheme != 'vnc' or endpoint.hostname not in ('127.0.0.1', 'localhost', '::1'):
         raise RuntimeError('Setup VNC endpoint must be loopback')
@@ -202,7 +276,7 @@ def run():
             frame = Image.open(picture).convert('RGB')
             if frame.width < 640 or frame.height < 480:
                 raise RuntimeError('Unexpected guest resolution')
-            output = subprocess.run([config['tesseract'], str(picture), 'stdout', 'tsv'], capture_output=True, text=True, timeout=30, check=True).stdout
+            output = read_ocr([str(picture), 'stdout', 'tsv'])
             words = []
             for row in csv.DictReader(io.StringIO(output), delimiter='\t'):
                 if row.get('text', '').strip() and float(row['conf']) >= 20:
@@ -213,7 +287,7 @@ def run():
             footer = frame.crop((frame.width // 2, footer_top, frame.width, frame.height)).convert('L')
             stream = io.BytesIO()
             footer.resize((footer.width * 2, footer.height * 2)).save(stream, format='PNG')
-            output = subprocess.run([config['tesseract'], 'stdin', 'stdout', '--psm', '11', 'tsv'], input=stream.getvalue(), capture_output=True, timeout=30, check=True).stdout.decode('utf-8', errors='replace')
+            output = read_ocr(['stdin', 'stdout', '--psm', '11', 'tsv'], stream.getvalue())
             for row in csv.DictReader(io.StringIO(output), delimiter='\t'):
                 if row.get('text', '').strip() and float(row['conf']) >= 30:
                     item = {**{k: int(row[k]) // 2 for k in ('left', 'top', 'width', 'height')}, 'text': row['text'].strip()}
@@ -224,9 +298,12 @@ def run():
             action = classify(text)
             menu_stream = io.BytesIO()
             frame.crop((0, 0, frame.width, 48)).save(menu_stream, format='PNG')
-            menu_text = subprocess.run([config['tesseract'], 'stdin', 'stdout', '--psm', '7'], input=menu_stream.getvalue(), capture_output=True, timeout=30, check=True).stdout.decode('utf-8', errors='replace')
+            menu_text = read_ocr(['stdin', 'stdout', '--psm', '7'], menu_stream.getvalue())
             if action == 'unknown' and classify(menu_text) == 'desktop':
                 action = 'desktop'
+            login_field = login_password_field(frame)
+            if action == 'unknown' and login_field is not None:
+                action = 'login'
             hello = hello_button(frame)
             if hello is not None:
                 action = 'hello'
@@ -292,7 +369,7 @@ def run():
                     crop = crop.resize((crop.width * 3, crop.height * 3))
                     stream = io.BytesIO()
                     crop.save(stream, format='PNG')
-                    result = subprocess.run([config['tesseract'], 'stdin', 'stdout', '--psm', '7'], input=stream.getvalue(), capture_output=True, timeout=30, check=True).stdout.decode('utf-8', errors='replace')
+                    result = read_ocr(['stdin', 'stdout', '--psm', '7'], stream.getvalue())
                     if compact(result) == compact(label):
                         left, top, right, bottom = box
                         client.mouseMove((left + right) // 2, (top + bottom) // 2)
@@ -308,7 +385,7 @@ def run():
                 crop = frame.crop((left, top, frame.width * 65 // 100, frame.height * 3 // 4)).convert('L')
                 stream = io.BytesIO()
                 crop.resize((crop.width * 2, crop.height * 2)).save(stream, format='PNG')
-                result = subprocess.run([config['tesseract'], 'stdin', 'stdout', '--psm', '11', 'tsv'], input=stream.getvalue(), capture_output=True, timeout=30, check=True).stdout.decode('utf-8', errors='replace')
+                result = read_ocr(['stdin', 'stdout', '--psm', '11', 'tsv'], stream.getvalue())
                 modal_words = []
                 for row in csv.DictReader(io.StringIO(result), delimiter='\t'):
                     if row.get('text', '').strip() and float(row['conf']) >= 30:
@@ -367,9 +444,24 @@ def run():
                 default_button('Agree')
             elif action == 'create_account':
                 fields = find(words, 'Full name')
-                if not fields:
-                    raise RuntimeError('Account form did not expose Full name')
-                _, y, _, _, right, _ = fields[0]
+                if fields:
+                    _, y, _, _, right, _ = fields[0]
+                else:
+                    # Full-frame OCR sometimes misses the label beside the
+                    # focused blue input. Confirm it in a narrow crop above
+                    # the visible Account name row before choosing a field.
+                    accounts = find(words, 'Account name')
+                    if not accounts or not find(words, 'Password'):
+                        raise RuntimeError('Account form did not expose its required labels')
+                    _, account_y, left, top, right, _ = accounts[0]
+                    crop = frame.crop((max(0, left - 80), max(0, top - 100),
+                                       min(frame.width, right + 80), top - 15))
+                    stream = io.BytesIO()
+                    crop.resize((crop.width * 2, crop.height * 2)).save(stream, format='PNG')
+                    label = read_ocr(['stdin', 'stdout', '--psm', '6'], stream.getvalue())
+                    if 'fullname' not in compact(label):
+                        raise RuntimeError('Account form did not expose Full name')
+                    y = account_y - 60
                 client.mouseMove(right + 140, y)
                 client.mousePress(1)
                 for index, value in enumerate(('lume', 'lume', 'lume', 'lume')):
@@ -413,6 +505,19 @@ def run():
                 tap('Continue')
             elif action == 'welcome':
                 tap('Get Started')
+            elif action == 'login':
+                fields = find(words, 'Enter Password')
+                if fields:
+                    x, y, *_ = fields[0]
+                elif login_field is not None:
+                    x, y = login_field
+                else:
+                    raise RuntimeError('Login screen did not expose password field')
+                client.mouseMove(x, y)
+                client.mousePress(1)
+                client.keyPress('alt-a')
+                type_text(client, 'lume')
+                client.keyPress('enter')
             elif action == 'desktop':
                 # Bootstrap only the fresh guest's fixed account. The Go stage
                 # validates SSH, rotates this public bootstrap password, sets
@@ -439,8 +544,8 @@ def run():
                 top = terminal_frame.crop((0, 0, terminal_frame.width, 40))
                 stream = io.BytesIO()
                 top.save(stream, format='PNG')
-                menu = subprocess.run([config['tesseract'], 'stdin', 'stdout', '--psm', '7'], input=stream.getvalue(), capture_output=True, timeout=30, check=True).stdout.decode('utf-8', errors='replace')
-                body = subprocess.run([config['tesseract'], str(terminal), 'stdout', '--psm', '11'], capture_output=True, text=True, timeout=30, check=True).stdout
+                menu = read_ocr(['stdin', 'stdout', '--psm', '7'], stream.getvalue())
+                body = read_ocr([str(terminal), 'stdout', '--psm', '11'])
                 if 'terminal' not in compact(menu) or classify(body) == 'dismiss_search' or not any(x in body.lower() for x in ('zsh', 'bash')):
                     raise RuntimeError('Terminal is not the foreground guest app; refusing shell input')
                 client = api.connect(f'{endpoint.hostname}::{endpoint.port}', password=unquote(endpoint.password or ''), timeout=30, factory_class=SetupVNCFactory)

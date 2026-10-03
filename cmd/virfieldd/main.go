@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mallexxx/virfield/internal/appleauth"
 	"github.com/mallexxx/virfield/internal/catalog"
 	"github.com/mallexxx/virfield/internal/client"
 	"github.com/mallexxx/virfield/internal/config"
@@ -41,6 +42,18 @@ func main() {
 		os.Exit(1)
 	}
 }
+
+func loadPrincipals(configured []config.Principal) ([]httpapi.Principal, error) {
+	out := make([]httpapi.Principal, 0, len(configured))
+	for _, p := range configured {
+		token, err := config.Token(p.TokenFile)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, httpapi.Principal{Name: p.Name, Token: token, Scopes: p.Scopes})
+	}
+	return out, nil
+}
 func run() error {
 	path := flag.String("config", "", "absolute path to v2 JSON config")
 	flag.Parse()
@@ -55,6 +68,14 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	principals, err := loadPrincipals(cfg.Principals)
+	if err != nil {
+		return err
+	}
+	authSet, err := httpapi.NewAuthSet(token, principals)
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(cfg.StateDir, 0700); err != nil {
 		return err
 	}
@@ -65,17 +86,22 @@ func run() error {
 	if st.Mode().Perm()&0077 != 0 {
 		return errors.New("state directory must be private (chmod 700)")
 	}
+	lock, err := hostlock.Acquire()
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	hostLock, err := hostlock.AcquireHost()
+	if err != nil {
+		return err
+	}
+	defer hostLock.Close()
 	writer, err := logging.Open(filepath.Join(cfg.StateDir, "daemon.jsonl"), 10<<20)
 	if err != nil {
 		return err
 	}
 	defer writer.Close()
 	log := slog.New(slog.NewJSONHandler(writer, nil))
-	lock, err := hostlock.Acquire()
-	if err != nil {
-		return err
-	}
-	defer lock.Close()
 	db, err := store.Open(filepath.Join(cfg.StateDir, "state.db"))
 	if err != nil {
 		return err
@@ -110,6 +136,7 @@ func run() error {
 		return err
 	}
 	manager.SetRegistry(registryClient)
+	var appleService *appleauth.Service
 	if cfg.ImageTools != nil {
 		builder, err := images.New(cfg.StateDir, backend, *cfg.ImageTools)
 		if err != nil {
@@ -117,6 +144,23 @@ func run() error {
 		}
 		builder.Registry = registryClient
 		builder.StoragePaths = cfg.StoragePaths
+		builder.AuthCookiePath = filepath.Join(cfg.StateDir, "apple-auth", "cookies.txt")
+		if executable, execErr := os.Executable(); execErr == nil {
+			if resolved, resolveErr := filepath.EvalSymlinks(executable); resolveErr == nil {
+				executable = resolved
+			}
+			browser := filepath.Join(filepath.Dir(executable), "VirfieldAppleBrowser.app", "Contents", "MacOS", "VirfieldAppleBrowser")
+			if st, statErr := os.Lstat(browser); statErr == nil && st.Mode().IsRegular() && st.Mode().Perm()&0111 != 0 {
+				appleService, err = appleauth.New("", builder.AuthCookiePath, manager)
+				if err != nil {
+					return err
+				}
+			} else if statErr != nil && !os.IsNotExist(statErr) {
+				return statErr
+			} else {
+				log.Warn("Apple browser sign-in unavailable; install VirfieldAppleBrowser.app beside virfieldd")
+			}
+		}
 		manager.SetImageBuilder(builder)
 		locations := []string{}
 		for name := range cfg.StoragePaths {
@@ -137,8 +181,33 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	hup := make(chan os.Signal, 1)
+	signal.Notify(hup, syscall.SIGHUP)
+	defer signal.Stop(hup)
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-hup:
+				freshToken, tokenErr := config.Token(cfg.TokenFile)
+				freshPrincipals, principalsErr := loadPrincipals(cfg.Principals)
+				if tokenErr != nil || principalsErr != nil {
+					log.Error("token reload failed", "owner_error", tokenErr, "principal_error", principalsErr)
+					continue
+				}
+				if err := authSet.Replace(freshToken, freshPrincipals); err != nil {
+					log.Error("token reload rejected", "error", err)
+					continue
+				}
+				apiClient.SetToken(freshToken)
+				log.Info("API principal tokens reloaded")
+			}
+		}
+	}()
 	mcpServer := mcpadapter.New(apiClient)
-	mcpHTTP := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return mcpServer }, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
+	// The shared HTTP handler enforces the explicit Host allowlist before MCP.
+	mcpHTTP := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return mcpServer }, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true, DisableLocalhostProtection: true})
 	backupHTTP := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		configPath, err := filepath.Abs(*path)
 		if err != nil {
@@ -148,13 +217,14 @@ func run() error {
 		id, err := manager.Backup(r.Context(), cfg.StateDir, configPath, cfg.TokenFile)
 		w.Header().Set("Content-Type", "application/json")
 		if err != nil {
+			log.Error("backup failed", "error", err)
 			w.WriteHeader(409)
 			json.NewEncoder(w).Encode(map[string]any{"error": domain.Err("backup_failed", "Backup requires idle manager, resolved jobs and writable private storage")})
 			return
 		}
 		json.NewEncoder(w).Encode(map[string]string{"backup_id": id})
 	})
-	server := &http.Server{Handler: httpapi.New(manager, token, log, httpapi.Options{MCP: mcpHTTP, Backup: backupHTTP}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 * 1024}
+	server := &http.Server{Handler: httpapi.New(manager, token, log, httpapi.Options{Auth: authSet, AllowedHosts: append([]string{cfg.Listen}, cfg.AllowedHosts...), MCP: mcpHTTP, Backup: backupHTTP, AppleAuth: appleService, Origin: "http://" + cfg.Listen}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 75 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 * 1024}
 	controlDone := make(chan error, 1)
 	httpDone := make(chan error, 1)
 	go func() { controlDone <- manager.Run(ctx) }()
@@ -181,8 +251,16 @@ func run() error {
 		}
 	}
 	if !controlFinished {
-		if err := <-controlDone; runErr == nil {
-			runErr = err
+		select {
+		case err := <-controlDone:
+			if runErr == nil {
+				runErr = err
+			}
+		case <-time.After(2*time.Minute + 10*time.Second):
+			log.Error("controller shutdown exceeded mutation drain deadline")
+			if runErr == nil {
+				runErr = errors.New("controller shutdown timed out")
+			}
 		}
 	}
 	return runErr

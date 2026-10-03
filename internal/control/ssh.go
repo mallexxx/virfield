@@ -27,7 +27,7 @@ func (c *Controller) prepareSSH(ctx context.Context, l domain.Lease, j domain.Jo
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
-		operation, cancel := context.WithDeadline(ctx, minDeadline(time.Now().Add(3*time.Minute), j.Deadline))
+		operation, cancel := context.WithDeadline(context.WithoutCancel(ctx), minDeadline(time.Now().Add(3*time.Minute), j.Deadline))
 		defer cancel()
 		connection, err := c.leasePreparer.Prepare(operation, l)
 		c.mu.Lock()

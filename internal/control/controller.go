@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -44,11 +45,14 @@ type Controller struct {
 	backend        Backend
 	templates      map[string]domain.Template
 	observation    domain.Observation
-	limit          int
-	now            func() time.Time
-	active         map[string]bool
-	wg             sync.WaitGroup
-	log            *slog.Logger
+	// Monotonic local clock prevents wall-clock changes from making stale inventory fresh.
+	lastObservedMono time.Time
+	limit            int
+	now              func() time.Time
+	active           map[string]bool
+	readyDrift       map[string]int
+	wg               sync.WaitGroup
+	log              *slog.Logger
 }
 
 func New(s *store.Store, b Backend, templates []domain.Template, limit int, log *slog.Logger) (*Controller, error) {
@@ -66,14 +70,24 @@ func New(s *store.Store, b Backend, templates []domain.Template, limit int, log 
 		if !domain.ValidName(t.ID) || !domain.ValidName(t.Name) || !domain.ValidName(t.Location) {
 			return nil, fmt.Errorf("invalid template identity")
 		}
+		if t.LegacyUUID != "" {
+			t.LegacyUUID = strings.ToLower(t.LegacyUUID)
+			if !domain.ValidUUID(t.LegacyUUID) {
+				return nil, fmt.Errorf("invalid legacy UUID for template %s", t.ID)
+			}
+		}
+		if existing, ok := tm[t.ID]; ok {
+			if merged, ok := mergeTemplateDefinition(existing, t); ok {
+				tm[t.ID] = merged
+				continue
+			}
+			return nil, fmt.Errorf("template %s conflicts with its persisted definition", t.ID)
+		}
 		identity := t.Location + "/" + t.Name
 		if identities[identity] {
 			return nil, fmt.Errorf("duplicate template VM identity %s", identity)
 		}
 		identities[identity] = true
-		if _, ok := tm[t.ID]; ok {
-			return nil, fmt.Errorf("duplicate template %s", t.ID)
-		}
 		if t.Image != nil {
 			if err := t.Image.Validate(); err != nil {
 				return nil, err
@@ -81,7 +95,18 @@ func New(s *store.Store, b Backend, templates []domain.Template, limit int, log 
 		}
 		tm[t.ID] = t
 	}
-	return &Controller{store: s, backend: b, templates: tm, limit: limit, now: func() time.Time { return time.Now().UTC() }, active: map[string]bool{}, log: log, observation: domain.Observation{VMs: []domain.VM{}, Error: domain.Err("backend_unavailable", "Lume inventory has not been checked yet")}}, nil
+	return &Controller{store: s, backend: b, templates: tm, limit: limit, now: func() time.Time { return time.Now().UTC() }, active: map[string]bool{}, readyDrift: map[string]int{}, log: log, observation: domain.Observation{VMs: []domain.VM{}, Error: domain.Err("backend_unavailable", "Lume inventory has not been checked yet")}}, nil
+}
+func mergeTemplateDefinition(a, b domain.Template) (domain.Template, bool) {
+	aa, bb := a, b
+	aa.LegacyUUID, bb.LegacyUUID = "", ""
+	if !reflect.DeepEqual(aa, bb) {
+		return domain.Template{}, false
+	}
+	if a.LegacyUUID == "" {
+		a.LegacyUUID = b.LegacyUUID
+	}
+	return a, true
 }
 func fingerprint(v any) string {
 	b, _ := json.Marshal(v)
@@ -99,8 +124,12 @@ func validKey(key string) error {
 	}
 	return nil
 }
+func definitiveMutation(err error) bool {
+	var rejected interface{ Definitive() bool }
+	return errors.As(err, &rejected) && rejected.Definitive()
+}
 func (c *Controller) healthy() error {
-	if c.observation.Error != nil || c.now().Sub(c.observation.At) > 10*time.Second {
+	if c.observation.Error != nil || c.lastObservedMono.IsZero() || time.Since(c.lastObservedMono) > 10*time.Second {
 		return &domain.Error{Code: "backend_unavailable", Message: "Lume state is unavailable or stale. New VMs are blocked until inventory recovers.", Retryable: true}
 	}
 	return nil
@@ -135,13 +164,6 @@ func (c *Controller) capacity(leases []domain.Lease) domain.Capacity {
 		limit = c.limit
 	}
 	available := max(0, limit-n)
-	for _, l := range leases {
-		if l.Purpose == "image" && l.State != "image_ready" && l.State != "released" {
-			available = 0
-			names = append(names, "Image operation reserves maintenance access; new leases paused")
-			break
-		}
-	}
 	return domain.Capacity{Limit: limit, Used: n, Available: available, Blockers: names}
 }
 func (c *Controller) Status(ctx context.Context) (domain.Status, error) {
@@ -154,6 +176,20 @@ func (c *Controller) Status(ctx context.Context) (domain.Status, error) {
 	js, err := c.store.Jobs(ctx)
 	if err != nil {
 		return domain.Status{}, err
+	}
+	reservations := make([]domain.ImageReservation, 0)
+	for _, l := range ls {
+		if l.Purpose != "image" || l.State == "image_ready" || l.State == "released" {
+			continue
+		}
+		reservation := domain.ImageReservation{ImageID: l.ID, State: l.State, Since: l.CreatedAt}
+		for _, j := range js {
+			if j.LeaseID == l.ID {
+				reservation.JobID = j.ID
+				reservation.Deadline = j.Deadline
+			}
+		}
+		reservations = append(reservations, reservation)
 	}
 	ts := make([]domain.Template, 0, len(c.templates))
 	for _, t := range c.templates {
@@ -176,9 +212,12 @@ func (c *Controller) Status(ctx context.Context) (domain.Status, error) {
 		}
 		resources = &domain.ResourceStatus{Limits: *c.resourceLimits, Reserved: sum, DiskAvailable: c.diskAvailable, Error: message}
 	}
-	return domain.Status{Resources: resources, Capacity: capacity, Observation: o, Leases: ls, Jobs: js, Templates: ts}, nil
+	return domain.Status{Resources: resources, ImageReservations: reservations, Capacity: capacity, Observation: o, Leases: ls, Jobs: js, Templates: ts}, nil
 }
 func (c *Controller) Acquire(ctx context.Context, key string, r domain.AcquireRequest) (domain.Operation, error) {
+	return c.AcquireAs(ctx, key, r, "")
+}
+func (c *Controller) AcquireAs(ctx context.Context, key string, r domain.AcquireRequest, owner string) (domain.Operation, error) {
 	if err := validKey(key); err != nil {
 		return domain.Operation{}, err
 	}
@@ -197,7 +236,8 @@ func (c *Controller) Acquire(ctx context.Context, key string, r domain.AcquireRe
 	fp := fingerprint(struct {
 		Kind    string
 		Request domain.AcquireRequest
-	}{"acquire", r})
+		Owner   string `json:",omitempty"`
+	}{"acquire", r, owner})
 	if op, err := c.store.Replay(ctx, key, fp); err != nil {
 		return domain.Operation{}, err
 	} else if op != nil {
@@ -209,6 +249,22 @@ func (c *Controller) Acquire(ctx context.Context, key string, r domain.AcquireRe
 	t, ok := c.templates[r.Template]
 	if !ok {
 		return domain.Operation{}, domain.Err("unknown_template", "template is not in the host allowlist")
+	}
+	ls, err := c.store.Leases(ctx)
+	if err != nil {
+		return domain.Operation{}, err
+	}
+	for _, l := range ls {
+		if l.Purpose == "image" && l.State != "image_ready" && l.State != "released" && l.Key() == t.Location+"/"+t.Name {
+			return domain.Operation{}, domain.Err("image_in_use", "requested image is being built or deleted")
+		}
+	}
+	if t.LegacyUUID != "" {
+		for _, l := range ls {
+			if l.LegacyUUID == t.LegacyUUID && l.State != "released" && l.State != "image_ready" {
+				return domain.Operation{}, domain.Err("legacy_uuid_in_use", "identity-preserving legacy template already has an active worker; release it before acquiring another")
+			}
+		}
 	}
 	found := false
 	for _, v := range c.observation.VMs {
@@ -222,15 +278,6 @@ func (c *Controller) Acquire(ctx context.Context, key string, r domain.AcquireRe
 	if !found {
 		return domain.Operation{}, domain.Err("template_unavailable", "configured golden template is missing from Lume")
 	}
-	ls, err := c.store.Leases(ctx)
-	if err != nil {
-		return domain.Operation{}, err
-	}
-	for _, l := range ls {
-		if l.Purpose == "image" && l.State != "image_ready" {
-			return domain.Operation{}, domain.Err("image_in_use", "image operation is in progress")
-		}
-	}
 	imageID := ""
 	if c.leasePreparer != nil && (t.Image == nil || r.SSHPublicKey == "") {
 		return domain.Operation{}, domain.Err("ssh_profile_missing", "A verified image profile and a fresh ssh_public_key are required for each lease")
@@ -243,7 +290,7 @@ func (c *Controller) Acquire(ctx context.Context, key string, r domain.AcquireRe
 	if t.Image != nil {
 		verified := false
 		for _, l := range ls {
-			if l.Purpose == "image" && l.Key() == t.Location+"/"+t.Name && l.State == "image_ready" && l.ImageManifest == fingerprint(t.Image) {
+			if l.Purpose == "image" && l.Key() == t.Location+"/"+t.Name && l.State == "image_ready" && l.ImageManifest == imageFingerprint(t.Image) {
 				verified = true
 				imageID = l.ID
 			}
@@ -262,7 +309,7 @@ func (c *Controller) Acquire(ctx context.Context, key string, r domain.AcquireRe
 	}
 	now := c.now()
 	id := domain.NewID("lease-")
-	l := domain.Lease{Resources: reservation, Source: &t, ImageID: imageID, SSHPublicKey: r.SSHPublicKey, ID: id, VMName: "vf-" + id[6:], Location: t.Location, Template: t.ID, State: "pending", ExpiresAt: now.Add(time.Duration(r.TTLSeconds) * time.Second), CreatedAt: now, UpdatedAt: now}
+	l := domain.Lease{Resources: reservation, Source: &t, ImageID: imageID, LegacyUUID: t.LegacyUUID, SSHPublicKey: r.SSHPublicKey, Owner: owner, ID: id, VMName: "vf-" + id[6:], Location: t.Location, Template: t.ID, State: "pending", ExpiresAt: now.Add(time.Duration(r.TTLSeconds) * time.Second), CreatedAt: now, UpdatedAt: now}
 	j := domain.Job{ID: domain.NewID("job-"), LeaseID: id, Kind: "prepare", Phase: "queued", State: "queued", CreatedAt: now, UpdatedAt: now, Deadline: now.Add(10 * time.Minute)}
 	if err := c.store.Save(ctx, l, &j, key, fp, "lease.accepted", "Slot reserved; VM preparation queued"); err != nil {
 		return domain.Operation{}, err
@@ -288,20 +335,18 @@ func (c *Controller) Release(ctx context.Context, id, key string) (domain.Operat
 	if l.Purpose == "image" {
 		return domain.Operation{}, domain.Err("invalid_request", "use image operations for permanent images")
 	}
+	cleanup, err := c.store.CleanupJob(ctx, id)
+	if err != nil {
+		return domain.Operation{}, err
+	}
+	if cleanup != nil {
+		return domain.Operation{Lease: l, Job: *cleanup, Replayed: true}, nil
+	}
 	if l.State == "released" {
 		return domain.Operation{}, domain.Err("lease_released", "lease is already released")
 	}
 	if c.active[id] {
 		return domain.Operation{}, &domain.Error{Code: "operation_in_progress", Message: "A Lume operation is still in flight. Retry release after its result is recorded.", Retryable: true}
-	}
-	jobs, err := c.store.Jobs(ctx)
-	if err != nil {
-		return domain.Operation{}, err
-	}
-	for _, j := range jobs {
-		if j.LeaseID == id && j.Kind == "cleanup" {
-			return domain.Operation{}, domain.Err("operation_in_progress", "cleanup already exists; inspect its job")
-		}
 	}
 	if l.State == "quarantined" {
 		return domain.Operation{}, domain.Err("outcome_unknown", "A clone may still be in progress. Inspect Lume before resolving this lease; automatic deletion is blocked.")
@@ -348,6 +393,9 @@ func (c *Controller) Renew(ctx context.Context, id string, expires time.Time) (d
 }
 func (c *Controller) Lease(ctx context.Context, id string) (domain.Lease, error) {
 	return c.store.Lease(ctx, id)
+}
+func (c *Controller) Leases(ctx context.Context) ([]domain.Lease, error) {
+	return c.store.Leases(ctx)
 }
 func (c *Controller) Job(ctx context.Context, id string) (domain.Job, error) {
 	return c.store.Job(ctx, id)
@@ -405,9 +453,12 @@ func (c *Controller) Run(ctx context.Context) error {
 	if err := c.Recover(ctx); err != nil {
 		return err
 	}
+	c.pruneHistory(ctx)
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
-	defer c.wg.Wait()
+	retention := time.NewTicker(24 * time.Hour)
+	defer retention.Stop()
+	defer c.drain(2*time.Minute + 5*time.Second)
 	defer c.closeTunnels()
 	for {
 		if err := c.Tick(ctx); err != nil && !errors.Is(err, context.Canceled) {
@@ -416,8 +467,29 @@ func (c *Controller) Run(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return nil
+		case <-retention.C:
+			c.pruneHistory(ctx)
 		case <-ticker.C:
 		}
+	}
+}
+func (c *Controller) pruneHistory(ctx context.Context) {
+	bounded, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	result, err := c.store.Prune(bounded, c.now().Add(-30*24*time.Hour))
+	if err != nil {
+		c.log.Error("journal retention failed; no partial deletion committed", "error", err)
+	} else if result != (store.PruneResult{}) {
+		c.log.Info("journal retention completed", "leases", result.Leases, "jobs", result.Jobs, "requests", result.Requests, "events", result.Events)
+	}
+}
+func (c *Controller) drain(timeout time.Duration) {
+	done := make(chan struct{})
+	go func() { c.wg.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(timeout):
+		c.log.Error("in-flight operations did not drain before shutdown deadline")
 	}
 }
 func (c *Controller) Tick(ctx context.Context) error {
@@ -456,8 +528,17 @@ func (c *Controller) Tick(ctx context.Context) error {
 	if c.observation.Error != nil {
 		c.log.Info("Lume observation recovered", "host_used", o.HostUsed, "host_max", o.HostMax)
 	}
+	recovered := c.observation.Error != nil
+	outage := time.Duration(0)
+	if recovered && !c.lastObservedMono.IsZero() {
+		outage = time.Since(c.lastObservedMono)
+		if outage < 0 {
+			outage = 0
+		}
+	}
 	o.At = snapshotStarted
 	c.observation = o
+	c.lastObservedMono = time.Now()
 	c.diskAvailable = disk
 	c.resourceError = ""
 	if resourceErr != nil {
@@ -475,15 +556,22 @@ func (c *Controller) Tick(ctx context.Context) error {
 		if l.State == "ready" && !l.UpdatedAt.After(snapshotStarted) {
 			vm, exists := c.vm(l)
 			if !exists || vm.State != "running" || (c.leasePreparer != nil && (l.SSH == nil || vm.IP != l.IP)) {
-				l.State = "needs_attention"
-				l.IP = ""
-				l.Error = domain.Err("vm_drift", "Ready VM identity, address or running state changed; release the lease")
-				l.UpdatedAt = c.now()
-				if err := c.store.Save(ctx, l, nil, "", "", "lease.drift", l.Error.Message); err != nil {
-					return err
+				c.readyDrift[l.ID]++
+				if c.readyDrift[l.ID] >= 2 {
+					l.State = "needs_attention"
+					l.IP = ""
+					l.Error = domain.Err("vm_drift", "Ready VM identity, address or running state changed; release the lease")
+					l.UpdatedAt = c.now()
+					if err := c.store.Save(ctx, l, nil, "", "", "lease.drift", l.Error.Message); err != nil {
+						return err
+					}
+					ls[i] = l
 				}
-				ls[i] = l
+			} else {
+				delete(c.readyDrift, l.ID)
 			}
+		} else {
+			delete(c.readyDrift, l.ID)
 		}
 		hasCleanup := false
 		for _, j := range js {
@@ -503,6 +591,7 @@ func (c *Controller) Tick(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	var advanceErrors []error
 	for _, j := range js {
 		if j.State == "needs_attention" || c.active[j.LeaseID] || j.UpdatedAt.After(snapshotStarted) {
 			continue
@@ -511,11 +600,27 @@ func (c *Controller) Tick(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		if recovered {
+			j.Deadline = j.Deadline.Add(outage)
+			if !j.Deadline.After(snapshotStarted) {
+				budget := 10 * time.Minute
+				if j.Kind == "cleanup" {
+					budget = 5 * time.Minute
+				}
+				if j.Kind == "image_build" {
+					budget = 10 * time.Hour
+				}
+				j.Deadline = snapshotStarted.Add(budget)
+			}
+			if err := c.save(ctx, l, j, "job.deadline_resumed", "Backend inventory recovered; operation deadline resumed"); err != nil {
+				return err
+			}
+		}
 		if err := c.advance(ctx, l, j); err != nil {
-			return err
+			advanceErrors = append(advanceErrors, fmt.Errorf("advance job %s: %w", j.ID, err))
 		}
 	}
-	return nil
+	return errors.Join(advanceErrors...)
 }
 func (c *Controller) vm(l domain.Lease) (domain.VM, bool) {
 	for _, v := range c.observation.VMs {
@@ -634,10 +739,17 @@ func (c *Controller) cleanup(ctx context.Context, l domain.Lease, j domain.Job, 
 	// A start is asynchronous. Do not treat an early 'stopped' reading as proof
 	// that it cannot still boot. Require a running observation or operator resolution.
 	if l.StartPending {
-		if !exists || v.State != "running" {
+		if l.StartRejected && (!exists || v.State == "stopped") {
+			l.StartAbsentObservations++
+			if l.StartAbsentObservations < 3 {
+				return c.save(ctx, l, j, "cleanup.start_absent_observed", "Rejected start remains absent or stopped")
+			}
+		} else if !exists || v.State != "running" {
 			return nil
 		}
 		l.StartPending = false
+		l.StartRejected = false
+		l.StartAbsentObservations = 0
 	}
 	if !exists {
 		if disposer, ok := c.leasePreparer.(interface{ Forget(domain.Lease) error }); ok {
@@ -680,6 +792,8 @@ func (c *Controller) dispatch(ctx context.Context, l domain.Lease, j domain.Job,
 	j.State = "running"
 	if phase == "start_dispatched" {
 		l.StartPending = true
+		l.StartRejected = false
+		l.StartAbsentObservations = 0
 	}
 	if j.Kind == "prepare" {
 		l.State = "provisioning"
@@ -691,7 +805,9 @@ func (c *Controller) dispatch(ctx context.Context, l domain.Lease, j domain.Job,
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
-		opCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+		// A normal daemon shutdown stops admission, then lets this bounded
+		// mutation finish and persist its observed outcome before process exit.
+		opCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
 		err := fn(opCtx)
 		cancel()
 		c.mu.Lock()
@@ -710,6 +826,13 @@ func (c *Controller) dispatch(ctx context.Context, l domain.Lease, j domain.Job,
 		if err != nil {
 			if phase == "clone_dispatched" {
 				err = c.attention(saveCtx, l, j, "clone_outcome_unknown", "Lume clone did not return confirmed success. Automatic replay and deletion are blocked.", true)
+			} else if phase == "start_dispatched" && definitiveMutation(err) {
+				l.StartRejected = true
+				j.Error = domain.Err("start_rejected", "Lume rejected VM start; cleanup will confirm stable stopped or absent state")
+				err = c.save(saveCtx, l, j, "job.start_rejected", j.Error.Message)
+				if err == nil {
+					_, err = c.queueCleanup(saveCtx, l, "", "")
+				}
 			} else {
 				j.Error = domain.Err("outcome_unknown", "Lume mutation did not return confirmed success; observing without replay")
 				err = c.save(saveCtx, l, j, "job.outcome_unknown", j.Error.Message)

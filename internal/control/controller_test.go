@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/mallexxx/virfield/internal/domain"
+	"github.com/mallexxx/virfield/internal/lume"
 	"github.com/mallexxx/virfield/internal/store"
 )
 
@@ -139,6 +140,41 @@ func code(t *testing.T, err error, want string) {
 		t.Fatalf("error=%v; want %s", err, want)
 	}
 }
+
+func TestLegacyUUIDAllowsOnlyOneActiveWorker(t *testing.T) {
+	c, _, b := setup(t)
+	legacyUUID := "123e4567-e89b-12d3-a456-426614174000"
+	c.templates["test"] = domain.Template{ID: "test", Name: "golden", Location: "home", LegacyUUID: legacyUUID}
+	c.templates["legacy-copy"] = domain.Template{ID: "legacy-copy", Name: "other-golden", Location: "home", LegacyUUID: legacyUUID}
+	b.vms["home/other-golden"] = domain.VM{Name: "other-golden", Location: "home", OS: "macOS", State: "stopped"}
+
+	first := acquire(t, c, "legacy-first")
+	if first.Lease.LegacyUUID != legacyUUID {
+		t.Fatalf("lease lost legacy UUID: %#v", first.Lease)
+	}
+	_, err := c.Acquire(context.Background(), "legacy-second", domain.AcquireRequest{Template: "legacy-copy", TTLSeconds: 3600})
+	code(t, err, "legacy_uuid_in_use")
+
+	if _, err := c.Release(context.Background(), first.Lease.ID, "legacy-release"); err != nil {
+		t.Fatal(err)
+	}
+	tick(t, c)
+	if _, err := c.Acquire(context.Background(), "legacy-after-release", domain.AcquireRequest{Template: "legacy-copy", TTLSeconds: 3600}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLegacyUUIDMustBeValid(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	_, err = New(s, newBackend(), []domain.Template{{ID: "test", Name: "golden", Location: "home", LegacyUUID: "not-a-uuid"}}, 2, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err == nil {
+		t.Fatal("invalid legacy UUID accepted")
+	}
+}
 func ready(t *testing.T, c *Controller, op domain.Operation) {
 	t.Helper()
 	for range 3 {
@@ -203,6 +239,10 @@ func TestIdempotencyConflictAndReplayAfterRelease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	second, err := c.Release(context.Background(), op.Lease.ID, "release-2")
+	if err != nil || !second.Replayed || second.Job.ID != cleanup.Job.ID {
+		t.Fatalf("second release did not converge on cleanup: %+v %v", second, err)
+	}
 	for range 3 {
 		tick(t, c)
 	}
@@ -213,6 +253,10 @@ func TestIdempotencyConflictAndReplayAfterRelease(t *testing.T) {
 	replay, err := c.Release(context.Background(), op.Lease.ID, "release-1")
 	if err != nil || !replay.Replayed || replay.Job.ID != cleanup.Job.ID {
 		t.Fatalf("%+v %v", replay, err)
+	}
+	released, err := c.Release(context.Background(), op.Lease.ID, "release-3")
+	if err != nil || released.Lease.State != "released" || released.Job.ID != cleanup.Job.ID {
+		t.Fatalf("release after expiry must return completed cleanup: %+v %v", released, err)
 	}
 	again = acquire(t, c, "request-1")
 	if again.Lease.State != "released" {
@@ -251,7 +295,7 @@ func TestUnavailableAndStaleInventoryFailClosed(t *testing.T) {
 	code(t, err, "backend_unavailable")
 	b.err = nil
 	tick(t, c)
-	c.now = func() time.Time { return time.Now().Add(20 * time.Second) }
+	c.lastObservedMono = time.Now().Add(-20 * time.Second)
 	_, err = c.Acquire(context.Background(), "request-2", domain.AcquireRequest{Template: "test", TTLSeconds: 3600})
 	code(t, err, "backend_unavailable")
 }
@@ -329,6 +373,23 @@ func TestLostStartResponseCanBecomeReady(t *testing.T) {
 		t.Fatal("start replayed")
 	}
 }
+func TestDefinitiveStartRejectionAutomaticallyReleasesSlot(t *testing.T) {
+	c, _, b := setup(t)
+	b.delayedStart = true
+	b.startErr = &lume.RejectedMutation{Status: 400}
+	op := acquire(t, c, "rejected-start")
+	for range 8 {
+		tick(t, c)
+	}
+	l, err := c.Lease(context.Background(), op.Lease.ID)
+	if err != nil || l.State != "released" || l.StartPending || b.count("delete") != 1 {
+		t.Fatal(l, err, b.counts)
+	}
+	release, err := c.Release(context.Background(), l.ID, "repeat-release")
+	if err != nil || release.Job.Kind != "cleanup" || release.Lease.State != "released" {
+		t.Fatal(release, err)
+	}
+}
 func TestReleaseWaitsForDelayedStart(t *testing.T) {
 	c, _, b := setup(t)
 	b.delayedStart = true
@@ -379,6 +440,31 @@ func TestExpiryCleanupAndRenewal(t *testing.T) {
 	_, err = c.Renew(context.Background(), l.ID, extended.Add(time.Hour))
 	code(t, err, "lease_expired")
 }
+func TestCleanupDeadlinePausesAcrossBackendOutage(t *testing.T) {
+	c, _, b := setup(t)
+	op := acquire(t, c, "outage-acquire")
+	ready(t, c, op)
+	cleanup, err := c.Release(context.Background(), op.Lease.ID, "outage-release")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.err = errors.New("backend unavailable")
+	c.now = func() time.Time { return cleanup.Job.Deadline.Add(time.Minute) }
+	tick(t, c)
+	b.err = nil
+	tick(t, c)
+	j, err := c.Job(context.Background(), cleanup.Job.ID)
+	if err != nil || j.State == "needs_attention" || !j.Deadline.After(c.now()) {
+		t.Fatal(j, err)
+	}
+	for range 4 {
+		tick(t, c)
+	}
+	l, err := c.Lease(context.Background(), op.Lease.ID)
+	if err != nil || l.State != "released" {
+		t.Fatal(l, err)
+	}
+}
 func TestSlowCloneDoesNotBlockStatusOrLoseRenewal(t *testing.T) {
 	c, _, b := setup(t)
 	b.blockClone = make(chan struct{})
@@ -403,6 +489,42 @@ func TestSlowCloneDoesNotBlockStatusOrLoseRenewal(t *testing.T) {
 	}
 	_, err := c.Release(context.Background(), op.Lease.ID, "release-1")
 	code(t, err, "operation_in_progress")
+}
+func TestGracefulShutdownLetsClonePersistConfirmedOutcome(t *testing.T) {
+	c, _, b := setup(t)
+	b.blockClone = make(chan struct{})
+	op := acquire(t, c, "shutdown-clone")
+	runCtx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- c.Run(runCtx) }()
+	deadline := time.After(3 * time.Second)
+	for b.count("clone") == 0 {
+		select {
+		case <-deadline:
+			cancel()
+			t.Fatal("clone was not dispatched")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	cancel()
+	select {
+	case err := <-done:
+		t.Fatal("daemon returned before the clone finished", err)
+	default:
+	}
+	close(b.blockClone)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("daemon did not drain completed clone")
+	}
+	l, err := c.Lease(context.Background(), op.Lease.ID)
+	if err != nil || !l.CloneConfirmed || l.State == "quarantined" {
+		t.Fatal("clone outcome was not persisted before shutdown", l, err)
+	}
 }
 func TestDeleteFailureRetainsSlot(t *testing.T) {
 	c, _, b := setup(t)
@@ -434,8 +556,39 @@ func TestReadyDriftDoesNotClaimSuccess(t *testing.T) {
 	b.mu.Unlock()
 	tick(t, c)
 	l, _ := c.Lease(context.Background(), op.Lease.ID)
+	if l.State != "ready" {
+		t.Fatalf("one transient observation changed lease state: %s", l.State)
+	}
+	tick(t, c)
+	l, _ = c.Lease(context.Background(), op.Lease.ID)
 	if l.State != "needs_attention" || l.Error.Code != "vm_drift" {
 		t.Fatal(l)
+	}
+}
+func TestReadyDriftCounterResetsAfterHealthyObservation(t *testing.T) {
+	c, _, b := setup(t)
+	op := acquire(t, c, "drift-reset")
+	ready(t, c, op)
+	key := op.Lease.Key()
+	b.mu.Lock()
+	vm := b.vms[key]
+	vm.State = "stopped"
+	b.vms[key] = vm
+	b.mu.Unlock()
+	tick(t, c)
+	b.mu.Lock()
+	vm.State = "running"
+	b.vms[key] = vm
+	b.mu.Unlock()
+	tick(t, c)
+	b.mu.Lock()
+	vm.State = "stopped"
+	b.vms[key] = vm
+	b.mu.Unlock()
+	tick(t, c)
+	l, err := c.Lease(context.Background(), op.Lease.ID)
+	if err != nil || l.State != "ready" {
+		t.Fatalf("separate transient observations caused drift: %s, %v", l.State, err)
 	}
 }
 func TestReleaseBeforeCloneCannotDeleteCollision(t *testing.T) {

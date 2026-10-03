@@ -2,8 +2,6 @@
 package httpapi
 
 import (
-	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"io"
@@ -13,20 +11,28 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mallexxx/virfield/internal/appleauth"
 	"github.com/mallexxx/virfield/internal/control"
 	"github.com/mallexxx/virfield/internal/domain"
 	"github.com/mallexxx/virfield/internal/web"
 )
 
 type Server struct {
-	c     *control.Controller
-	token [32]byte
-	log   *slog.Logger
+	c            *control.Controller
+	authSet      *AuthSet
+	log          *slog.Logger
+	apple        *appleauth.Service
+	origin       string
+	allowedHosts map[string]bool
 }
 
 type Options struct {
-	MCP    http.Handler
-	Backup http.Handler
+	Auth         *AuthSet
+	AllowedHosts []string
+	MCP          http.Handler
+	Backup       http.Handler
+	AppleAuth    *appleauth.Service
+	Origin       string
 }
 
 func New(c *control.Controller, token string, log *slog.Logger, options ...Options) http.Handler {
@@ -34,7 +40,18 @@ func New(c *control.Controller, token string, log *slog.Logger, options ...Optio
 	if len(options) > 0 {
 		extra = options[0]
 	}
-	s := &Server{c: c, token: sha256.Sum256([]byte(token)), log: log}
+	authSet := extra.Auth
+	if authSet == nil {
+		authSet = &AuthSet{}
+		_ = authSet.Replace(token, nil)
+	}
+	s := &Server{c: c, authSet: authSet, log: log, apple: extra.AppleAuth, origin: extra.Origin}
+	if len(extra.AllowedHosts) > 0 {
+		s.allowedHosts = map[string]bool{}
+		for _, host := range extra.AllowedHosts {
+			s.allowedHosts[host] = true
+		}
+	}
 	mux := http.NewServeMux()
 	static := web.Handler()
 	mux.Handle("GET /{$}", static)
@@ -47,6 +64,11 @@ func New(c *control.Controller, token string, log *slog.Logger, options ...Optio
 	}
 	api.HandleFunc("GET /api/v1/status", s.status)
 	api.HandleFunc("GET /api/v1/images/catalog", s.catalog)
+	api.HandleFunc("POST /api/v1/jobs/{id}/apple-auth", s.appleAuthLink)
+	if s.apple != nil {
+		mux.HandleFunc("GET /apple-auth/{token}", s.appleAuthPage)
+		mux.HandleFunc("POST /apple-auth/{token}/session", s.appleBrowserSession)
+	}
 	api.HandleFunc("GET /api/v1/registry/sources", s.registrySources)
 	api.HandleFunc("POST /api/v1/registry/resolve", s.registryResolve)
 	api.HandleFunc("POST /api/v1/images/pull", s.pullImage)
@@ -57,6 +79,7 @@ func New(c *control.Controller, token string, log *slog.Logger, options ...Optio
 	api.HandleFunc("POST /api/v1/images/{id}/provision", s.provisionImage)
 	api.HandleFunc("POST /api/v1/images/{id}/recover", s.recoverImage)
 	api.HandleFunc("POST /api/v1/leases", s.acquire)
+	api.HandleFunc("GET /api/v1/leases", s.leases)
 	api.HandleFunc("GET /api/v1/leases/{id}", s.lease)
 	api.HandleFunc("POST /api/v1/leases/{id}/tunnel", s.openTunnel)
 	api.HandleFunc("DELETE /api/v1/leases/{id}/tunnel", s.closeTunnel)
@@ -70,6 +93,10 @@ func New(c *control.Controller, token string, log *slog.Logger, options ...Optio
 		mux.Handle("/mcp", s.auth(http.MaxBytesHandler(extra.MCP, 64<<10)))
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.allowedHosts != nil && !s.allowedHosts[r.Host] {
+			http.Error(w, "Host is not allowed", http.StatusForbidden)
+			return
+		}
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("X-Frame-Options", "DENY")
@@ -86,14 +113,17 @@ func (s *Server) auth(next http.Handler) http.Handler {
 			s.fail(w, domain.Err("forbidden", "cross-origin access is not allowed"))
 			return
 		}
-		auth := r.Header.Get("Authorization")
-		actual := sha256.Sum256([]byte(strings.TrimPrefix(auth, "Bearer ")))
-		if !strings.HasPrefix(auth, "Bearer ") || subtle.ConstantTimeCompare(actual[:], s.token[:]) != 1 {
+		principal, ok := s.authSet.authenticate(r.Header.Get("Authorization"))
+		if !ok {
 			w.Header().Set("WWW-Authenticate", "Bearer")
 			s.fail(w, domain.Err("unauthorized", "a valid bearer token is required"))
 			return
 		}
-		next.ServeHTTP(w, r)
+		if !principal.permits(r) {
+			s.fail(w, domain.Err("forbidden", "principal lacks scope for this operation"))
+			return
+		}
+		next.ServeHTTP(w, withPrincipal(r, principal))
 	})
 }
 func write(w http.ResponseWriter, status int, v any) {
@@ -107,25 +137,34 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 		s.log.Error("API failure", "error", err)
 		e = domain.Err("internal_error", "Operation could not be persisted; inspect daemon logs")
 	}
-	status := 400
-	switch e.Code {
-	case "unauthorized":
-		status = 401
-	case "forbidden":
-		status = 403
-	case "not_found", "registry_not_found":
-		status = 404
-	case "registry_tag_exists", "resource_exhausted", "resource_unknown", "resource_unavailable", "ssh_key_in_use", "image_in_use", "image_exists", "capacity_exhausted", "idempotency_conflict", "operation_in_progress", "lease_expired", "lease_released", "outcome_unknown", "template_unavailable":
-		status = 409
-	case "backend_unavailable", "catalog_unavailable", "registry_unavailable":
-		status = 503
-	case "internal_error":
-		status = 500
-	}
+	status := statusForCode(e.Code)
 	if e.Retryable {
 		w.Header().Set("Retry-After", "2")
 	}
 	write(w, status, map[string]any{"error": e})
+}
+
+func statusForCode(code string) int {
+	switch code {
+	case "invalid_request", "invalid_profile", "invalid_registry", "registry_invalid", "registry_format_unsupported", "ssh_profile_missing", "unsafe_retry":
+		return http.StatusBadRequest
+	case "unauthorized", "registry_auth_required":
+		return http.StatusUnauthorized
+	case "forbidden":
+		return http.StatusForbidden
+	case "not_found", "registry_not_found", "unknown_template", "unknown_registry", "version_not_found":
+		return http.StatusNotFound
+	case "registry_tag_exists", "resource_exhausted", "resource_unknown", "resource_unavailable", "ssh_key_in_use", "legacy_uuid_in_use", "image_in_use", "image_exists", "capacity_exhausted", "idempotency_conflict", "operation_in_progress", "lease_expired", "lease_released", "lease_unavailable", "outcome_unknown", "template_unavailable", "apple_auth_required", "backup_failed", "vm_drift", "vm_missing", "start_rejected", "catalog_changed", "disk_encrypted", "disk_locked", "disk_policy_unknown", "download_integrity", "image_interrupted", "ownership_unconfirmed", "registry_digest_mismatch", "registry_source_changed", "registry_unsanitized", "security_policy_failed", "sip_verification_failed", "unexpected_state", "unsafe_cache", "xcode_signature_failed", "xcode_version_mismatch":
+		return http.StatusConflict
+	case "backend_unavailable", "catalog_unavailable", "registry_unavailable", "apple_auth_unavailable", "tunnel_unavailable", "recovery_unavailable", "image_dependency", "setup_unavailable", "unsupported_lume", "registry_push_disabled", "registry_unconfigured", "image_credentials_missing":
+		return http.StatusServiceUnavailable
+	case "disk_space":
+		return http.StatusInsufficientStorage
+	case "guest_authentication_failed", "guest_build_mismatch", "guest_command_failed", "guest_connect_failed", "guest_identity_failed", "guest_shutdown_failed", "guest_ssh_failed", "guest_timeout", "guest_version_mismatch", "assistant_incomplete", "credential_autologin_failed", "credential_cleanup_failed", "credential_verification_failed", "desktop_timeout", "download_failed", "image_command_failed", "lease_ssh_failed", "provision_verification_failed", "recovery_stop_unconfirmed", "registry_bootstrap_failed", "registry_publish_unknown", "stop_timeout", "tool_provision_failed", "xcode_install_failed", "xcode_transfer_failed", "xcode_verification_failed":
+		return http.StatusBadGateway
+	default:
+		return http.StatusInternalServerError
+	}
 }
 func decode(w http.ResponseWriter, r *http.Request, out any) error {
 	if ct := strings.Split(r.Header.Get("Content-Type"), ";")[0]; ct != "application/json" {
@@ -157,7 +196,11 @@ func (s *Server) acquire(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	v, err := s.c.Acquire(r.Context(), r.Header.Get("Idempotency-Key"), req)
+	owner := ""
+	if p := principalFrom(r); !p.operator() {
+		owner = p.name
+	}
+	v, err := s.c.AcquireAs(r.Context(), r.Header.Get("Idempotency-Key"), req, owner)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -175,7 +218,32 @@ func (s *Server) lease(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	if p := principalFrom(r); !p.operator() && v.Owner != p.name {
+		s.fail(w, domain.Err("forbidden", "lease belongs to another principal"))
+		return
+	}
 	write(w, 200, v)
+}
+func (s *Server) leases(w http.ResponseWriter, r *http.Request) {
+	all, err := s.c.Leases(r.Context())
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	p := principalFrom(r)
+	want := r.URL.Query().Get("owner")
+	if !p.operator() && want != "" && want != p.name {
+		s.fail(w, domain.Err("forbidden", "cannot list another principal's leases"))
+		return
+	}
+	visible := make([]domain.Lease, 0, len(all))
+	for _, l := range all {
+		if (!p.operator() && l.Owner != p.name) || (p.operator() && want != "" && l.Owner != want) {
+			continue
+		}
+		visible = append(visible, l)
+	}
+	write(w, 200, map[string]any{"leases": visible})
 }
 func (s *Server) job(w http.ResponseWriter, r *http.Request) {
 	v, err := s.c.Job(r.Context(), r.PathValue("id"))
@@ -183,9 +251,32 @@ func (s *Server) job(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	if p := principalFrom(r); !p.operator() && v.Kind != "image_build" {
+		s.fail(w, domain.Err("forbidden", "job is outside image build scope"))
+		return
+	}
 	write(w, 200, v)
 }
+func (s *Server) ensureLeaseOwned(w http.ResponseWriter, r *http.Request) bool {
+	p := principalFrom(r)
+	if p.operator() {
+		return true
+	}
+	l, err := s.c.Lease(r.Context(), r.PathValue("id"))
+	if err != nil {
+		s.fail(w, err)
+		return false
+	}
+	if l.Owner != p.name {
+		s.fail(w, domain.Err("forbidden", "lease belongs to another principal"))
+		return false
+	}
+	return true
+}
 func (s *Server) release(w http.ResponseWriter, r *http.Request) {
+	if !s.ensureLeaseOwned(w, r) {
+		return
+	}
 	v, err := s.c.Release(r.Context(), r.PathValue("id"), r.Header.Get("Idempotency-Key"))
 	if err != nil {
 		s.fail(w, err)
@@ -194,6 +285,9 @@ func (s *Server) release(w http.ResponseWriter, r *http.Request) {
 	write(w, 202, v)
 }
 func (s *Server) renew(w http.ResponseWriter, r *http.Request) {
+	if !s.ensureLeaseOwned(w, r) {
+		return
+	}
 	var req struct {
 		ExpiresAt time.Time `json:"expires_at"`
 	}
@@ -328,6 +422,9 @@ func (s *Server) provisionImage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) openTunnel(w http.ResponseWriter, r *http.Request) {
+	if !s.ensureLeaseOwned(w, r) {
+		return
+	}
 	t, err := s.c.OpenTunnel(r.Context(), r.PathValue("id"))
 	if err != nil {
 		s.fail(w, err)
@@ -336,6 +433,9 @@ func (s *Server) openTunnel(w http.ResponseWriter, r *http.Request) {
 	write(w, 200, t)
 }
 func (s *Server) closeTunnel(w http.ResponseWriter, r *http.Request) {
+	if !s.ensureLeaseOwned(w, r) {
+		return
+	}
 	if err := s.c.CloseTunnel(r.Context(), r.PathValue("id")); err != nil {
 		s.fail(w, err)
 		return

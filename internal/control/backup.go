@@ -2,6 +2,8 @@ package control
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -78,16 +80,25 @@ func (c *Controller) Backup(ctx context.Context, stateDir, configPath, tokenPath
 			}
 		}
 	}
-	for name, path := range map[string]string{"config.json": configPath, "token": tokenPath} {
-		b, err := os.ReadFile(path)
-		if err != nil {
-			return "", err
-		}
-		if err := os.WriteFile(filepath.Join(folder, name), b, 0600); err != nil {
-			return "", err
-		}
+	config, err := os.ReadFile(configPath)
+	if err != nil {
+		return "", err
 	}
-	manifest, _ := json.MarshalIndent(map[string]any{"format": 1, "id": id, "created_at": c.now(), "leases": len(ls), "database_integrity": "ok", "vm_disks_included": false}, "", "  ")
+	if err := os.WriteFile(filepath.Join(folder, "config.json"), config, 0600); err != nil {
+		return "", err
+	}
+	token, err := os.ReadFile(tokenPath)
+	if err != nil {
+		return "", err
+	}
+	digest := sha256.Sum256(token)
+	if err := os.WriteFile(filepath.Join(folder, "token.sha256"), []byte(hex.EncodeToString(digest[:])+"\n"), 0600); err != nil {
+		return "", err
+	}
+	for i := range token {
+		token[i] = 0
+	}
+	manifest, _ := json.MarshalIndent(map[string]any{"format": 2, "id": id, "created_at": c.now(), "leases": len(ls), "database_integrity": "ok", "vm_disks_included": false, "owner_token_included": false}, "", "  ")
 	if err := os.WriteFile(filepath.Join(folder, "manifest.json"), manifest, 0600); err != nil {
 		return "", err
 	}
@@ -104,6 +115,7 @@ func (c *Controller) Backup(ctx context.Context, stateDir, configPath, tokenPath
 	}); err != nil {
 		return "", err
 	}
+	complete = true
 	entries, err := os.ReadDir(filepath.Join(stateDir, "backups"))
 	if err != nil {
 		return "", err
@@ -125,9 +137,8 @@ func (c *Controller) Backup(ctx context.Context, stateDir, configPath, tokenPath
 	sort.Slice(completed, func(i, j int) bool { return completed[i].at > completed[j].at })
 	for _, old := range completed[min(5, len(completed)):] {
 		if err := os.RemoveAll(filepath.Join(stateDir, "backups", old.name)); err != nil {
-			return "", err
+			c.log.Warn("old backup retention cleanup failed", "backup", old.name, "error", err)
 		}
 	}
-	complete = true
 	return id, nil
 }

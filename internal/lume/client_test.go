@@ -34,6 +34,19 @@ func TestInstalledHTTPContract(t *testing.T) {
 			if r.Method != "POST" {
 				t.Error(r.Method)
 			}
+			var v struct {
+				NoDisplay              bool              `json:"noDisplay"`
+				NoDisplayVapor         bool              `json:"no_display"`
+				Storage                string            `json:"storage"`
+				SharedDirectories      []SharedDirectory `json:"sharedDirectories"`
+				SharedDirectoriesVapor []SharedDirectory `json:"shared_directories"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&v); err != nil {
+				t.Error(err)
+			}
+			if !v.NoDisplay || !v.NoDisplayVapor || v.Storage != "home" || v.SharedDirectories != nil || v.SharedDirectoriesVapor != nil {
+				t.Error(v)
+			}
 			w.WriteHeader(202)
 			fmt.Fprint(w, `{"message":"VM start initiated"}`)
 		case "/lume/vms/vf-test/stop":
@@ -72,6 +85,44 @@ func TestInstalledHTTPContract(t *testing.T) {
 		t.Fatal(requests)
 	}
 }
+
+func TestStartWithSharedDirectories(t *testing.T) {
+	var body struct {
+		NoDisplay              bool     `json:"noDisplay"`
+		NoDisplayVapor         bool     `json:"no_display"`
+		Storage                string   `json:"storage"`
+		SharedDirectories      []string `json:"sharedDirectories"`
+		SharedDirectoriesVapor []string `json:"shared_directories"`
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/lume/vms/vf-test/run" {
+			t.Error(r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+		}
+		fmt.Fprint(w, `{}`)
+	}))
+	defer server.Close()
+	c, err := New(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = c.StartWithOptions(context.Background(), domain.Lease{VMName: "vf-test", Location: "home"}, StartOptions{SharedDirectories: []SharedDirectory{"/tmp/virfield-share"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !body.NoDisplay || !body.NoDisplayVapor || body.Storage != "home" || len(body.SharedDirectories) != 1 || body.SharedDirectories[0] != "/tmp/virfield-share" {
+		t.Fatal(body)
+	}
+	if len(body.SharedDirectoriesVapor) != 1 || body.SharedDirectoriesVapor[0] != "/tmp/virfield-share" {
+		t.Fatal(body)
+	}
+	if err := c.StartWithOptions(context.Background(), domain.Lease{VMName: "vf-test", Location: "home"}, StartOptions{SharedDirectories: []SharedDirectory{"relative"}}); err == nil {
+		t.Fatal("relative shared path accepted")
+	}
+}
+
 func TestNoMutationRetryAndNoUpstreamSecretLeak(t *testing.T) {
 	calls := 0
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls++; http.Error(w, "secret-token", 500) }))

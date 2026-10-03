@@ -67,15 +67,36 @@ func Download(ctx context.Context, client *http.Client, dir string, p domain.Ima
 			return "", domain.Err("unsafe_cache", "cached IPSW is not a regular file")
 		}
 		if err := verify(final); err != nil {
-			return "", err
+			if !isIntegrityError(err) {
+				return "", err
+			}
+			if err := quarantineCache(final); err != nil {
+				return "", err
+			}
+		} else {
+			return final, nil
 		}
-		return final, nil
 	} else if !os.IsNotExist(err) {
 		return "", err
 	}
 	partial := final + ".partial"
 	if st, err := os.Lstat(partial); err == nil && !st.Mode().IsRegular() {
 		return "", domain.Err("unsafe_cache", "partial download is not a regular file")
+	}
+	if st, err := os.Lstat(partial); err == nil && st.Size() >= p.Size {
+		if st.Size() == p.Size {
+			if err := verify(partial); err == nil {
+				if err := os.Rename(partial, final); err != nil {
+					return "", err
+				}
+				return final, nil
+			} else if !isIntegrityError(err) {
+				return "", err
+			}
+		}
+		if err := quarantineCache(partial); err != nil {
+			return "", err
+		}
 	}
 	f, err := os.OpenFile(partial, os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
@@ -87,6 +108,7 @@ func Download(ctx context.Context, client *http.Client, dir string, p domain.Ima
 		return "", err
 	}
 	offset := st.Size()
+	resumed := offset > 0
 	if offset > p.Size {
 		return "", domain.Err("download_integrity", "partial download exceeds expected size")
 	}
@@ -171,6 +193,17 @@ func Download(ctx context.Context, client *http.Client, dir string, p domain.Ima
 		return "", err
 	}
 	if err := verify(partial); err != nil {
+		if isIntegrityError(err) {
+			if closeErr := f.Close(); closeErr != nil {
+				return "", closeErr
+			}
+			if quarantineErr := quarantineCache(partial); quarantineErr != nil {
+				return "", quarantineErr
+			}
+			if resumed {
+				return Download(ctx, client, dir, p, progress)
+			}
+		}
 		return "", err
 	}
 	if err := f.Close(); err != nil {

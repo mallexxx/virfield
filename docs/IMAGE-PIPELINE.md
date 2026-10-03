@@ -16,12 +16,12 @@ stable Xcode versions. `image_create` accepts `id`, `macos`, optional `xcode`,
 optional named `location` (default `home`) and `idempotency_key`:
 
 ```json
-{"id":"monterey-xcode1341","macos":"monterey","xcode":"13.4.1","idempotency_key":"monterey-xcode1341-001"}
+{"id":"sequoia-xcode162","macos":"15.2","xcode":"16.2","idempotency_key":"sequoia-xcode162-001"}
 ```
 
 ```sh
 "$VIRFIELD_HOME/bin/virfield" -token-file "$VIRFIELD_HOME/token" image-catalog
-"$VIRFIELD_HOME/bin/virfield" -token-file "$VIRFIELD_HOME/token" -key monterey-xcode1341-001 image-create monterey-xcode1341 monterey 13.4.1
+"$VIRFIELD_HOME/bin/virfield" -token-file "$VIRFIELD_HOME/token" -key sequoia-xcode162-001 image-create sequoia-xcode162 15.2 16.2
 ```
 
 The HTTP equivalents are `GET /api/v1/images/catalog` and `POST /api/v1/images`
@@ -33,6 +33,11 @@ release. Xcode selection is an exact stable version. The catalog is metadata fro
 [Xcode Releases](https://xcodereleases.com/data.json); binaries are fetched only
 from their validated Apple HTTPS endpoints. Metadata is cached for ten minutes.
 An unavailable or malformed catalog fails explicitly; there is no guessed URL.
+Each Xcode entry also reports `local_state`: `available` (catalog metadata only),
+`downloaded` (completed private cache), or `installed` (at least one verified
+`image_ready` golden). `installed_images` lists those template IDs. This is a
+snapshot, not a promise that Apple will authorize a new download; the download
+stage rechecks archive integrity before installation.
 
 Acceptance atomically persists the resolved manifest, template and build job in
 SQLite. Retrying an accepted request returns its original selection even if the
@@ -68,6 +73,18 @@ clone execution under this disk policy. Virfield does not silently preserve the
 source VM machine identifier to work around encryption. Existing images need
 re-verification; upgrading the binaries does not retroactively certify them.
 
+Legacy option for Monterey and other identity-bound guests:
+`identity-preserving` templates may be configured with `legacy_uuid`. Virfield
+persists that UUID on image-build and worker leases, allows APFS
+encryption-at-rest for that legacy image only, and refuses a second active
+worker with the same UUID until cleanup confirms release. FileVault and locked
+volumes still fail closed. The golden must stay stopped. Cleanup must delete the
+copied bundle. Registry publication and portable export remain disabled,
+because the image is not a portable golden. Acceptance requires a live test
+proving same-identity copy → boot → SSH → workload → artifact export → cleanup,
+plus refusal of a second concurrent worker. This is a separate legacy contract,
+not a weakening of the default unencrypted clone policy.
+
 ### Guest security policy
 
 The API and MCP `image_create` accept `security`; the CLI uses `-security` before
@@ -80,7 +97,7 @@ fingerprint, independently of Xcode:
 | `sip-disabled` | Disable SIP through paired Recovery; verify canonical status after normal boot |
 | `automation` | Also disable Gatekeeper, preserve existing boot arguments while adding the AMFI flag, and grant Terminal/SSH Accessibility, Screen Capture, Full Disk Access and AppleEvents to System Events |
 
-Example: `virfield -security automation -key monterey-ui-001 image-create monterey-ui monterey 13.4.1`.
+Example: `virfield -security automation -key sequoia-ui-001 image-create sequoia-ui 15.2 16.2`.
 The supported Recovery generations are macOS 11–15, 26 and 27; availability still
 depends on Apple's restore catalog and the host's virtualization support. This is
 an implementation range, **not a claim that every release has passed live acceptance**.
@@ -99,14 +116,27 @@ application. Xcode installation remains optional and separately verified.
 Upstream references: [Lume SIP implementation](https://github.com/trycua/cua/blob/main/libs/lume/src/Commands/Sip.swift),
 [guest TCC seeding](https://github.com/trycua/cua/blob/main/libs/cua-driver/tests/runners/macos-lume/seed-tcc-guest.sh),
 and [paired Recovery constraints](https://cua.ai/docs/concepts/how-sip-works-in-lume-vms).
-Virfield adapts these mechanisms to its pinned SSH credentials, exclusive image
-jobs and observed Recovery transitions. It never changes host protections.
+Virfield adapts these mechanisms to its pinned SSH credentials, one-slot image
+reservations and observed Recovery transitions. It never changes host protections.
 
 ### Apple Developer downloads
 
-Some Xcode versions require an Apple Developer session. The daemon never asks an
-agent for an Apple ID password. Configure either or both operator-owned paths in
-`image_tools`:
+Some Xcode versions require an Apple Developer session. If a job reports
+`apple_auth_required`, an agent calls `image_apple_auth({"id":"JOB_ID"})` and
+sends the returned 15-minute `url` privately to the user. The loopback page
+only launches Virfield's native Apple browser. Its private WebKit window opens
+`developer.apple.com` for the exact Xcode release. The user enters the Apple
+Account and any 2FA challenge on Apple's page. When Apple begins the XIP
+download, the browser sends the scoped Apple session to the loopback daemon;
+the daemon downloads and verifies Xcode and automatically retries the exact
+durable job. No manual XIP download is part of this path. The browser does not
+send the password or verification code to Virfield, MCP or Mattermost. A daemon
+restart invalidates an unfinished link; request a new one for the same job.
+This uses an Apple Developer website session, not a Sign in with Apple OAuth
+grant. The native browser must be installed and registered on the Virfield Mac.
+
+The operator may alternatively configure either or both preexisting private
+sources in `image_tools`:
 
 ```json
 {
@@ -120,15 +150,14 @@ example `Xcode_13.4.1.xip` downloaded from
 [Apple Developer Downloads](https://developer.apple.com/download/all/).
 `apple_cookies` is an optional Netscape-format file, mode 0600, containing the
 operator's authorized Apple download session. Only unexpired matching Apple
-cookies are sent, only to `download.developer.apple.com`; redirects are never
-followed with credentials. Keep the file outside Git. The repository secret scan also detects Apple download-session
+cookies are sent, only to `download.developer.apple.com`; HTTPS redirects to
+Apple hosts are followed without forwarding credentials. Keep the file outside Git. The repository secret scan also detects Apple download-session
 cookies in Netscape, header and JSON formats. A matching local Apple-signed bundle from `image_tools.xcode` is reused first
 (the version/build must match exactly); otherwise the archive is imported
 before attempting an authenticated download. Neither path nor cookies can be
 supplied through MCP/API.
 
-Expired/missing authorization returns `apple_auth_required` with the exact
-archive filename and recovery action. Download/import verifies the catalog SHA-1
+Expired/missing authorization returns `apple_auth_required`. Download/import verifies the catalog SHA-1
 (the metadata source's available checksum); macOS `xip` additionally verifies
 Apple's archive signature, and `codesign` checks an intact Apple-signed app on the host and in the guest
 before executing Xcode.
@@ -136,8 +165,9 @@ Checksums alone are not the Xcode trust boundary. Version/build metadata is read
 without executing the older Xcode on the host. Expanded apps and archives are
 cached privately by digest. Host Xcode selection is unchanged.
 
-After placing the archive or renewing the cookie file, inspect the failed job and
-use the documented download-stage `image-recover ... retry` command below. No VM
+After manually placing an archive or renewing the operator cookie file, inspect
+the failed job and use the documented download-stage `image-recover ... retry`
+command below. Browser sign-in resumes it automatically. No VM
 is created until the required downloads and Xcode expansion pass.
 
 ## Profile and dependencies
@@ -201,6 +231,10 @@ manage VM lifecycle. Lume's native `setup` handles offline patching. In pinned
 the offline account/SSH setup, while the IPSW manifest selects the macOS version. Recovery
 uses one owned `lume run --recovery-mode true` child plus `recovery.py`: the
 native 0.5.3 SIP navigation was observed to open Time Machine on this build.
+The patched Recovery child reads its VNC password from a private file rather
+than process arguments. It asks the kernel for port 0 and accepts only the
+newly written `sessions.json` endpoint with the exact password for this run;
+there is no listen-then-close port reservation.
 The driver handles optional language and volume-owner screens, and verifies
 Options, Utilities, Terminal and each
 authentication prompt before input. It accepts only an explicit successful SIP
@@ -212,10 +246,19 @@ button separately from the wallpaper and delegates the final desktop
 postcondition to SSH. Each attempt retains its own screenshot directory.
 
 The supported recipe fixes resources at 4 CPUs, 8 GiB RAM, 80 GiB sparse
-disk, NAT, no host shared folders. Display is 1920×1440 for native macOS 11/12
-and Sequoia setup (their Assistant controls can be clipped at 1080 pixels), and
-1920×1080 otherwise. Changing the recipe requires a code
-change and live validation; this is not an arbitrary command runner.
+disk and NAT. Base image, setup, SIP, verify and worker boots use no host shared
+folders. Developer provisioning starts the image VM through native
+`lume run --shared-dir`, sharing the verified Xcode cache parent directly over
+VirtioFS and copying from `/Volumes/My Shared Files` inside the guest with
+`ditto`. There is no host-side Xcode staging copy, SSH streaming transfer, rsync
+or tar pipe. Before each retry Virfield detaches and cleans any stale
+`virtiofs-transfer` directory left by older builds. Apple Virtualization only
+automounts VirtioFS in macOS 13 or newer guests; Monterey 12.x fails fast with
+`virtiofs_unsupported` before VM mutation instead of falling back to a hidden
+copy path. Display is 1920×1440 for native macOS 11/12 and Sequoia setup (their
+Assistant controls can be clipped at 1080 pixels), and 1920×1080 otherwise.
+Changing the recipe requires a code change and live validation; this is not an
+arbitrary command runner.
 
 ## Build and inspect
 
@@ -224,7 +267,8 @@ change and live validation; this is not an arbitrary command runner.
 ./bin/virfield -token-file /absolute/state/token job JOB_ID
 ```
 
-A build requires no active leases or running VMs and an absent target name.
+A build requires one available VM slot and an absent target name. An unrelated
+ready lease may use the other slot while the image builds.
 It holds maintenance admission until ready or explicitly cleaned up. Image
 records have no lease expiry. A successful stopped image consumes no VM slot.
 
@@ -249,7 +293,8 @@ addition to key-only SSH. Disposable-VM deletion uses the separate cleanup path.
 
 The service requires the local Lume 0.5.3 patches in
 `deploy/lume-0.5.3-guest-shutdown.patch` and
-`deploy/lume-0.5.3-registry-integrity.patch`. Upstream `runVM` leaves a successfully
+`deploy/lume-0.5.3-registry-integrity.patch`, plus the version marker patch.
+Upstream `runVM` leaves a successfully
 completed guest in `SharedVM`, so `/lume/vms` and `/lume/host/status` keep reporting
 it as running after a normal shutdown. The patch removes that entry when `run`
 returns. It also replaces the successful unattended setup's forced power-off with
@@ -257,15 +302,19 @@ one guest shutdown request and waits for VM lifecycle cleanup, including when SS
 disconnects during shutdown. Do not work around stale inventory by force-stopping the guest or by
 ignoring the capacity response. `bash deploy/build-lume.sh NEW_ABSOLUTE_OUTPUT_DIR`
 verifies the source archive SHA-256, uses the upstream `Package.resolved`, applies
-both patches, and signs a NAT-only binary with the virtualization entitlement.
+all four patches, runs the four focused Swift regression tests, and signs a
+NAT-only binary with the virtualization entitlement.
+The image pipeline accepts only `lume --version` equal to
+`0.5.3-virfield6`; stock 0.5.3 is rejected before any download or VM mutation.
 The registry patch propagates child upload errors and makes OCI push fail if
 any disk part is missing instead of publishing an incomplete manifest.
 Virfield's registry resolver also checks that annotated disk parts cover the
 full declared size before import or publication success is accepted.
 It does not install or restart services. Configure both the Lume service's
-`-binary` and `image_tools.lume` to the resulting binary. The staged source also
-contains cache, setup-shutdown and registry-integrity regression tests, runnable
-with `swift test -c release --disable-automatic-resolution --filter 'guestShutdownReleasesRunningCache|setupShutdownRequiresLifecycleCompletion|registryChunkCollectorRequiresEveryPart|registryUploadPipelinePropagatesFailure'`.
+`-config` and reads `image_tools.lume` at start, so future Lume upgrades only
+need a private config or stable tool-path update, not a root LaunchDaemon edit.
+The same recipe runs
+cache, setup-shutdown and registry-integrity regression tests before packaging.
 
 Lume subprocesses have fixed argv, bounded private logs, context deadlines and
 an owned process group. Cancellation never uses `pkill`, process-name searches,
@@ -343,11 +392,13 @@ lease cleanup never deletes templates:
 The manager rejects deletion while the image has active leases or jobs. The UI
 requires typing the exact VM name. Image deletion and recovery are deliberately
 absent from MCP. Deletion releases the record only after fresh inventory confirms
-absence. Cache media and audit history are retained; there is no hidden disk purge.
+absence. Cache media are retained; journal history follows the 30-day policy
+documented in Operations. There is no hidden disk purge.
 
 ## Upstream contracts
 
 - [Lume 0.5.3 CLI](https://cua.ai/docs/reference/lume/cli-reference)
+- [Apple VirtioFS directory sharing](https://developer.apple.com/documentation/virtualization/vzvirtiofilesystemdeviceconfiguration)
 - [Offline setup sequence](https://cua.ai/docs/concepts/how-lume-unattended-setup-works)
 - [Pinned setup implementation](https://github.com/trycua/cua/blob/lume-v0.5.3/libs/lume/src/Unattended/MacOSOfflineSetupPatcher.swift)
 - [Pinned virtualization stop implementation](https://github.com/trycua/cua/blob/lume-v0.5.3/libs/lume/src/Virtualization/VMVirtualizationService.swift)
@@ -356,10 +407,11 @@ absence. Cache media and audit history are retained; there is no hidden disk pur
 The live acceptance record is in [Verification](VERIFICATION.md). Unit tests alone do not
 establish that a particular macOS build's Setup Assistant or Recovery UI works.
 
-The candidate journal uses schema version 6 for registry references and portable
-exports; the installed candidate also uses schema 6. Image records were introduced
-in schema 2. Supported migrations preserve leases, requests and events and update
-the version guard. Older binaries reject newer schemas. Check the deployment's
+The checkout journal uses schema version 7 for 30-day retention indexes; the
+installed candidate still uses schema 6. Image records were introduced in
+schema 2. Supported migrations preserve leases, requests and events, snapshot
+the old database before changing it, and update the version guard. Older
+binaries reject newer schemas. Check the deployment's
 `release.json` before assuming that a later checkout build is installed.
 
 ## Reproducible live acceptance
@@ -390,8 +442,9 @@ journal and prints image/job IDs for exact inspection on failure.
 
 Set the operator-owned image profile `provision` to `uitest-27-v1` and
 `image_tools.xcode` to an absolute complete local `Xcode.app` or `Xcode-beta.app`, version 27 or newer. Compatibility is checked before downloading media or changing the guest. The source bundle is installed as `/Applications/Xcode.app` inside the guest; the host selection is untouched. The recipe requires
-`disable_sip: true` and build `26A428`. It copies Xcode over pinned SSH without a
-host mount, completes Xcode first launch, installs the pinned Homebrew installer
+`disable_sip: true` and build `26A428`. It starts the VM with the verified
+source directory shared through VirtioFS, copies it inside the guest with
+`ditto`, completes Xcode first launch, installs the pinned Homebrew installer
 and tools, and configures guest-only Gatekeeper, AMFI, TCC and passwordless sudo.
 Homebrew packages are currently resolved from their taps at provisioning time;
 this is a versioned recipe, not a fully reproducible package lock.

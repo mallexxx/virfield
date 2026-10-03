@@ -1,12 +1,14 @@
 .PHONY: build test check
 build:
 	go build -trimpath -o bin/ ./cmd/...
+	@if [ "$$(uname -s)" = Darwin ]; then sh deploy/build-apple-browser.sh; fi
 test:
 	go test -race ./...
 check:
 	python3 tools/check-docs.py
 	python3 -m unittest discover -s internal/images -p '*_test.py'
 	python3 -m unittest discover -s deploy -p '*_test.py'
+	python3 -m unittest discover -s tools -p '*_test.py'
 	@test -z "$$(gofmt -l cmd internal docs)" || (gofmt -l cmd internal docs; exit 1)
 	go vet ./...
 	go test -race ./...

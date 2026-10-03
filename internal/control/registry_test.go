@@ -189,6 +189,15 @@ func TestRegistryPublishRequiresAbsentTagAndVerifiedSource(t *testing.T) {
 	code(t, err, "template_unavailable")
 }
 
+func TestRegistryPublishRejectsLegacyTemplate(t *testing.T) {
+	c, _, _ := publishController(t)
+	tm := c.templates["test"]
+	tm.LegacyUUID = "123e4567-e89b-12d3-a456-426614174000"
+	c.templates["test"] = tm
+	_, err := c.PublishImage(context.Background(), domain.ImagePublishRequest{Template: "test", Source: "team", Repository: "vm", Tag: "new"}, "legacy-publish")
+	code(t, err, "registry_push_disabled")
+}
+
 func TestInterruptedExportIsQuarantinedWithoutReplay(t *testing.T) {
 	for _, phase := range []string{"sanitize_dispatched", "upload_dispatched"} {
 		t.Run(phase, func(t *testing.T) {

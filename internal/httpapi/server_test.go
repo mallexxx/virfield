@@ -22,6 +22,120 @@ type backend struct{}
 func (backend) Observe(context.Context) (domain.Observation, error) {
 	return domain.Observation{HostMax: 2, At: time.Now(), VMs: []domain.VM{{Name: "golden", Location: "home", OS: "macOS", State: "stopped"}}}, nil
 }
+
+func TestFailureStatusMapping(t *testing.T) {
+	for code, want := range map[string]int{
+		"invalid_request": 400, "apple_auth_required": 409, "lease_unavailable": 409,
+		"backup_failed": 409, "guest_connect_failed": 502, "tunnel_unavailable": 503,
+		"unclassified_new_failure": 500,
+	} {
+		if got := statusForCode(code); got != want {
+			t.Errorf("%s: got %d, want %d", code, got, want)
+		}
+	}
+}
+
+func TestScopedPrincipalOwnsOnlyItsLeasesAndCanRotate(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	c, err := control.New(db, backend{}, []domain.Template{{ID: "test", Name: "golden", Location: "home"}}, 2, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	brokerToken, otherToken, imageToken := strings.Repeat("b", 64), strings.Repeat("c", 64), strings.Repeat("i", 64)
+	auth, err := NewAuthSet(token, []Principal{{Name: "broker", Token: brokerToken, Scopes: []string{"lease:own"}}, {Name: "other", Token: otherToken, Scopes: []string{"lease:own"}}, {Name: "image", Token: imageToken, Scopes: []string{"image:build"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := New(c, token, log, Options{Auth: auth})
+	call := func(method, path, body, key, bearer string) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+bearer)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Idempotency-Key", key)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		return w
+	}
+	if got := call("GET", "/api/v1/status", "", "", brokerToken).Code; got != 403 {
+		t.Fatal("broker can read operator status", got)
+	}
+	w := call("POST", "/api/v1/leases", `{"template":"test","ttl_seconds":3600}`, "scoped-acquire-one", brokerToken)
+	if w.Code != 202 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var op domain.Operation
+	if err := json.Unmarshal(w.Body.Bytes(), &op); err != nil || op.Lease.Owner != "broker" {
+		t.Fatal(op, err)
+	}
+	path := "/api/v1/leases/" + op.Lease.ID
+	list := call("GET", "/api/v1/leases", "", "", brokerToken)
+	if list.Code != 200 || !strings.Contains(list.Body.String(), op.Lease.ID) {
+		t.Fatal("owner cannot find its orphaned lease", list.Code, list.Body.String())
+	}
+	list = call("GET", "/api/v1/leases", "", "", otherToken)
+	if list.Code != 200 || strings.Contains(list.Body.String(), op.Lease.ID) {
+		t.Fatal("other principal saw broker lease", list.Code, list.Body.String())
+	}
+	if got := call("GET", "/api/v1/leases?owner=broker", "", "", otherToken).Code; got != 403 {
+		t.Fatal("other principal filtered by broker owner", got)
+	}
+	if got := call("GET", path, "", "", otherToken).Code; got != 403 {
+		t.Fatal("other principal read lease", got)
+	}
+	if got := call("POST", path+"/release", `{}`, "other-release", otherToken).Code; got != 403 {
+		t.Fatal("other principal released lease", got)
+	}
+	if got := call("POST", path+"/resolve", `{}`, "broker-resolve", brokerToken).Code; got != 403 {
+		t.Fatal("broker reached operator recovery", got)
+	}
+	if got := call("GET", path, "", "", imageToken).Code; got != 403 {
+		t.Fatal("image principal read lease", got)
+	}
+	if got := call("GET", path, "", "", brokerToken).Code; got != 200 {
+		t.Fatal("owner cannot read lease", got)
+	}
+	newBrokerToken := strings.Repeat("d", 64)
+	if err := auth.Replace(token, []Principal{{Name: "broker", Token: newBrokerToken, Scopes: []string{"lease:own"}}, {Name: "other", Token: otherToken, Scopes: []string{"lease:own"}}, {Name: "image", Token: imageToken, Scopes: []string{"image:build"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := call("GET", path, "", "", brokerToken).Code; got != 401 {
+		t.Fatal("old token survived rotation", got)
+	}
+	if got := call("GET", path, "", "", newBrokerToken).Code; got != 200 {
+		t.Fatal("new token failed", got)
+	}
+}
+
+func TestHostAllowlistAppliesToAPIAndMCP(t *testing.T) {
+	h := New(nil, token, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{AllowedHosts: []string{"127.0.0.1:7780", "host.docker.internal:7780"}, MCP: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(204) })})
+	for _, path := range []string{"/api/v1/status", "/mcp"} {
+		bad := httptest.NewRequest("GET", path, nil)
+		bad.Host = "attacker.example:7780"
+		bad.Header.Set("Authorization", "Bearer "+token)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, bad)
+		if w.Code != 403 {
+			t.Fatal(path, w.Code)
+		}
+	}
+	good := httptest.NewRequest("GET", "/mcp", nil)
+	good.Host = "host.docker.internal:7780"
+	good.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, good)
+	if w.Code != 204 {
+		t.Fatal(w.Code)
+	}
+}
 func (backend) Clone(context.Context, domain.Template, domain.Lease) error {
 	panic("API must not execute mutations inline")
 }

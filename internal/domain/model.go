@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -21,9 +22,13 @@ type Error struct {
 func (e *Error) Error() string        { return e.Code + ": " + e.Message }
 func Err(code, message string) *Error { return &Error{Code: code, Message: message} }
 
-var namePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}$`)
+var (
+	namePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}$`)
+	uuidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+)
 
 func ValidName(s string) bool { return namePattern.MatchString(s) }
+func ValidUUID(s string) bool { return uuidPattern.MatchString(strings.ToLower(s)) }
 func NewID(prefix string) string {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
@@ -39,6 +44,10 @@ type Template struct {
 	ID       string        `json:"id"`
 	Name     string        `json:"name"`
 	Location string        `json:"location"`
+	// LegacyUUID marks an identity-preserving legacy macOS template. Clones of
+	// the same VM UUID are mutually exclusive because the encrypted guest disk is
+	// bound to that preserved identity.
+	LegacyUUID string `json:"legacy_uuid,omitempty"`
 }
 
 // AcquireRequest reserves a slot immediately. Queueing belongs to Execution Broker.
@@ -60,26 +69,30 @@ func (r AcquireRequest) Validate() error {
 
 // Lease holds capacity until cleanup is confirmed, including after expiry/failure.
 type Lease struct {
-	Portable       bool           `json:"portable,omitempty"`
-	Resources      Resources      `json:"resources"`
-	Source         *Template      `json:"source,omitempty"`
-	ImageID        string         `json:"image_id,omitempty"`
-	SSHPublicKey   string         `json:"ssh_public_key,omitempty"`
-	SSH            *SSHConnection `json:"ssh,omitempty"`
-	ImageManifest  string         `json:"image_manifest,omitempty"`
-	Purpose        string         `json:"purpose,omitempty"`
-	ID             string         `json:"id"`
-	VMName         string         `json:"vm_name"`
-	Location       string         `json:"location"`
-	Template       string         `json:"template"`
-	State          string         `json:"state"`
-	CloneConfirmed bool           `json:"clone_confirmed"`
-	StartPending   bool           `json:"start_pending"`
-	IP             string         `json:"ip,omitempty"`
-	ExpiresAt      time.Time      `json:"expires_at"`
-	CreatedAt      time.Time      `json:"created_at"`
-	UpdatedAt      time.Time      `json:"updated_at"`
-	Error          *Error         `json:"error,omitempty"`
+	Owner                   string         `json:"owner,omitempty"`
+	Portable                bool           `json:"portable,omitempty"`
+	Resources               Resources      `json:"resources"`
+	Source                  *Template      `json:"source,omitempty"`
+	ImageID                 string         `json:"image_id,omitempty"`
+	SSHPublicKey            string         `json:"ssh_public_key,omitempty"`
+	SSH                     *SSHConnection `json:"ssh,omitempty"`
+	ImageManifest           string         `json:"image_manifest,omitempty"`
+	LegacyUUID              string         `json:"legacy_uuid,omitempty"`
+	Purpose                 string         `json:"purpose,omitempty"`
+	ID                      string         `json:"id"`
+	VMName                  string         `json:"vm_name"`
+	Location                string         `json:"location"`
+	Template                string         `json:"template"`
+	State                   string         `json:"state"`
+	CloneConfirmed          bool           `json:"clone_confirmed"`
+	StartPending            bool           `json:"start_pending"`
+	StartRejected           bool           `json:"start_rejected,omitempty"`
+	StartAbsentObservations int            `json:"start_absent_observations,omitempty"`
+	IP                      string         `json:"ip,omitempty"`
+	ExpiresAt               time.Time      `json:"expires_at"`
+	CreatedAt               time.Time      `json:"created_at"`
+	UpdatedAt               time.Time      `json:"updated_at"`
+	Error                   *Error         `json:"error,omitempty"`
 }
 
 // Job is a persisted state machine. Phase is written before each external effect.
@@ -144,10 +157,20 @@ func (c Capacity) FullError() *Error {
 }
 
 type Status struct {
-	Resources   *ResourceStatus `json:"resources,omitempty"`
-	Capacity    Capacity        `json:"capacity"`
-	Observation Observation     `json:"observation"`
-	Leases      []Lease         `json:"leases"`
-	Jobs        []Job           `json:"jobs"`
-	Templates   []Template      `json:"templates"`
+	Resources         *ResourceStatus    `json:"resources,omitempty"`
+	ImageReservations []ImageReservation `json:"image_reservations,omitempty"`
+	Capacity          Capacity           `json:"capacity"`
+	Observation       Observation        `json:"observation"`
+	Leases            []Lease            `json:"leases"`
+	Jobs              []Job              `json:"jobs"`
+	Templates         []Template         `json:"templates"`
+}
+
+// Deadline is the job's failure limit, not a predicted completion time.
+type ImageReservation struct {
+	ImageID  string    `json:"image_id"`
+	JobID    string    `json:"job_id,omitempty"`
+	State    string    `json:"state"`
+	Since    time.Time `json:"since"`
+	Deadline time.Time `json:"deadline,omitempty"`
 }

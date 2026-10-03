@@ -32,8 +32,11 @@ supported; no personal checkout paths are required.
 
 ## Build
 
-Go is the only control-plane build toolchain. The minimum version and dependencies
-are pinned in [go.mod](go.mod). No Node.js, npm, React or frontend build is needed;
+Go builds the control plane; on macOS, Swift also builds a native WebKit browser
+for Apple Developer sign-in. The older
+[apple-auth/Package.resolved](apple-auth/Package.resolved) helper is retained in
+source but is not built or exposed by the sign-in page.
+The Go minimum version and dependencies are pinned in [go.mod](go.mod). No Node.js, npm, React or frontend build is needed;
 the console is embedded from [internal/web](internal/web).
 
 ```sh
@@ -52,6 +55,7 @@ Tesseract and, for the UI-test profile, a compatible Xcode bundle; see
 
 ```text
 cmd/          virfieldd, virfield, virfield-mcp, virfield-lume entrypoints
+apple-auth/   local Apple Developer sign-in helper for Xcode downloads
 internal/     Go implementation, embedded console and guest automation
 deploy/      pinned Lume patch/build recipe and deployment examples
 docs/        operational documentation and acceptance evidence
@@ -65,13 +69,14 @@ The Go module stays at the repository root; there is no nested v2 application.
 ## Integration boundary
 
 Virfield manages the host VM lifecycle. Broker owns execution queues and durable
-runs; Runner/Callee executes work inside the VM. The planned flow is
-`Balda → Broker → Virfield → VM/Runner`. Broker/Runner/Balda integration and
-container-facing network deployment are not supplied by this repository.
+runs; Runner/Callee executes work inside the VM. The flow is
+`Balda → Broker → Virfield → VM/Runner`. Broker image tools live in the
+separate `execution-broker` repository. Container ingress still needs live
+acceptance on the target host.
 See [current verification limits](docs/VERIFICATION.md#not-yet-accepted).
 
 Create a golden by version with MCP `image_catalog` / `image_create`, or CLI
-`image-create NEW_ID monterey 13.4.1`. Versions are resolved from catalogs and
+`image-create NEW_ID 15.2 16.2`. Versions are resolved from catalogs and
 pinned in the journal; they are not limited to preconfigured templates. See
 [image version selection and Xcode authentication](docs/IMAGE-PIPELINE.md#choose-macos-and-xcode-versions).
 

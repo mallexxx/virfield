@@ -18,8 +18,18 @@ tar -xzf "$work_dir/source.tar.gz" -C "$work_dir/source" --strip-components=3 cu
 cd "$work_dir/source"
 patch --batch --fuzz=0 -p1 < "$recipe_dir/lume-0.5.3-guest-shutdown.patch"
 patch --batch --fuzz=0 -p1 < "$recipe_dir/lume-0.5.3-registry-integrity.patch"
+patch --batch --fuzz=0 -p1 < "$recipe_dir/lume-0.5.3-version.patch"
+patch --batch --fuzz=0 -p1 < "$recipe_dir/lume-0.5.3-vnc-password-file.patch"
+patch --batch --fuzz=0 -p1 < "$recipe_dir/lume-0.5.3-headless-audio.patch"
 cp "$recipe_dir/GuestShutdownCacheTests.swift" tests/GuestShutdownCacheTests.swift
 cp "$recipe_dir/RegistryIntegrityTests.swift" tests/RegistryIntegrityTests.swift
+if ! swift test -c release --disable-automatic-resolution -j 8 \
+  --filter 'guestShutdownReleasesRunningCache|setupShutdownRequiresLifecycleCompletion|registryChunkCollectorRequiresEveryPart|registryUploadPipelinePropagatesFailure' \
+  > "$work_dir/swift-tests.log" 2>&1; then
+  tail -80 "$work_dir/swift-tests.log" >&2
+  exit 1
+fi
+tail -8 "$work_dir/swift-tests.log"
 swift build -c release --disable-automatic-resolution --product lume -j 8
 mkdir "$output"
 cp .build/release/lume "$output/lume"
@@ -28,8 +38,11 @@ cp Package.resolved "$output/Package.resolved"
 tar -xOf "$work_dir/source.tar.gz" cua-lume-v0.5.3/LICENSE.md > "$output/LICENSE.md"
 cp "$recipe_dir/lume-0.5.3-guest-shutdown.patch" "$output/guest-shutdown.patch"
 cp "$recipe_dir/lume-0.5.3-registry-integrity.patch" "$output/registry-integrity.patch"
+cp "$recipe_dir/lume-0.5.3-version.patch" "$output/version.patch"
+cp "$recipe_dir/lume-0.5.3-vnc-password-file.patch" "$output/vnc-password-file.patch"
+cp "$recipe_dir/lume-0.5.3-headless-audio.patch" "$output/headless-audio.patch"
 codesign --force --entitlements "$recipe_dir/lume-nat.entitlements" --sign - "$output/lume"
 codesign --verify --strict "$output/lume"
-"$output/lume" --version
-(cd "$output" && shasum -a 256 lume Package.resolved guest-shutdown.patch registry-integrity.patch > SHA256SUMS)
+[[ "$("$output/lume" --version)" == "0.5.3-virfield6" ]] || { echo 'Patched Lume version marker missing' >&2; exit 1; }
+(cd "$output" && shasum -a 256 lume Package.resolved guest-shutdown.patch registry-integrity.patch version.patch vnc-password-file.patch headless-audio.patch > SHA256SUMS)
 echo "Built Lume 0.5.3 with Virfield patches: $output"

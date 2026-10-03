@@ -32,6 +32,9 @@ func (c *Controller) PublishImage(ctx context.Context, r domain.ImagePublishRequ
 	if !exists || t.Image == nil {
 		return domain.Operation{}, domain.Err("unknown_template", "Publishing requires a registered image recipe")
 	}
+	if t.LegacyUUID != "" {
+		return domain.Operation{}, domain.Err("registry_push_disabled", "Identity-preserving legacy images are not portable registry artifacts")
+	}
 	if c.registry == nil || c.imageBuilder == nil || c.imageCatalog == nil {
 		return domain.Operation{}, domain.Err("registry_unconfigured", "Configure registry sources and image tools")
 	}
@@ -85,7 +88,7 @@ func (c *Controller) PublishImage(ctx context.Context, r domain.ImagePublishRequ
 	}
 	sourceReady := false
 	for _, l := range ls {
-		if l.Purpose == "image" && l.Key() == t.Location+"/"+t.Name && l.State == "image_ready" && l.ImageManifest == fingerprint(t.Image) {
+		if l.Purpose == "image" && l.Key() == t.Location+"/"+t.Name && l.State == "image_ready" && l.ImageManifest == imageFingerprint(t.Image) {
 			sourceReady = true
 		}
 	}
@@ -142,7 +145,7 @@ func (c *Controller) advanceImageExport(ctx context.Context, l domain.Lease, j d
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
-		opCtx, cancel := context.WithDeadline(ctx, j.Deadline)
+		opCtx, cancel := context.WithDeadline(context.WithoutCancel(ctx), j.Deadline)
 		defer cancel()
 		digest, err := exporter.ExportStep(opCtx, l, *j.Export, step)
 		c.mu.Lock()

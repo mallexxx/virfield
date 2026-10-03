@@ -4,9 +4,20 @@ import json
 from pathlib import Path
 import zlib
 import setup_online
+from PIL import Image, ImageDraw
 
 
 class OnlineSetupTests(unittest.TestCase):
+    def test_filled_button_is_separate_from_adjacent_blue_outline(self):
+        frame = Image.new('RGB', (1920, 1440), (230, 230, 230))
+        draw = ImageDraw.Draw(frame)
+        draw.rectangle((726, 874, 957, 941), outline=(41, 99, 220), width=7)
+        draw.rectangle((968, 874, 1187, 941), fill=(41, 99, 220))
+        boxes = setup_online.blue_controls(frame)
+        self.assertEqual(len(boxes), 1)
+        self.assertGreaterEqual(boxes[0][0], 960)
+        self.assertLessEqual(boxes[0][2], 1190)
+
     def test_keyboard_uses_supported_vnc_methods_and_us_shift_mapping(self):
         class Keyboard:
             def __init__(self):
@@ -18,6 +29,10 @@ class OnlineSetupTests(unittest.TestCase):
         self.assertEqual(keyboard.keys, ['shift-a', 'shift-\\', "shift-'", 'shift-4', 'shift-minus', ';'])
         with self.assertRaises(RuntimeError):
             setup_online.type_text(keyboard, '\n')
+
+    def test_bootstrap_starts_sshd_after_enabling_it(self):
+        self.assertIn('launchctl enable system/com.openssh.sshd', setup_online.BOOTSTRAP_COMMAND)
+        self.assertIn('launchctl kickstart -k system/com.openssh.sshd', setup_online.BOOTSTRAP_COMMAND)
 
     def test_visible_native_arrows_and_false_positives(self):
         # RGB crops recorded from the real Monterey console, decoded without
@@ -33,7 +48,8 @@ class OnlineSetupTests(unittest.TestCase):
             def getdata(self):
                 return self.pixels
         for name, expected, recognize in [('hello', (960, 1205), setup_online.hello_button),
-                                          ('language', (1693, 1262), setup_online.language_button)]:
+                                          ('language', (1693, 1262), setup_online.language_button),
+                                          ('language_grey', (1693, 1262), setup_online.language_button)]:
             with self.subTest(name=name):
                 f = Frame()
                 rgb = zlib.decompress(base64.b64decode(fixtures[name]['pixels']))
@@ -46,6 +62,17 @@ class OnlineSetupTests(unittest.TestCase):
                 f.size = (1920, 1080)
                 self.assertIsNone(recognize(f))
 
+    def test_monterey_login_password_field_without_ocr(self):
+        frame = Image.new('RGB', (1920, 1440), (70, 20, 140))
+        draw = ImageDraw.Draw(frame)
+        draw.rounded_rectangle((800, 874, 1120, 934), radius=30, fill=(188, 125, 205))
+        self.assertEqual(setup_online.login_password_field(frame), (960, 904))
+        frame = Image.new('RGB', (1920, 1440), (70, 20, 140))
+        draw = ImageDraw.Draw(frame)
+        draw.rounded_rectangle((800, 820, 1120, 870), radius=25, fill=(188, 125, 205))
+        draw.rounded_rectangle((800, 900, 1120, 950), radius=25, fill=(188, 125, 205))
+        self.assertIsNone(setup_online.login_password_field(frame))
+
     def test_known_screens_and_safe_unknown(self):
         for text, expected in [
             ('Select Your Country or Region United States Continue', 'region'),
@@ -55,6 +82,7 @@ class OnlineSetupTests(unittest.TestCase):
             ('I have read and agree to the terms Agree', 'confirm_terms'),
             ('Finder File Edit View Go Window Help', 'desktop'),
             ('Terminal Shell Edit View Window Help', 'desktop'),
+            ('lume Enter Password', 'login'),
             ('Select Your Time Zone Closest City Cupertino Continue', 'continue'),
             ('A dialog never seen before Continue', 'unknown'),
             ('Creating your account', 'busy'),

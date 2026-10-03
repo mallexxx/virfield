@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var versionPattern = regexp.MustCompile(`^[0-9]{1,3}(\.[0-9]{1,3}){0,3}$`)
@@ -37,6 +38,9 @@ type XcodeRelease struct {
 	Requires string `json:"requires_macos"`
 	URL      string `json:"url"`
 	SHA1     string `json:"sha1"`
+	// Catalog-only snapshot. These fields are never used to resolve or pin a build.
+	LocalState      string   `json:"local_state,omitempty"`
+	InstalledImages []string `json:"installed_images,omitempty"`
 }
 
 func (x XcodeRelease) Validate() error {
@@ -56,8 +60,35 @@ type MacOSRelease struct {
 	Size    int64  `json:"size"`
 }
 type ImageCatalog struct {
-	MacOS []MacOSRelease `json:"macos"`
-	Xcode []XcodeRelease `json:"xcode"`
+	MacOS     []MacOSRelease `json:"macos"`
+	Xcode     []XcodeRelease `json:"xcode"`
+	Inventory ImageInventory `json:"inventory"`
+}
+
+// ImageInventory is a narrow, read-only snapshot for image builders. A
+// configured image is only a recipe until its VM is observed and built.
+type ImageInventory struct {
+	Verified         bool              `json:"verified"`
+	ObservedAt       time.Time         `json:"observed_at"`
+	VMs              []InventoryVM     `json:"vms"`
+	ConfiguredImages []ConfiguredImage `json:"configured_images"`
+}
+
+type InventoryVM struct {
+	Name     string `json:"name"`
+	Location string `json:"location"`
+	OS       string `json:"os,omitempty"`
+	State    string `json:"state"`
+}
+
+type ConfiguredImage struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Location string `json:"location"`
+	MacOS    string `json:"macos,omitempty"`
+	Xcode    string `json:"xcode,omitempty"`
+	Present  bool   `json:"present"`
+	Ready    bool   `json:"ready"`
 }
 
 // ImageCreateRequest selects catalog versions. Host paths and arbitrary URLs are

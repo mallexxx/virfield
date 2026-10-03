@@ -47,11 +47,11 @@ func parseDiskEvidence(output string) (diskEvidence, error) {
 	return result, nil
 }
 
-func (d diskEvidence) validate() error {
+func (d diskEvidence) validate(allowEncryptionAtRest bool) error {
 	if d.System.FileVault || d.Data.FileVault {
 		return domain.Err("disk_encrypted", "FileVault must be disabled during Setup Assistant; image will not be published")
 	}
-	if d.System.Encrypted || d.Data.Encrypted {
+	if !allowEncryptionAtRest && (d.System.Encrypted || d.Data.Encrypted) {
 		return domain.Err("disk_encrypted", "APFS reports encryption at rest despite FileVault being off; an unencrypted golden is required and the image will not be published")
 	}
 	if d.System.Locked || d.Data.Locked {
@@ -76,5 +76,5 @@ func (e *Engine) verifyDiskPolicy(ctx context.Context, l domain.Lease, g *guest)
 	if err := e.provisionLog(l, "disk-policy", string(encoded)); err != nil {
 		return evidence, err
 	}
-	return evidence, evidence.validate()
+	return evidence, evidence.validate(l.LegacyUUID != "")
 }

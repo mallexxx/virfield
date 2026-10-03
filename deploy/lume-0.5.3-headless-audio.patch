@@ -1,0 +1,102 @@
+--- a/src/Virtualization/VMVirtualizationService.swift
++++ b/src/Virtualization/VMVirtualizationService.swift
+@@ -6,6 +6,7 @@
+     let cpuCount: Int
+     let memorySize: UInt64
+     let display: String
++    let audioEnabled: Bool
+     let sharedDirectories: [SharedDirectory]?
+     let mount: Path?
+     let hardwareModel: Data?
+@@ -406,16 +407,18 @@
+         vzConfig.memoryBalloonDevices = [VZVirtioTraditionalMemoryBalloonDeviceConfiguration()]
+         vzConfig.entropyDevices = [VZVirtioEntropyDeviceConfiguration()]
+         
+-        // Audio configuration
+-        let soundDeviceConfiguration = VZVirtioSoundDeviceConfiguration()
+-        let inputAudioStreamConfiguration = VZVirtioSoundDeviceInputStreamConfiguration()
+-        let outputAudioStreamConfiguration = VZVirtioSoundDeviceOutputStreamConfiguration()
+-        
+-        inputAudioStreamConfiguration.source = VZHostAudioInputStreamSource()
+-        outputAudioStreamConfiguration.sink = VZHostAudioOutputStreamSink()
+-        
+-        soundDeviceConfiguration.streams = [inputAudioStreamConfiguration, outputAudioStreamConfiguration]
+-        vzConfig.audioDevices = [soundDeviceConfiguration]
++        // A headless VM must not play guest audio through the host speakers.
++        if config.audioEnabled {
++            let soundDeviceConfiguration = VZVirtioSoundDeviceConfiguration()
++            let inputAudioStreamConfiguration = VZVirtioSoundDeviceInputStreamConfiguration()
++            let outputAudioStreamConfiguration = VZVirtioSoundDeviceOutputStreamConfiguration()
++            inputAudioStreamConfiguration.source = VZHostAudioInputStreamSource()
++            outputAudioStreamConfiguration.sink = VZHostAudioOutputStreamSink()
++            soundDeviceConfiguration.streams = [inputAudioStreamConfiguration, outputAudioStreamConfiguration]
++            vzConfig.audioDevices = [soundDeviceConfiguration]
++        } else {
++            vzConfig.audioDevices = []
++        }
+         
+         // Clipboard sharing via Spice agent
+         let spiceAgentConsoleDevice = VZVirtioConsoleDeviceConfiguration()
+@@ -628,16 +631,18 @@
+         vzConfig.memoryBalloonDevices = [VZVirtioTraditionalMemoryBalloonDeviceConfiguration()]
+         vzConfig.entropyDevices = [VZVirtioEntropyDeviceConfiguration()]
+ 
+-        // Audio configuration
+-        let soundDeviceConfiguration = VZVirtioSoundDeviceConfiguration()
+-        let inputAudioStreamConfiguration = VZVirtioSoundDeviceInputStreamConfiguration()
+-        let outputAudioStreamConfiguration = VZVirtioSoundDeviceOutputStreamConfiguration()
+-        
+-        inputAudioStreamConfiguration.source = VZHostAudioInputStreamSource()
+-        outputAudioStreamConfiguration.sink = VZHostAudioOutputStreamSink()
+-        
+-        soundDeviceConfiguration.streams = [inputAudioStreamConfiguration, outputAudioStreamConfiguration]
+-        vzConfig.audioDevices = [soundDeviceConfiguration]
++        // A headless VM must not play guest audio through the host speakers.
++        if config.audioEnabled {
++            let soundDeviceConfiguration = VZVirtioSoundDeviceConfiguration()
++            let inputAudioStreamConfiguration = VZVirtioSoundDeviceInputStreamConfiguration()
++            let outputAudioStreamConfiguration = VZVirtioSoundDeviceOutputStreamConfiguration()
++            inputAudioStreamConfiguration.source = VZHostAudioInputStreamSource()
++            outputAudioStreamConfiguration.sink = VZHostAudioOutputStreamSink()
++            soundDeviceConfiguration.streams = [inputAudioStreamConfiguration, outputAudioStreamConfiguration]
++            vzConfig.audioDevices = [soundDeviceConfiguration]
++        } else {
++            vzConfig.audioDevices = []
++        }
+ 
+         // Clipboard sharing via Spice agent
+         let spiceAgentConsoleDevice = VZVirtioConsoleDeviceConfiguration()
+--- a/src/VM/VM.swift
++++ b/src/VM/VM.swift
+@@ -289,6 +289,7 @@
+                 cpuCount: cpuCount,
+                 memorySize: memorySize,
+                 display: vmDirContext.config.display.string,
++                audioEnabled: displayMode != .none,
+                 sharedDirectories: allSharedDirectories,
+                 mount: mount,
+                 recoveryMode: recoveryMode,
+@@ -1199,6 +1200,7 @@
+         cpuCount: Int,
+         memorySize: UInt64,
+         display: String,
++        audioEnabled: Bool = true,
+         sharedDirectories: [SharedDirectory] = [],
+         mount: Path? = nil,
+         recoveryMode: Bool = false,
+@@ -1216,6 +1218,7 @@
+             cpuCount: cpuCount,
+             memorySize: memorySize,
+             display: display,
++            audioEnabled: audioEnabled,
+             sharedDirectories: sharedDirectories,
+             mount: mount,
+             hardwareModel: vmDirContext.config.hardwareModel,
+@@ -1340,6 +1343,7 @@
+                 cpuCount: cpuCount,
+                 memorySize: memorySize,
+                 display: vmDirContext.config.display.string,
++                audioEnabled: false,
+                 sharedDirectories: allSharedDirectories,
+                 mount: mount,
+                 recoveryMode: recoveryMode,

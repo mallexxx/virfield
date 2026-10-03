@@ -112,8 +112,8 @@ func VerifyImageVersion(ctx context.Context, binary string) error {
 	checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	out, err := exec.CommandContext(checkCtx, binary, "--version").Output()
-	if err != nil || strings.TrimSpace(string(out)) != "0.5.3" {
-		return domain.Err("unsupported_lume", "Image pipeline requires tested Lume 0.5.3")
+	if err != nil || strings.TrimSpace(string(out)) != "0.5.3-virfield6" {
+		return domain.Err("unsupported_lume", "Image pipeline requires tested Lume 0.5.3-virfield6 with Virfield patches")
 	}
 	return nil
 }

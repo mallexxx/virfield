@@ -29,7 +29,7 @@ async function refreshState() {
   el('resources').textContent = state.resources ? `CPU ${state.resources.reserved.cpu}/${state.resources.limits.cpu} · RAM ${(state.resources.reserved.memory_bytes / 2**30).toFixed(0)}/${(state.resources.limits.memory_bytes / 2**30).toFixed(0)} GiB reserved` + (state.resources.error ? ' · ' + state.resources.error : '') : '';
   el('backend').textContent = state.observation.error?.message || 'Inventory checked: ' + new Date(state.observation.at).toLocaleTimeString();
   const imageBusy = state.leases.some(l => l.purpose === 'image' && l.state !== 'image_ready');
-  el('prepare').disabled = !!state.observation.error || state.capacity.available === 0 || imageBusy;
+  el('prepare').disabled = !!state.observation.error || state.capacity.available === 0;
   const selected = el('template').value;
   el('template').replaceChildren(...state.templates.map(t => {const option=text('option', t.id);option.value=t.id;return option;}));
   if (state.templates.some(t => t.id === selected)) el('template').value = selected;
@@ -78,9 +78,9 @@ async function refreshState() {
     if (t.image) {
       row.append(text('p', `Build ${t.image.build} · guest SIP ${t.image.disable_sip ? 'disabled' : 'enabled'}`), text('p', t.image.provision ? 'Tools recipe: ' + t.image.provision : 'Base OS image · development tools not provisioned'));
       const build = text('button', 'Build image');
-      build.disabled = !!vm || !!state.observation.error || state.capacity.used > 0 || imageBusy;
+      build.disabled = !!vm || !!state.observation.error || state.capacity.available === 0 || state.leases.some(l => l.purpose === 'image' && l.template === t.id && l.state !== 'image_ready');
       build.addEventListener('click', async () => {
-        if (!confirm(`Download and install ${t.name}? This applies the displayed guest SIP policy and reserves the manager during preparation.`)) return;
+        if (!confirm(`Download and install ${t.name}? This applies the displayed guest SIP policy and reserves one VM slot during preparation.`)) return;
         build.disabled = true;
         const action = 'build:' + t.id;
         if (!imageKeys.has(action)) imageKeys.set(action, crypto.randomUUID());
@@ -125,7 +125,12 @@ el('acquire').addEventListener('submit', async event => {
   event.preventDefault(); el('prepare').disabled = true; el('error').textContent = '';
   // Preserve the exact payload and key on transport failure: a lost HTTP response
   // must not cause another lease when the user retries.
-  pendingAcquire ||= {key:crypto.randomUUID(),body:{template:el('template').value,ttl_seconds:Number(el('ttl').value),ssh_public_key:el('ssh-key').value}};
+  const body = {template:el('template').value,ttl_seconds:Number(el('ttl').value),ssh_public_key:el('ssh-key').value};
+  if (pendingAcquire && JSON.stringify(pendingAcquire.body) !== JSON.stringify(body)) {
+    report(new Error('An earlier acquire may have succeeded. Restore its form values to retry with the same key; inspect jobs before starting a different lease.'));
+    return;
+  }
+  pendingAcquire ||= {key:crypto.randomUUID(),body};
   try {await api('leases','POST',pendingAcquire.body,pendingAcquire.key);pendingAcquire=null;el('ssh-key').value='';await refresh();}
   catch(err) {report(err); if (err.code && err.code !== 'internal_error') pendingAcquire=null;}
 });

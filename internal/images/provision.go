@@ -18,6 +18,8 @@ import (
 //go:embed provision27.sh
 var provisionScript string
 
+const guestSharedFolder = "/Volumes/My Shared Files"
+
 func (e *Engine) checkXcode(ctx context.Context) (string, error) {
 	name := filepath.Base(e.Tools.Xcode)
 	if !filepath.IsAbs(e.Tools.Xcode) || (name != "Xcode.app" && name != "Xcode-beta.app") {
@@ -44,6 +46,9 @@ func compatibleXcode(version string) bool {
 	major, err := strconv.Atoi(strings.Split(fields[1], ".")[0])
 	return err == nil && major >= 27
 }
+func guestSupportsVirtioFS(macos string) bool {
+	return domain.ValidVersion(macos) && domain.CompareVersions(macos, "13") >= 0
+}
 
 func (e *Engine) provision(ctx context.Context, l domain.Lease, p domain.ImageProfile, progress func(string) error) error {
 	if p.Provision == "security-v1" {
@@ -64,7 +69,29 @@ func (e *Engine) provision(ctx context.Context, l domain.Lease, p domain.ImagePr
 	if err != nil {
 		return err
 	}
-	vm, err := e.boot(ctx, l)
+	if !guestSupportsVirtioFS(p.MacOS) {
+		return domain.Err("virtiofs_unsupported", "VirtioFS shared folders require a macOS 13 or newer guest; this image cannot use the shared-folder transfer contract")
+	}
+	transferRoot := filepath.Join(e.Dir, "images", l.ID, "virtiofs-transfer")
+	if err := progress("Cleaning leftover VirtioFS transfer folder"); err != nil {
+		return err
+	}
+	detachedTransferRoot, err := detachTransferRoot(transferRoot)
+	if err != nil {
+		return domain.Err("xcode_transfer_cleanup_failed", "Stale VirtioFS transfer folder could not be detached before retry")
+	}
+	if detachedTransferRoot != "" {
+		go func() { _ = os.RemoveAll(detachedTransferRoot) }()
+	}
+	defer os.RemoveAll(transferRoot)
+	if !filepath.IsAbs(source) || filepath.Base(source) == "." || filepath.Base(source) == string(filepath.Separator) {
+		return domain.Err("invalid_profile", "Xcode source must be an absolute app bundle")
+	}
+	sharedRoot := filepath.Dir(source)
+	if err := progress("Starting image VM with the VirtioFS Xcode source folder"); err != nil {
+		return err
+	}
+	vm, err := e.bootWithSharedDirectory(ctx, l, sharedRoot)
 	if err != nil {
 		return err
 	}
@@ -99,46 +126,30 @@ mkdir -p /Users/lume/.virfield-xcode
 		// existing bundle. Failed checks cause replacement from the verified source.
 		reuseXcode = verifyGuestXcodeBundle(ctx, g, *p.Xcode) == nil
 	} else {
-		var versionErr error
-		out, versionErr = g.Run(ctx, "/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -version", "")
-		if versionErr == nil && strings.TrimSpace(out) == sourceVersion {
-			if err := progress("Checking the existing matching Xcode signature before reuse"); err != nil {
-				return err
-			}
-			_, signatureErr := g.RunReader(ctx, 5*time.Minute, "/usr/bin/codesign --verify --deep --strict /Applications/Xcode.app", nil)
-			reuseXcode = signatureErr == nil
+		if err := progress("Checking the existing Xcode signature before running it"); err != nil {
+			return err
+		}
+		_, signatureErr := g.RunReader(ctx, 5*time.Minute, "/usr/bin/codesign --verify --deep --strict /Applications/Xcode.app", nil)
+		if signatureErr == nil {
+			var versionErr error
+			out, versionErr = g.Run(ctx, "/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -version", "")
+			reuseXcode = versionErr == nil && strings.TrimSpace(out) == sourceVersion
 		}
 	}
 	if !reuseXcode {
-		if err := progress("Copying local Xcode.app over authenticated SSH; no shared host directory is mounted"); err != nil {
+		if err := progress("Installing Xcode.app through the VirtioFS shared folder"); err != nil {
 			return err
 		}
-		transfer, stop := context.WithCancel(ctx)
-		defer stop()
-		cmd := exec.CommandContext(transfer, "/usr/bin/tar", "-C", filepath.Dir(source), "-cf", "-", filepath.Base(source))
-		pipe, err := cmd.StdoutPipe()
-		if err != nil {
-			return err
-		}
-		cmd.Stderr = nil
-		cmd.WaitDelay = 5 * time.Second
-		if err := cmd.Start(); err != nil {
-			return err
-		}
-		out, copyErr := g.RunReader(transfer, time.Hour, "/usr/bin/tar -xpf - -C /Users/lume/.virfield-xcode", pipe)
+		out, copyErr := g.RunReader(ctx, time.Hour, "/bin/bash -c "+shellQuote(sharedXcodeInstallScript(filepath.Base(source))), nil)
 		if copyErr != nil {
-			stop()
-		}
-		waitErr := cmd.Wait()
-		if copyErr != nil || waitErr != nil {
 			_ = e.provisionLog(l, "transfer", out)
-			return domain.Err("xcode_transfer_failed", "Authenticated Xcode transfer failed; inspect image before retry")
+			return domain.Err("xcode_transfer_failed", "VirtioFS Xcode transfer failed; inspect image before retry")
 		}
+		if detachedTransferRoot != "" {
+			_ = os.RemoveAll(detachedTransferRoot)
+		}
+		_ = os.RemoveAll(transferRoot)
 		if err := progress("Xcode transferred; installing developer components and completing first launch"); err != nil {
-			return err
-		}
-		move := "set -eu; sudo /bin/rm -rf /Applications/Xcode.app; /bin/mv " + shellQuote(filepath.Join("/Users/lume/.virfield-xcode", filepath.Base(source))) + " /Applications/Xcode.app"
-		if _, err := g.Run(ctx, "/bin/bash -c "+shellQuote(move), ""); err != nil {
 			return err
 		}
 	}
@@ -192,6 +203,38 @@ sudo -n /usr/bin/automationmodetool enable-automationmode-without-authentication
 	return e.stop(ctx, l)
 }
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'" }
+func detachTransferRoot(path string) (string, error) {
+	if _, err := os.Lstat(path); err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	detached := path + ".cleanup-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	_ = os.RemoveAll(detached)
+	if err := os.Rename(path, detached); err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	return detached, nil
+}
+func sharedXcodeInstallScript(base string) string {
+	source := filepath.Join(guestSharedFolder, base)
+	staged := filepath.Join("/Users/lume/.virfield-xcode", base)
+	return `set -eu
+src=` + shellQuote(source) + `
+staged=` + shellQuote(staged) + `
+test -d "$src"
+/bin/rm -rf /Users/lume/.virfield-xcode
+/bin/mkdir -p /Users/lume/.virfield-xcode
+/usr/bin/ditto "$src" "$staged"
+sudo /bin/rm -rf /Applications/Xcode.app
+sudo /bin/mv "$staged" /Applications/Xcode.app
+test -x /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild
+`
+}
 func (e *Engine) provisionLog(l domain.Lease, stage, out string) error {
 	return os.WriteFile(filepath.Join(e.Dir, "images", l.ID, "provision-"+stage+".log"), []byte(out), 0600)
 }

@@ -41,8 +41,8 @@ func (c *Controller) buildImageLocked(ctx context.Context, t domain.Template, ke
 	if err != nil {
 		return domain.Operation{}, err
 	}
-	if c.capacity(ls).Used != 0 {
-		return domain.Operation{}, domain.Err("image_in_use", "image builds require all leases released and all VMs stopped")
+	if c.capacity(ls).Available < 1 {
+		return domain.Operation{}, domain.Err("capacity_exhausted", "image build requires one available VM slot")
 	}
 	for _, l := range ls {
 		if l.Key() == t.Location+"/"+t.Name {
@@ -55,9 +55,9 @@ func (c *Controller) buildImageLocked(ctx context.Context, t domain.Template, ke
 		}
 	}
 	now := c.now()
-	l := domain.Lease{ID: domain.NewID("image-"), Purpose: "image", Template: t.ID, VMName: t.Name, Location: t.Location, State: "image_building", CreatedAt: now, UpdatedAt: now}
+	l := domain.Lease{ID: domain.NewID("image-"), Purpose: "image", Template: t.ID, VMName: t.Name, Location: t.Location, LegacyUUID: t.LegacyUUID, State: "image_building", CreatedAt: now, UpdatedAt: now}
 	profile := *t.Image
-	j := domain.Job{ID: domain.NewID("job-"), LeaseID: l.ID, Kind: "image_build", Image: &profile, Phase: "queued", State: "queued", CreatedAt: now, UpdatedAt: now, Deadline: now.Add(6 * time.Hour)}
+	j := domain.Job{ID: domain.NewID("job-"), LeaseID: l.ID, Kind: "image_build", Image: &profile, Phase: "queued", State: "queued", CreatedAt: now, UpdatedAt: now, Deadline: now.Add(10 * time.Hour)}
 	save := func() error {
 		return c.store.Save(ctx, l, &j, key, fp, "image.build_accepted", "Image build accepted; installation and verification are journaled")
 	}
@@ -93,7 +93,7 @@ func (c *Controller) advanceImageBuild(ctx context.Context, l domain.Lease, j do
 			return nil
 		}
 		l.State = "image_ready"
-		l.ImageManifest = fingerprint(j.Image)
+		l.ImageManifest = imageFingerprint(j.Image)
 		l.Error = nil
 		j.State = "succeeded"
 		j.Phase = "done"
@@ -132,7 +132,9 @@ func (c *Controller) advanceImageBuild(ctx context.Context, l domain.Lease, j do
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
-		opCtx, cancel := context.WithDeadline(ctx, j.Deadline)
+		// Shutdown stops admission and drains workers. Keep this stage alive long
+		// enough to persist a confirmed result when it finishes during the drain.
+		opCtx, cancel := context.WithDeadline(context.WithoutCancel(ctx), j.Deadline)
 		defer cancel()
 		progress := func(message string) error {
 			c.mu.Lock()
@@ -202,6 +204,11 @@ func (c *Controller) RecoverImage(ctx context.Context, id, key, name, action str
 	}
 	if l.Purpose != "image" || l.VMName != name || (l.State != "quarantined" && l.State != "needs_attention") || c.active[id] || !c.observation.At.After(l.UpdatedAt) {
 		return domain.Operation{}, domain.Err("operation_in_progress", "image must need attention, have no active operation, and have a fresh inventory after its last transition")
+	}
+	if l.LegacyUUID == "" {
+		if t, ok := c.templates[l.Template]; ok {
+			l.LegacyUUID = t.LegacyUUID
+		}
 	}
 	jobs, err := c.store.Jobs(ctx)
 	if err != nil {
