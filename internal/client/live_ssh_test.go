@@ -64,7 +64,13 @@ func TestLiveLeaseSSH(t *testing.T) {
 		t.Fatal("requires a registered image recipe")
 	}
 	cloneCount := 2
-	if os.Getenv("VIRFIELD_LIVE_CLONE_COUNT") == "1" {
+	legacyImage := false
+	for _, lease := range status.Leases {
+		if lease.Purpose == "image" && lease.Template == os.Getenv("VIRFIELD_LIVE_TEMPLATE_ID") && lease.State == "image_ready" && lease.LegacyUUID != "" {
+			legacyImage = true
+		}
+	}
+	if os.Getenv("VIRFIELD_LIVE_CLONE_COUNT") == "1" || legacyImage {
 		cloneCount = 1
 	}
 	type owned struct {
@@ -160,6 +166,15 @@ func TestLiveLeaseSSH(t *testing.T) {
 		}
 		leases = append(leases, owned{op: op, signer: signer, request: r, key: key})
 		t.Log("accepted", op.Lease.ID)
+	}
+	if legacyImage {
+		_, r := fresh()
+		_, err = c.Do(ctx, "POST", "leases", r, domain.NewID("live-ssh-legacy-second-"))
+		var failure *domain.Error
+		if !errors.As(err, &failure) || failure.Code != "legacy_uuid_in_use" {
+			t.Fatal("second legacy worker did not report legacy_uuid_in_use", err)
+		}
+		t.Log("second legacy worker refused while first is active")
 	}
 	if cloneCount == 2 {
 		_, r := fresh()
@@ -277,17 +292,23 @@ func TestLiveLeaseSSH(t *testing.T) {
 			g.Close()
 			t.Fatal(err)
 		}
-		out, err = s.CombinedOutput(`/bin/bash -c 'set -euo pipefail
+		expectedEncryption := "false"
+		if l.ready.LegacyUUID != "" {
+			expectedEncryption = "true"
+		}
+		diskProbe := `/bin/bash -c 'set -euo pipefail
 /usr/bin/sw_vers -productVersion
 /usr/bin/sw_vers -buildVersion
 for volume in / /System/Volumes/Data; do
  info=$(/usr/sbin/diskutil info -plist "$volume")
- for key in FileVault Encryption Locked; do
+ for key in FileVault Locked; do
   test "$(printf "%s" "$info" | /usr/bin/plutil -extract "$key" raw -o - -)" = false
  done
+ test "$(printf "%s" "$info" | /usr/bin/plutil -extract Encryption raw -o - -)" = __EXPECTED_ENCRYPTION__
 done
 printf "virfield-artifact-ok\\n" > ~/workspace/virfield-acceptance.txt
-'`)
+'`
+		out, err = s.CombinedOutput(strings.ReplaceAll(diskProbe, "__EXPECTED_ENCRYPTION__", expectedEncryption))
 		s.Close()
 		versions := strings.Fields(string(out))
 		if err != nil || len(versions) != 2 || versions[1] != profile.Build || (profile.MacOS != "" && domain.CompareVersions(versions[0], profile.MacOS) != 0) {
@@ -321,7 +342,14 @@ printf "automation-security-ok\\n"
 				g.Close()
 				t.Fatal(err)
 			}
-			out, err = s.CombinedOutput("set -eu; /usr/bin/xcodebuild -version; /usr/bin/xcrun swift -e 'print(\"virfield-clone-swift-ok\")'")
+			out, err = s.CombinedOutput(`/bin/bash -c 'set -eu
+/usr/bin/xcodebuild -version
+probe_dir="$(/usr/bin/mktemp -d /tmp/virfield-clone-swift.XXXXXX)"
+trap "/bin/rm -rf \"$probe_dir\"" EXIT
+printf "%s\n" "import Foundation" "print(\"virfield-clone-swift-ok\")" > "$probe_dir/probe.swift"
+/usr/bin/xcrun swiftc "$probe_dir/probe.swift" -o "$probe_dir/probe"
+"$probe_dir/probe"
+'`)
 			s.Close()
 			if err != nil || !strings.Contains(string(out), "Xcode "+profile.Xcode.Version+"\nBuild version "+profile.Xcode.Build+"\n") || !strings.Contains(string(out), "virfield-clone-swift-ok") {
 				g.Close()
@@ -417,7 +445,7 @@ printf 'virfield-ui-profile-ok\n'
 		if err != nil || string(data) != "virfield-artifact-ok\n" {
 			t.Fatal("exported artifact mismatch", err)
 		}
-		t.Log("exact version, unencrypted boot volumes and SCP artifact export passed", l.ready.ID)
+		t.Log("exact version, expected disk policy and SCP artifact export passed", l.ready.ID)
 		t.Log("own key authenticated; image key rejected", l.ready.ID)
 	}
 	t.Log("PASS: exact guest version, disk policy, pinned SSH, Finder/SIP probes, workload, artifact export and cleanup")

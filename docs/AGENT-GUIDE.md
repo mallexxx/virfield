@@ -96,9 +96,12 @@ Omit `xcode` for a base desktop. Omit `security` or use `default` to keep SIP an
 system protections enabled; `sip-disabled` changes SIP only; `automation` also
 applies Gatekeeper/AMFI and Terminal/SSH TCC policy. Changes apply only inside the
 guest. Full third-party UI tools require the separately documented UI-test recipe.
-Golden System/Data volumes must be unencrypted and unlocked; FileVault off alone
-is not enough. Read the current verification topic before treating Monterey or
-any other catalog release as production accepted.
+Default portable golden System/Data volumes must be unencrypted and unlocked;
+FileVault off alone is not enough. Explicit `legacy_uuid` images may use APFS
+encryption at rest with FileVault off, one active worker and no registry
+publication. The Monterey 12.6 / Xcode 13.4.1 image and one disposable clone
+passed under that policy on 2026-10-03. Read the current verification
+topic before treating any catalog release as production accepted.
 
 For `apple_auth_required`, call `image_apple_auth` with the failed `job.id` and
 send its `url` privately to the user on the same Mac as Virfield. The local

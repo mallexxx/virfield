@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -62,5 +63,24 @@ func TestImagePipelineRejectsStockLumeVersion(t *testing.T) {
 		if (err == nil) != tc.accepted {
 			t.Fatal(tc.version, err)
 		}
+	}
+}
+
+func TestImageCreatePassesSelectedDiskSizeToLume(t *testing.T) {
+	dir := t.TempDir()
+	binary := filepath.Join(dir, "lume")
+	if err := os.WriteFile(binary, []byte("#!/bin/sh\nprintf '%s\\n' \"$@\"\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	l := domain.Lease{VMName: "monterey-xcode", Location: "home"}
+	if err := ImageCommand(context.Background(), binary, dir, dir, "create", l, "/tmp/install.ipsw", "1920x1440", "120GB"); err != nil {
+		t.Fatal(err)
+	}
+	out, err := os.ReadFile(filepath.Join(dir, "create.log"))
+	if err != nil || !strings.Contains(string(out), "--disk-size\n120GB\n") {
+		t.Fatalf("Lume create args: %s, %v", out, err)
+	}
+	if err := ImageCommand(context.Background(), binary, dir, dir, "create", l, "/tmp/install.ipsw", "1920x1440", "160GB"); err == nil {
+		t.Fatal("unapproved disk size accepted")
 	}
 }

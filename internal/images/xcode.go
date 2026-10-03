@@ -472,12 +472,12 @@ func (e *Engine) xcodeSource(ctx context.Context, x domain.XcodeRelease, progres
 		return "", err
 	}
 	if xcodeBundleVerifiedMarker(ctx, app, x) {
-		if err := progress("Using verified cached Xcode " + x.Version + " for VirtioFS transfer"); err != nil {
+		if err := progress("Using verified cached Xcode " + x.Version + " for guest installation"); err != nil {
 			return "", err
 		}
 		return app, nil
 	}
-	if err := progress("Checking cached Xcode " + x.Version + " before VirtioFS transfer"); err != nil {
+	if err := progress("Checking cached Xcode " + x.Version + " before guest installation"); err != nil {
 		return "", err
 	}
 	if err := checkXcodeBundle(ctx, app, x); err != nil {

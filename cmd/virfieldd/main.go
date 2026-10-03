@@ -129,6 +129,7 @@ func run() error {
 		}
 		cfg.StoragePaths = map[string]string{"home": filepath.Join(home, ".lume")}
 	}
+	backend.StoragePaths = cfg.StoragePaths
 	manager.SetResources(*cfg.ResourceLimits, func() (map[string]int64, error) { return hostresources.Disk(cfg.StoragePaths) })
 	manager.SetLeasePreparer(&guestssh.Manager{Dir: cfg.StateDir})
 	registryClient, err := registry.New(cfg.Registries)

@@ -18,7 +18,7 @@ import (
 // ImageCommand is the explicit CLI portion of the same Lume adapter. Lume 0.5.3
 // exposes offline setup here, not in its HTTP lifecycle API.
 // Only these fixed operations can be selected; clients never supply argv.
-func ImageCommand(ctx context.Context, binary, toolsDir, logDir, step string, l domain.Lease, ipsw, display string) error {
+func ImageCommand(ctx context.Context, binary, toolsDir, logDir, step string, l domain.Lease, ipsw, display, diskSize string) error {
 	if !domain.ValidName(l.VMName) || !domain.ValidName(l.Location) || !filepath.IsAbs(binary) {
 		return domain.Err("invalid_profile", "invalid image command configuration")
 	}
@@ -28,7 +28,10 @@ func ImageCommand(ctx context.Context, binary, toolsDir, logDir, step string, l 
 		if display != "1920x1080" && display != "1920x1440" {
 			return domain.Err("invalid_profile", "unsupported image display geometry")
 		}
-		args = []string{"create", l.VMName, "--os", "macos", "--ipsw", ipsw, "--cpu", "4", "--memory", "8GB", "--disk-size", "80GB", "--display", display, "--storage", l.Location}
+		if diskSize != "80GB" && diskSize != "120GB" {
+			return domain.Err("invalid_profile", "unsupported image disk size")
+		}
+		args = []string{"create", l.VMName, "--os", "macos", "--ipsw", ipsw, "--cpu", "4", "--memory", "8GB", "--disk-size", diskSize, "--display", display, "--storage", l.Location}
 	// In pinned Lume 0.5.3, "tahoe" is a version-neutral offline preset:
 	// empty boot_commands and SSH verification. It does not select the OS.
 	case "setup":

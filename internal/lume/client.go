@@ -19,8 +19,9 @@ import (
 )
 
 type Client struct {
-	base string
-	http *http.Client
+	base         string
+	http         *http.Client
+	StoragePaths map[string]string
 }
 
 type SharedDirectory string
@@ -140,7 +141,13 @@ func (c *Client) Observe(ctx context.Context) (domain.Observation, error) {
 	return o, nil
 }
 func (c *Client) Clone(ctx context.Context, t domain.Template, l domain.Lease) error {
-	return c.request(ctx, "POST", "/lume/vms/clone", map[string]string{"name": t.Name, "newName": l.VMName, "sourceLocation": t.Location, "destLocation": l.Location}, nil)
+	if err := c.request(ctx, "POST", "/lume/vms/clone", map[string]string{"name": t.Name, "newName": l.VMName, "sourceLocation": t.Location, "destLocation": l.Location}, nil); err != nil {
+		return err
+	}
+	if t.LegacyUUID != "" {
+		return c.preserveLegacyIdentity(t, l)
+	}
+	return nil
 }
 func (c *Client) Start(ctx context.Context, l domain.Lease) error {
 	return c.StartWithOptions(ctx, l, StartOptions{})

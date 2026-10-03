@@ -57,7 +57,7 @@ Unknown Assistant screens fail rather than publishing an incomplete desktop.
 
 ### Golden disk policy
 
-Golden boot volumes must be unencrypted. Native Setup Assistant leaves FileVault
+Default portable golden boot volumes must be unencrypted. Native Setup Assistant leaves FileVault
 unchecked, re-observes the control after changing it, and verifies the resulting
 System and Data volumes over SSH. The assistant stage and final post-reboot
 verification require `diskutil info -plist` to report `FileVault=false`,
@@ -67,14 +67,19 @@ fail closed. The final verification manifest includes both volume states.
 `FileVault is Off` alone is insufficient: the tested Monterey 12.6 guest reports
 `Encrypted at rest` even after completing Setup Assistant without FileVault.
 [Apple documents this distinction](https://support.apple.com/en-gb/guide/security/sec4c6dc1b6e/1/web/1).
-Such a guest returns `disk_encrypted` and cannot be published by this pipeline.
-The macOS selection remains available, but Monterey is not yet accepted for
-clone execution under this disk policy. Virfield does not silently preserve the
-source VM machine identifier to work around encryption. Existing images need
-re-verification; upgrading the binaries does not retroactively certify them.
+Under the default portable policy, such a guest returns `disk_encrypted` and
+cannot be published. The Monterey 12.6 / Xcode 13.4.1 image reached
+`image_ready` on 2026-10-03 under the explicit identity-preserving legacy
+policy below. One disposable clone passed boot, workload, artifact export and
+cleanup on the same day. Existing
+images need re-verification; upgrading the binaries does not retroactively
+certify them.
 
 Legacy option for Monterey and other identity-bound guests:
 `identity-preserving` templates may be configured with `legacy_uuid`. Virfield
+requires this field in the operator's `config.json` template before `image-build`;
+the catalog `image-create` command does not set it. A Monterey image created
+without it fails the APFS encryption check and is quarantined. Virfield
 persists that UUID on image-build and worker leases, allows APFS
 encryption-at-rest for that legacy image only, and refuses a second active
 worker with the same UUID until cleanup confirms release. FileVault and locked
@@ -82,7 +87,11 @@ volumes still fail closed. The golden must stay stopped. Cleanup must delete the
 copied bundle. Registry publication and portable export remain disabled,
 because the image is not a portable golden. Acceptance requires a live test
 proving same-identity copy → boot → SSH → workload → artifact export → cleanup,
-plus refusal of a second concurrent worker. This is a separate legacy contract,
+plus refusal of a second concurrent worker. The Monterey/Xcode image passed
+that test on 2026-10-03. Lume normally regenerates `machineIdentifier` and
+`macAddress` during clone; Virfield restores both values from the stopped source
+before booting a legacy clone and checks that NVRAM was copied. Ordinary clones
+keep their fresh identity. This is a separate legacy contract,
 not a weakening of the default unencrypted clone policy.
 
 ### Guest security policy
@@ -245,17 +254,35 @@ for boot frames, reconnects for full VNC framebuffers, recognizes the final
 button separately from the wallpaper and delegates the final desktop
 postcondition to SSH. Each attempt retains its own screenshot directory.
 
-The supported recipe fixes resources at 4 CPUs, 8 GiB RAM, 80 GiB sparse
-disk and NAT. Base image, setup, SIP, verify and worker boots use no host shared
-folders. Developer provisioning starts the image VM through native
-`lume run --shared-dir`, sharing the verified Xcode cache parent directly over
-VirtioFS and copying from `/Volumes/My Shared Files` inside the guest with
-`ditto`. There is no host-side Xcode staging copy, SSH streaming transfer, rsync
-or tar pipe. Before each retry Virfield detaches and cleans any stale
+The supported recipe fixes resources at 4 CPUs, 8 GiB RAM and NAT. New macOS
+11/12 images with a selected Xcode use a 120 GB sparse disk so guest XIP
+expansion has room; other new images use 80 GB. This is a virtual maximum,
+not an immediate host allocation. The existing Monterey/Xcode VM remains 80 GB
+and used about 49 GiB on the host after installation. Its XIP was 10 GB, its
+cached `Xcode.app` used 17 GB on the host, and the uncompressed file stream was
+about 32 GiB. Guest `xip` refused expansion with about 42 GiB free on that VM.
+The setting applies at VM creation and does not resize existing images.
+Base image, setup, SIP, verify and worker boots use no host shared folders.
+On macOS 13+ guests, developer provisioning starts the image VM through
+native `lume run --shared-dir`, sharing the verified Xcode cache parent directly
+over VirtioFS and copying from `/Volumes/My Shared Files` inside the guest with
+`ditto`. Before each retry Virfield detaches and cleans any stale
 `virtiofs-transfer` directory left by older builds. Apple Virtualization only
-automounts VirtioFS in macOS 13 or newer guests; Monterey 12.x fails fast with
-`virtiofs_unsupported` before VM mutation instead of falling back to a hidden
-copy path. Display is 1920×1440 for native macOS 11/12 and Sequoia setup (their
+automounts VirtioFS in macOS 13 or newer guests. On macOS 11/12 guests, the
+separate transport streams the checksum-verified XIP over pinned SSH, verifies
+its checksum in the guest, expands it with `xip` (which verifies Apple's
+signature), checks bundle version/build and signature, then installs it as
+`/Applications/Xcode.app`. Transfer progress is reported, and retry removes
+stale partial archives and expansion directories. This older-guest path requires
+the guest disk to hold the XIP and expanded app during installation. If `xip`
+reports insufficient guest space, Virfield streams the already verified host
+`Xcode.app` cache over the same pinned SSH connection, preserving file contents,
+permissions and links while omitting extended attributes that Monterey's tar
+cannot restore reliably. It checks version/build and Apple's deep signature
+before replacing the guest app.
+This keeps the signed XIP as the normal older-guest transport while allowing
+existing 80 GB Monterey images to install Xcode without resizing encrypted APFS disks.
+Display is 1920×1440 for native macOS 11/12 and Sequoia setup (their
 Assistant controls can be clipped at 1080 pixels), and 1920×1080 otherwise.
 Changing the recipe requires a code change and live validation; this is not an
 arbitrary command runner.

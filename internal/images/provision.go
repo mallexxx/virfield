@@ -57,11 +57,17 @@ func (e *Engine) provision(ctx context.Context, l domain.Lease, p domain.ImagePr
 	if p.Provision != "uitest-27-v1" && p.Provision != "developer-v1" {
 		return domain.Err("invalid_profile", "Unknown guest provisioning recipe")
 	}
+	sharedTransfer := guestSupportsVirtioFS(p.MacOS)
 	source := e.Tools.Xcode
+	archive := ""
 	var sourceVersion string
 	var err error
 	if p.Xcode != nil {
-		source, err = e.xcodeSource(ctx, *p.Xcode, progress)
+		if sharedTransfer {
+			source, err = e.xcodeSource(ctx, *p.Xcode, progress)
+		} else {
+			archive, err = e.xcodeArchive(ctx, *p.Xcode, progress)
+		}
 		sourceVersion = "Xcode " + p.Xcode.Version + "\nBuild version " + p.Xcode.Build
 	} else {
 		sourceVersion, err = e.checkXcode(ctx)
@@ -69,29 +75,34 @@ func (e *Engine) provision(ctx context.Context, l domain.Lease, p domain.ImagePr
 	if err != nil {
 		return err
 	}
-	if !guestSupportsVirtioFS(p.MacOS) {
-		return domain.Err("virtiofs_unsupported", "VirtioFS shared folders require a macOS 13 or newer guest; this image cannot use the shared-folder transfer contract")
-	}
 	transferRoot := filepath.Join(e.Dir, "images", l.ID, "virtiofs-transfer")
-	if err := progress("Cleaning leftover VirtioFS transfer folder"); err != nil {
-		return err
+	detachedTransferRoot := ""
+	var vm domain.VM
+	if sharedTransfer {
+		if err := progress("Cleaning leftover VirtioFS transfer folder"); err != nil {
+			return err
+		}
+		detachedTransferRoot, err = detachTransferRoot(transferRoot)
+		if err != nil {
+			return domain.Err("xcode_transfer_cleanup_failed", "Stale VirtioFS transfer folder could not be detached before retry")
+		}
+		if detachedTransferRoot != "" {
+			go func() { _ = os.RemoveAll(detachedTransferRoot) }()
+		}
+		defer os.RemoveAll(transferRoot)
+		if !filepath.IsAbs(source) || filepath.Base(source) == "." || filepath.Base(source) == string(filepath.Separator) {
+			return domain.Err("invalid_profile", "Xcode source must be an absolute app bundle")
+		}
+		if err := progress("Starting image VM with the VirtioFS Xcode source folder"); err != nil {
+			return err
+		}
+		vm, err = e.bootWithSharedDirectory(ctx, l, filepath.Dir(source))
+	} else {
+		if err := progress("Starting image VM for SSH XIP transfer"); err != nil {
+			return err
+		}
+		vm, err = e.boot(ctx, l)
 	}
-	detachedTransferRoot, err := detachTransferRoot(transferRoot)
-	if err != nil {
-		return domain.Err("xcode_transfer_cleanup_failed", "Stale VirtioFS transfer folder could not be detached before retry")
-	}
-	if detachedTransferRoot != "" {
-		go func() { _ = os.RemoveAll(detachedTransferRoot) }()
-	}
-	defer os.RemoveAll(transferRoot)
-	if !filepath.IsAbs(source) || filepath.Base(source) == "." || filepath.Base(source) == string(filepath.Separator) {
-		return domain.Err("invalid_profile", "Xcode source must be an absolute app bundle")
-	}
-	sharedRoot := filepath.Dir(source)
-	if err := progress("Starting image VM with the VirtioFS Xcode source folder"); err != nil {
-		return err
-	}
-	vm, err := e.bootWithSharedDirectory(ctx, l, sharedRoot)
 	if err != nil {
 		return err
 	}
@@ -137,18 +148,22 @@ mkdir -p /Users/lume/.virfield-xcode
 		}
 	}
 	if !reuseXcode {
-		if err := progress("Installing Xcode.app through the VirtioFS shared folder"); err != nil {
+		if sharedTransfer {
+			if err := progress("Installing Xcode.app through the VirtioFS shared folder"); err != nil {
+				return err
+			}
+			out, copyErr := g.RunReader(ctx, time.Hour, "/bin/bash -c "+shellQuote(sharedXcodeInstallScript(filepath.Base(source))), nil)
+			if copyErr != nil {
+				_ = e.provisionLog(l, "transfer", out)
+				return domain.Err("xcode_transfer_failed", "VirtioFS Xcode transfer failed; inspect image before retry")
+			}
+			if detachedTransferRoot != "" {
+				_ = os.RemoveAll(detachedTransferRoot)
+			}
+			_ = os.RemoveAll(transferRoot)
+		} else if err := e.installXcodeArchive(ctx, l, g, archive, *p.Xcode, progress); err != nil {
 			return err
 		}
-		out, copyErr := g.RunReader(ctx, time.Hour, "/bin/bash -c "+shellQuote(sharedXcodeInstallScript(filepath.Base(source))), nil)
-		if copyErr != nil {
-			_ = e.provisionLog(l, "transfer", out)
-			return domain.Err("xcode_transfer_failed", "VirtioFS Xcode transfer failed; inspect image before retry")
-		}
-		if detachedTransferRoot != "" {
-			_ = os.RemoveAll(detachedTransferRoot)
-		}
-		_ = os.RemoveAll(transferRoot)
 		if err := progress("Xcode transferred; installing developer components and completing first launch"); err != nil {
 			return err
 		}
@@ -243,8 +258,12 @@ func (e *Engine) verifyProvision(ctx context.Context, l domain.Lease, g *guest) 
 export PATH=/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin
 for tool in brew jq socat peekaboo screenresolution xcbeautify; do command -v "$tool"; done
 xcodebuild -version
-xcrun --find swift
-xcrun swift -e 'import Foundation; print("virfield-swift-ok")'
+xcrun --find swiftc
+probe_dir="$(/usr/bin/mktemp -d /tmp/virfield-swift.XXXXXX)"
+trap '/bin/rm -rf "$probe_dir"' EXIT
+printf '%s\n' 'import Foundation' 'print("virfield-swift-ok")' > "$probe_dir/probe.swift"
+xcrun swiftc "$probe_dir/probe.swift" -o "$probe_dir/probe"
+test "$("$probe_dir/probe")" = virfield-swift-ok
 sudo -n true
 assessment="$(spctl --status 2>&1 || true)"
 printf '%s\n' "$assessment"
@@ -276,8 +295,12 @@ func (e *Engine) verifyXcode(ctx context.Context, l domain.Lease, g *guest, x do
 	probe := `set -eu
  test "$(/usr/bin/xcode-select -p)" = /Applications/Xcode.app/Contents/Developer
  /usr/bin/xcodebuild -checkFirstLaunchStatus
- /usr/bin/xcrun --find swift
- /usr/bin/xcrun swift -e 'import Foundation; print("virfield-swift-ok")'
+ /usr/bin/xcrun --find swiftc
+ probe_dir="$(/usr/bin/mktemp -d /tmp/virfield-swift.XXXXXX)"
+ trap '/bin/rm -rf "$probe_dir"' EXIT
+ printf '%s\n' 'import Foundation' 'print("virfield-swift-ok")' > "$probe_dir/probe.swift"
+ /usr/bin/xcrun swiftc "$probe_dir/probe.swift" -o "$probe_dir/probe"
+ test "$("$probe_dir/probe")" = virfield-swift-ok
  `
 	out, err = g.RunReader(ctx, 5*time.Minute, "/bin/bash -c "+shellQuote(probe), nil)
 	if logErr := e.provisionLog(l, "xcode-verify", out); logErr != nil {

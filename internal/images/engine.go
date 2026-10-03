@@ -33,6 +33,13 @@ type Engine struct {
 	HTTP           *http.Client
 }
 
+func imageDiskSize(p domain.ImageProfile) string {
+	if p.Xcode != nil && domain.ValidVersion(p.MacOS) && domain.CompareVersions(p.MacOS, "13") < 0 {
+		return "120GB"
+	}
+	return "80GB"
+}
+
 func New(dir string, b *lume.Client, t domain.ImageTools) (*Engine, error) {
 	for _, p := range []string{dir, t.Lume, t.Python, t.Tesseract, t.VNCBin} {
 		if !filepath.IsAbs(p) {
@@ -147,7 +154,7 @@ func (e *Engine) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile
 			// pixels. The taller guest display keeps the actual buttons visible.
 			display = "1920x1440"
 		}
-		return lume.ImageCommand(ctx, e.Tools.Lume, e.Tools.VNCBin, folder, step, l, ipsw, display)
+		return lume.ImageCommand(ctx, e.Tools.Lume, e.Tools.VNCBin, folder, step, l, ipsw, display, imageDiskSize(p))
 	case "assistant":
 		vm, err := e.boot(ctx, l)
 		if err != nil {

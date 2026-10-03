@@ -2,7 +2,7 @@
 
 This is the current acceptance record and test runbook. It distinguishes the
 verified local host and image-tool deployment from the unaccepted full Balda
-workflow. Results were collected on Apple Silicon macOS through 2026-10-02 (timestamps UTC),
+workflow. Results were collected on Apple Silicon macOS through 2026-10-03 (timestamps UTC),
 using Go 1.26.8 and patched Lume 0.5.3. The full UI-test suite is verified on
 macOS 27 build `26A428`; versioned image coverage is recorded separately below.
 
@@ -11,14 +11,11 @@ macOS 27 build `26A428`; versioned image coverage is recorded separately below.
 The installed versioned-image candidate is **not production accepted**. Before
 registering it in Codex and Claude Code, complete:
 
-1. Finalize the release matrix: keep Monterey/Xcode outside the accepted scope
-   unless either a supported preparation path produces `Encryption=false` on
-   both boot volumes, or the identity-preserving legacy mode is accepted live
-   with one-at-a-time clone limits. The current
-   Monterey/Xcode job is a recorded negative result for the default clone model,
-   not a transient failure to retry.
-2. A fresh full image/security/Xcode workflow, pinned SSH workload, artifact
-   export and confirmed cleanup, with exact versions and evidence recorded here.
+1. Run the identity-preserving clone/workload/cleanup check from the newly built
+   120 GB Monterey/Xcode image. The earlier 80 GB image passed this test; the
+   fresh image has not yet been cloned.
+2. Complete the full Balda/Broker workflow using the accepted image, including
+   pinned SSH workload and artifact delivery through the intended client path.
 3. Install the accepted build, register `virfield` in both clients using
    [Operations](OPERATIONS.md#register-codex-and-claude-code), and validate the
    [agent workflow](AGENT-GUIDE.md#client-registration-and-acceptance) in each.
@@ -29,8 +26,10 @@ registering it in Codex and Claude Code, complete:
    XcodesLoginKit helper is no longer built or distributed.
 
 The Sequoia 15.2 GHCR publish → pull-back → ordinary clone/workload and cleanup
-gate passed; its exact digest and live evidence are recorded below. This does
-not establish Monterey/Xcode support or the full Balda/Broker workflow gate.
+gate passed; its exact digest and live evidence are recorded below. A clean
+unattended Monterey/Xcode build passed on 2026-10-03. The earlier 80 GB image
+passed the legacy clone test; the new 120 GB image and full Balda/Broker
+workflow gates remain open.
 
 The agent guide and operations/image/verification runbooks are embedded in MCP
 as `virfield_help` and four read-only resources. Automated protocol tests verify
@@ -53,7 +52,8 @@ cross-origin refusal, link rotation/expiry, cookie-file permissions, exact-job
 resume and redirect cookie stripping. The native browser and Go binaries build
 on the host. A real Apple sign-in through this window resumed the exact
 Xcode 13.4.1 job on 2026-10-02; at 07:43 UTC it was downloading at 8%.
-The full download/install and Monterey clone are still unaccepted. The previous
+The later download/install and legacy clone passed on 2026-10-03.
+The previous
 local credential form was removed from the HTTP route after a live failure.
 
 ## Live image-job reporting (2026-10-02)
@@ -68,12 +68,13 @@ confirmed by the operator. This verifies error reporting for that thread.
 After correcting the host `codesign` timeout, the same job completed download
 verification at 11:47:31 UTC and entered `create_dispatched` at 11:47:33 UTC.
 Balda received the new-phase webhook in the same thread. Native Setup
-Assistant completed, but the same job is now `needs_attention` with
+Assistant completed, but the same job was then `needs_attention` with
 `disk_encrypted`: `diskutil` reports `FileVault=false`, `Encryption=true`,
-`Locked=false` on both Monterey boot volumes. The image was not published and
+`Locked=false` on both Monterey boot volumes. At that checkpoint the image was not published and
 its VM was stopped. Its ordinary clone has not passed acceptance.
 Other conversations need their own configured notification route before a
-watch can be registered. A completed image and ordinary clone remain unverified.
+watch can be registered. The image and identity-preserving clone later passed;
+the default portable clone mode remains unsupported for Monterey.
 
 ## Headless guest audio and Monterey setup (2026-10-02)
 
@@ -90,10 +91,10 @@ image-tool configuration points to the separate v6 directory. Both now report
 the v6 marker. Monterey's adjacent `Don't Skip`/`Skip` buttons and an OCR-missed
 `Full name` label required verified crop fixes. OCR reads now get one bounded
 retry after a transient Tesseract timeout. Native Setup Assistant completed
-and SSH came up. The subsequent APFS disk-policy check failed as documented
-above, before Xcode could be installed in the guest or an image published.
+and SSH came up. At that checkpoint the default APFS disk-policy check failed
+before Xcode installation; the later legacy-policy recovery completed the image.
 
-## Audit response and partial live acceptance
+## Audit response and partial live acceptance (2026-10-02 checkpoint)
 
 The 2026-10-02 audit led to source and test changes for scoped principals and
 lease ownership, token rotation, release convergence, backend-outage deadlines,
@@ -127,7 +128,8 @@ recipe cannot be treated as an existing VM for an Xcode install. Balda's
 the requested Xcode to the pinned profile before `image_build`, and create a
 compatible image when none exists. Existing Balda conversations keep
 their pinned plugin revision; the live tool response itself already includes
-the inventory. The Monterey/Xcode build and clone gate remains open.
+the inventory. At that checkpoint the Monterey/Xcode build and clone gates
+were still open; the image build passed on 2026-10-03.
 
 A subsequent Balda request to add Xcode 13.4.1 to the Monterey VM instead
 started `virfield_image_build` for the configured `macos-monterey-golden`
@@ -152,14 +154,16 @@ The job's Setup Assistant failure was a light-gray Monterey language arrow
 not recognized by the image detector. The detector now matches the observed
 60×60 arrow crop; the regression test passes and the idle daemon was updated.
 After user confirmation, recovery delete job
-`job-fd58124a415221333993640f9e54cd39` succeeded and no Monterey VM remains.
+`job-fd58124a415221333993640f9e54cd39` succeeded and that failed Monterey
+VM was removed. A later combined Monterey/Xcode VM is the current ready image.
 Plugin rc.15 also requires explicitly stating that running image jobs have no
 automatic status notification; it must not promise a later report until a
 durable notification route exists.
 The next Mattermost root post created `job-057b0898f3746df8b12fb8b5c4c34c1c`
 through Balda. Virfield confirms the immutable profile pins macOS 12.6
 `21G115`, Xcode 13.4.1 `13F100`, and `developer-v1` provisioning. Its download
-stage immediately reached `apple_auth_required`; no VM has been created yet.
+stage immediately reached `apple_auth_required`; no VM existed for that job at
+that checkpoint. The same job later produced the ready image.
 Balda's first reply showed `queued` and did not send an Apple sign-in link.
 The same MM thread must continue through `virfield_image_job` and
 `virfield_image_apple_auth` to validate the handoff end to end.
@@ -191,9 +195,9 @@ The following audit risks remain open:
 
 - Container ingress, TLS and tunnel reachability need an end-to-end test from
   the actual Balda container.
-- Monterey/Big Sur goldens and a real Xcode 13.4.1 download/install are not
-  accepted. The catalog accepts those choices so it can report the exact
-  `disk_encrypted` or setup failure; no clone is published from a failing image.
+- Monterey/Xcode image preparation and one disposable legacy clone now passed.
+  Big Sur remains untested. The default
+  portable policy still reports `disk_encrypted` for Monterey.
 - Short image, export and SSH stages can finish and persist their confirmed
   results during the bounded shutdown drain. Graceful restart during a longer
   image mutation requires more implementation and failure injection. The source
@@ -214,7 +218,8 @@ The following audit risks remain open:
   tests, but a live 30-day aging interval has not elapsed. Soak,
   second-Mac, VM-disk restore and full Balda workflow acceptance have not run.
   Native Apple website sign-in and cookie transfer resumed the live Xcode job;
-  the resulting XIP, guest installation and clone still need acceptance.
+  XIP verification and guest installation passed later, while clone acceptance
+  remains open.
 
 ## Accepted behavior
 
@@ -490,13 +495,14 @@ This uses the deployed API and preserves the golden. The full tool probes run
 when the selected template configures `uitest-27-v1`. Unknown outcomes remain
 quarantined for inspection, not forcibly removed.
 
-If a future supported Monterey/Xcode preparation path reaches `image_ready`,
-wait for the manager to become idle, then set `VIRFIELD_LIVE_CLONE_COUNT=1` and
-`VIRFIELD_LIVE_TEMPLATE_ID=macos-12.6-xcode-13.4.1` with the same command. This
-creates and cleans up one disposable clone, and checks the exact macOS build,
-unencrypted System/Data volumes, Xcode 13.4.1 / 13F100, Swift execution, pinned
-SSH, Finder, SIP and artifact export. The current `disk_encrypted` result must
-remain an unaccepted image result and must not be clone-tested.
+The Monterey/Xcode image is ready under the identity-preserving `legacy_uuid`
+policy. For its clone check, set `VIRFIELD_LIVE_CLONE_COUNT=1` and
+`VIRFIELD_LIVE_TEMPLATE_ID=macos-12.6-xcode-13.4.1` with the same command after
+the manager is idle. This creates and cleans up one disposable clone and checks
+the exact macOS build, encrypted-at-rest System/Data volumes with FileVault off,
+Xcode 13.4.1 / 13F100, Swift compilation, pinned SSH, Finder, SIP and artifact
+export. It also checks refusal of a second concurrent legacy worker. The source
+image is preserved.
 
 For the lower-level controller lifecycle test, first stop the manager (the host
 singleton lock permits only one controller). Use a new private state directory:
@@ -514,35 +520,43 @@ go test ./internal/control -run '^TestLiveLifecycle$' -count=1 -v -timeout=26m
 | --- | --- |
 | Monterey 12.6 / 21G115, default protection, no Xcode | IPSW download and native Assistant passed; source boot, key-only SSH, password rotation and Finder passed. **Not accepted in default clone mode:** both ordinary clones stalled before SSH; FileVault is off but System/Data report encryption at rest. The legacy `legacy_uuid` path now permits APFS encryption-at-rest only for identity-preserving images and enforces one active worker at a time, but the full same-identity live path is not accepted. |
 | Sequoia 15.2 / 24C101, GHCR import, `automation`, no Xcode | Clean portable publish, complete 80 GiB GHCR manifest, clean pull-back and two ordinary clones passed boot, isolation, capacity, disk, workload/SCP and cleanup. The earlier recovered import separately passed Gatekeeper/AMFI/TCC and reboot verification. |
-| Monterey with `automation` security | Implementation present; live acceptance blocked by the unencrypted golden requirement |
-| Xcode 13.4.1 / 13F100 on Monterey 12.6 | Authenticated Apple archive downloaded and host signature verified. A live `lume run --shared-dir` probe on 2026-10-03 started the VM but `/Volumes/My Shared Files` did not appear; the guest has no `mount_virtiofs` binary and no VirtioFS mount. The installed pipeline now fails fast with `virtiofs_unsupported` for macOS 12.x before VM mutation. |
+| Monterey with `automation` security | Implementation present; no live Monterey automation acceptance yet |
+| Xcode 13.4.1 / 13F100 on Monterey 12.6 | `image_ready` on 2026-10-03: job `job-057b0898f3746df8b12fb8b5c4c34c1c` succeeded, with exact Xcode build, Apple deep signature, first launch, Swift compilation and reboot checks. A live VirtioFS probe showed no mount on Monterey. The guest verified the transferred XIP checksum, but `xip` refused expansion with 42 GiB free on the existing 80 GB VM. A 160 GB Lume resize dry-run refused encrypted APFS without changing it. The fallback streamed the verified host Xcode.app without macOS tar metadata; guest signature and version checks passed. One Apple Virtualization startup crash interrupted the first verification attempt; an operator retry of verification succeeded. One identity-preserving legacy clone passed boot, Swift compilation, SSH, artifact export and cleanup. |
+| Fresh 120 GB Monterey/Xcode image | Job `job-ca072dfb3bfee011bd7ee9fcd28d8f46` succeeded unattended on 2026-10-03. The guest received the verified XIP by SSH, checked its checksum, expanded it without fallback, verified Apple's deep signature and exact version/build, completed first launch and post-reboot checks, then stopped as `image_ready`. Its own clone check is pending. |
 | Other catalog macOS generations | Selectable; not yet a claim of live acceptance on this host |
 
-The disk-policy probe was run in the real Monterey guest: both boot volumes
-reported `FileVault=false`, `Encryption=true`, `Locked=false`. The new pipeline
-rejects that state before completing setup and again before publication. The
-installed runtime includes that gate. The failed golden was deleted through the API (job
-`job-d8a05d245b9ca804b35e0212a9be87fe`, succeeded; absence confirmed in Lume).
-The registered recipe remains; there is no accepted Monterey golden.
+The disk-policy probe in Monterey reports `FileVault=false`, `Encryption=true`,
+`Locked=false` for both boot volumes. The earlier default-mode golden was
+rejected and deleted through the API (job `job-d8a05d245b9ca804b35e0212a9be87fe`).
+The current image is accepted only under the identity-preserving `legacy_uuid`
+policy: one active worker at a time and no portable registry publication.
 Apple [documents default APFS encryption on Apple silicon even when FileVault
 is off](https://support.apple.com/en-nz/guide/security/sec4c6dc1b6e/web).
-That is consistent with this guest observation, but does not establish whether
-an alternate supported VM preparation can produce an unencrypted Monterey disk.
-It also does not reject a future identity-preserving legacy mode: that mode
-would keep the VM identity with the copied bundle, forbid concurrent workers for
-that image, delete the copied bundle after use, and disable registry publication
-until a portable contract exists.
-The earlier missing-archive observation was superseded on 2026-10-02: the
-authenticated `Xcode_13.4.1.xip` downloaded, passed its SHA-1 and Apple
-codesign checks, and expanded to a host-side `Xcode.app` cache. Guest install
-remains untested because the Monterey disk-policy check failed first.
-No clone-identity workaround is included. A fresh successful clone acceptance
-run and disk-policy validation remain required before release.
+This matches the guest observation. The first disposable legacy clone attempt
+timed out before guest IP readiness because Lume assigned a new
+`machineIdentifier` and `macAddress`; its cleanup passed and the source image
+remained stopped. After Virfield began restoring both identity fields on the
+clone before boot, `TestLiveLeaseSSH` passed in 86.99 seconds on 2026-10-03.
+Lease `lease-0f4876238e98c53356e4854e58493931` verified macOS 12.6 /
+21G115, encrypted-at-rest boot volumes with FileVault off, SIP enabled,
+Xcode 13.4.1 / 13F100, Swift compilation, Finder, scoped SSH and host pin,
+image-key rejection, tunnel access and SCP artifact export. A second concurrent
+legacy worker was rejected with `legacy_uuid_in_use`. The test deleted its
+temporary clone; Lume inventory confirmed it absent, the source image stopped
+and `image_ready`, zero active jobs and zero used slots. That first image build
+required operator recovery. A fresh build passed without
+recovery on 2026-10-03. Its template is
+`macos-12.6-xcode-13.4.1-clean-20261003`, lease
+`image-3ba4a9985c11ec23a7289023f2fa386f`; Lume reports it stopped with a
+120 GiB virtual disk and 34.8 GiB allocated on the host. The first clean
+attempt used catalog `image-create`, which cannot set `legacy_uuid`, and failed
+closed at `disk_encrypted` before Xcode transfer. Its quarantined VM was deleted
+through `image-recover`; the successful run used the operator's `config.json`
+template with the legacy UUID. The original 80 GB ready image remains stopped.
 
 The initial Monterey bring-up required inspected operator recovery while native
-UI and older OpenSSH compatibility were being fixed. It is not a clean-run
-acceptance claim. The finalized pipeline must be exercised from a fresh image
-before recording that result. Older OpenSSH needs both
+UI and older OpenSSH compatibility were being fixed. The fresh 120 GB build is
+the clean-run acceptance record. Older OpenSSH needs both
 `KbdInteractiveAuthentication no` and `ChallengeResponseAuthentication no`;
 checking just `PasswordAuthentication` does not establish key-only access.
 
