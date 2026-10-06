@@ -386,6 +386,10 @@ are unavailable or lack disk space. Without a configured default, the template's
 location remains the default. An explicit `destination_location` is strict and
 fails instead of falling back. CPU and RAM failures never trigger storage fallback.
 
+`virfield-lume` synchronizes available `storage_paths` into Lume whenever the
+service starts. It leaves Lume's own default at `home`, does not remove unmanaged
+locations, and skips an unavailable path so clone fallback can still operate.
+
 ```json
 {
   "storage_paths": {
