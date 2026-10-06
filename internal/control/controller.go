@@ -461,7 +461,7 @@ func (c *Controller) Run(ctx context.Context) error {
 	defer ticker.Stop()
 	retention := time.NewTicker(24 * time.Hour)
 	defer retention.Stop()
-	defer c.drain(2*time.Minute + 5*time.Second)
+	defer c.drain(10*time.Minute + 5*time.Second)
 	defer c.closeTunnels()
 	for {
 		if err := c.Tick(ctx); err != nil && !errors.Is(err, context.Canceled) {
@@ -810,7 +810,7 @@ func (c *Controller) dispatch(ctx context.Context, l domain.Lease, j domain.Job,
 		defer c.wg.Done()
 		// A normal daemon shutdown stops admission, then lets this bounded
 		// mutation finish and persist its observed outcome before process exit.
-		opCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
+		opCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), mutationTimeout(l, phase))
 		err := fn(opCtx)
 		cancel()
 		c.mu.Lock()
@@ -857,6 +857,13 @@ func (c *Controller) dispatch(ctx context.Context, l domain.Lease, j domain.Job,
 		}
 	}()
 	return nil
+}
+
+func mutationTimeout(l domain.Lease, phase string) time.Duration {
+	if phase == "clone_dispatched" && l.Source != nil && l.Source.Location != l.Location {
+		return 10 * time.Minute
+	}
+	return 2 * time.Minute
 }
 
 // Resolve is an explicit operator acknowledgement after inspecting Lume. It is

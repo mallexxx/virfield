@@ -389,6 +389,8 @@ fails instead of falling back. CPU and RAM failures never trigger storage fallba
 `virfield-lume` synchronizes available `storage_paths` into Lume whenever the
 service starts. It leaves Lume's own default at `home`, does not remove unmanaged
 locations, and skips an unavailable path so clone fallback can still operate.
+Cross-storage clones use a longer bounded operation window because they copy the
+disk instead of using an APFS clone on the source volume.
 
 ```json
 {

@@ -260,7 +260,7 @@ func run() error {
 			if runErr == nil {
 				runErr = err
 			}
-		case <-time.After(2*time.Minute + 10*time.Second):
+		case <-time.After(10*time.Minute + 10*time.Second):
 			log.Error("controller shutdown exceeded mutation drain deadline")
 			if runErr == nil {
 				runErr = errors.New("controller shutdown timed out")

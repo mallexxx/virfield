@@ -490,6 +490,20 @@ func TestSlowCloneDoesNotBlockStatusOrLoseRenewal(t *testing.T) {
 	_, err := c.Release(context.Background(), op.Lease.ID, "release-1")
 	code(t, err, "operation_in_progress")
 }
+
+func TestCrossStorageCloneUsesExtendedMutationTimeout(t *testing.T) {
+	l := domain.Lease{Location: "external", Source: &domain.Template{Location: "home"}}
+	if got := mutationTimeout(l, "clone_dispatched"); got != 10*time.Minute {
+		t.Fatalf("cross-storage clone timeout %s", got)
+	}
+	if got := mutationTimeout(l, "start_dispatched"); got != 2*time.Minute {
+		t.Fatalf("start timeout %s", got)
+	}
+	l.Location = "home"
+	if got := mutationTimeout(l, "clone_dispatched"); got != 2*time.Minute {
+		t.Fatalf("same-storage clone timeout %s", got)
+	}
+}
 func TestGracefulShutdownLetsClonePersistConfirmedOutcome(t *testing.T) {
 	c, _, b := setup(t)
 	b.blockClone = make(chan struct{})
