@@ -53,3 +53,24 @@ func TestPrincipalScopesMustBeExplicit(t *testing.T) {
 		}
 	}
 }
+
+func TestCloneLocationsReferenceConfiguredStorage(t *testing.T) {
+	base := `{"listen":"127.0.0.1:7780","state_dir":"/tmp/a","token_file":"/tmp/t","max_vms":2,"storage_paths":{"home":"/tmp/home","external":"/tmp/external"},`
+	for _, candidate := range []struct {
+		value   string
+		allowed bool
+	}{
+		{`"default_clone_location":"external","fallback_clone_locations":["home"]}`, true},
+		{`"default_clone_location":"missing"}`, false},
+		{`"default_clone_location":"home","fallback_clone_locations":["home"]}`, false},
+	} {
+		path := filepath.Join(t.TempDir(), "config.json")
+		if err := os.WriteFile(path, []byte(base+candidate.value), 0600); err != nil {
+			t.Fatal(err)
+		}
+		_, err := Load(path)
+		if (err == nil) != candidate.allowed {
+			t.Fatal(candidate.value, err)
+		}
+	}
+}

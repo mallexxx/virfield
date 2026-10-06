@@ -84,6 +84,43 @@ func TestMCPProxiesToAPIAndPreservesIdempotency(t *testing.T) {
 	}
 }
 
+func TestMCPAcquireForwardsDestinationLocation(t *testing.T) {
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+		}
+		if body["destination_location"] != "external" {
+			t.Errorf("destination_location=%v", body["destination_location"])
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"lease":{"id":"lease-test"},"job":{"id":"job-test"}}`)
+	}))
+	defer api.Close()
+	c, err := client.New(api.URL, "secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := New(c)
+	st, ct := mcp.NewInMemoryTransports()
+	ctx := context.Background()
+	ss, err := server.Connect(ctx, st, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ss.Close()
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil).Connect(ctx, ct, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cs.Close()
+	if _, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "vm_acquire", Arguments: map[string]any{
+		"template": "golden", "ttl_seconds": 3600, "idempotency_key": "request-location", "ssh_public_key": "test-public-key", "destination_location": "external",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestMCPVersionSelectionReachesAPI(t *testing.T) {
 	calls := 0
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

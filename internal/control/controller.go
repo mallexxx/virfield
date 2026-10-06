@@ -30,21 +30,24 @@ type Backend interface {
 	Delete(context.Context, domain.Lease) error
 }
 type Controller struct {
-	registry       ImageRegistry
-	tunnels        map[string]*tunnel
-	resourceLimits *domain.ResourceLimits
-	resourceProbe  ResourceProbe
-	diskAvailable  map[string]int64
-	resourceError  string
-	imageCatalog   ImageCatalog
-	imageLocations map[string]bool
-	imageBuilder   ImageBuilder
-	leasePreparer  LeasePreparer
-	mu             sync.Mutex
-	store          *store.Store
-	backend        Backend
-	templates      map[string]domain.Template
-	observation    domain.Observation
+	registry               ImageRegistry
+	tunnels                map[string]*tunnel
+	resourceLimits         *domain.ResourceLimits
+	resourceProbe          ResourceProbe
+	diskAvailable          map[string]int64
+	resourceError          string
+	storageLocations       map[string]bool
+	defaultCloneLocation   string
+	fallbackCloneLocations []string
+	imageCatalog           ImageCatalog
+	imageLocations         map[string]bool
+	imageBuilder           ImageBuilder
+	leasePreparer          LeasePreparer
+	mu                     sync.Mutex
+	store                  *store.Store
+	backend                Backend
+	templates              map[string]domain.Template
+	observation            domain.Observation
 	// Monotonic local clock prevents wall-clock changes from making stale inventory fresh.
 	lastObservedMono time.Time
 	limit            int
@@ -303,13 +306,13 @@ func (c *Controller) AcquireAs(ctx context.Context, key string, r domain.Acquire
 	if cap.Available == 0 {
 		return domain.Operation{}, cap.FullError()
 	}
-	reservation, err := c.admitResources(ls, t)
+	reservation, destinationLocation, err := c.admitResources(ls, t, r.DestinationLocation)
 	if err != nil {
 		return domain.Operation{}, err
 	}
 	now := c.now()
 	id := domain.NewID("lease-")
-	l := domain.Lease{Resources: reservation, Source: &t, ImageID: imageID, LegacyUUID: t.LegacyUUID, SSHPublicKey: r.SSHPublicKey, Owner: owner, ID: id, VMName: "vf-" + id[6:], Location: t.Location, Template: t.ID, State: "pending", ExpiresAt: now.Add(time.Duration(r.TTLSeconds) * time.Second), CreatedAt: now, UpdatedAt: now}
+	l := domain.Lease{Resources: reservation, Source: &t, ImageID: imageID, LegacyUUID: t.LegacyUUID, SSHPublicKey: r.SSHPublicKey, Owner: owner, ID: id, VMName: "vf-" + id[6:], Location: destinationLocation, Template: t.ID, State: "pending", ExpiresAt: now.Add(time.Duration(r.TTLSeconds) * time.Second), CreatedAt: now, UpdatedAt: now}
 	j := domain.Job{ID: domain.NewID("job-"), LeaseID: id, Kind: "prepare", Phase: "queued", State: "queued", CreatedAt: now, UpdatedAt: now, Deadline: now.Add(10 * time.Minute)}
 	if err := c.store.Save(ctx, l, &j, key, fp, "lease.accepted", "Slot reserved; VM preparation queued"); err != nil {
 		return domain.Operation{}, err

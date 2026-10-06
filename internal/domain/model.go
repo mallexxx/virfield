@@ -52,14 +52,18 @@ type Template struct {
 
 // AcquireRequest reserves a slot immediately. Queueing belongs to Execution Broker.
 type AcquireRequest struct {
-	SSHPublicKey string `json:"ssh_public_key,omitempty"`
-	Template     string `json:"template"`
-	TTLSeconds   int    `json:"ttl_seconds"`
+	DestinationLocation string `json:"destination_location,omitempty"`
+	SSHPublicKey        string `json:"ssh_public_key,omitempty"`
+	Template            string `json:"template"`
+	TTLSeconds          int    `json:"ttl_seconds"`
 }
 
 func (r AcquireRequest) Validate() error {
 	if !ValidName(r.Template) {
 		return Err("invalid_request", "template must be a configured image identifier")
+	}
+	if r.DestinationLocation != "" && !ValidName(r.DestinationLocation) {
+		return Err("invalid_request", "destination_location must be an operator-configured storage name")
 	}
 	if r.TTLSeconds < 60 || r.TTLSeconds > 86400 {
 		return Err("invalid_request", "ttl_seconds must be between 60 and 86400")

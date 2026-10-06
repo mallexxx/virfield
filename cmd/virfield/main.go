@@ -29,7 +29,7 @@ func run() error {
 	base := flag.String("url", "http://127.0.0.1:7780", "daemon URL")
 	tokenFile := flag.String("token-file", "", "owner-only API token file")
 	security := flag.String("security", "", "image-create guest policy: default, sip-disabled or automation")
-	location := flag.String("location", "", "operator-configured image storage location")
+	location := flag.String("location", "", "operator-configured clone destination or image storage location")
 	eventsLease := flag.String("lease-id", "", "events filter: lease or image record ID")
 	eventsTail := flag.Bool("tail", false, "events: return the newest page")
 	eventsLimit := flag.Int("limit", 100, "events page size, 1–500")
@@ -204,7 +204,7 @@ Recovery requires prior inspection that no operation remains in flight.
 		if err != nil {
 			return err
 		}
-		body = domain.AcquireRequest{Template: args[1], TTLSeconds: ttl, SSHPublicKey: canonical}
+		body = domain.AcquireRequest{Template: args[1], TTLSeconds: ttl, SSHPublicKey: canonical, DestinationLocation: *location}
 	case "ssh-config":
 		if len(args) != 3 || !domain.ValidName(args[1]) {
 			return errors.New("usage: ssh-config LEASE_ID IDENTITY_DIRECTORY")

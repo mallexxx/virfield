@@ -16,18 +16,20 @@ import (
 )
 
 type Config struct {
-	AllowedHosts   []string                `json:"allowed_hosts,omitempty"`
-	Principals     []Principal             `json:"principals,omitempty"`
-	Registries     []domain.RegistrySource `json:"registries,omitempty"`
-	ResourceLimits *domain.ResourceLimits  `json:"resource_limits,omitempty"`
-	StoragePaths   map[string]string       `json:"storage_paths,omitempty"`
-	ImageTools     *domain.ImageTools      `json:"image_tools,omitempty"`
-	Listen         string                  `json:"listen"`
-	LumeURL        string                  `json:"lume_url"`
-	StateDir       string                  `json:"state_dir"`
-	TokenFile      string                  `json:"token_file"`
-	MaxVMs         int                     `json:"max_vms"`
-	Templates      []domain.Template       `json:"templates"`
+	AllowedHosts           []string                `json:"allowed_hosts,omitempty"`
+	FallbackCloneLocations []string                `json:"fallback_clone_locations,omitempty"`
+	Principals             []Principal             `json:"principals,omitempty"`
+	Registries             []domain.RegistrySource `json:"registries,omitempty"`
+	ResourceLimits         *domain.ResourceLimits  `json:"resource_limits,omitempty"`
+	StoragePaths           map[string]string       `json:"storage_paths,omitempty"`
+	ImageTools             *domain.ImageTools      `json:"image_tools,omitempty"`
+	DefaultCloneLocation   string                  `json:"default_clone_location,omitempty"`
+	Listen                 string                  `json:"listen"`
+	LumeURL                string                  `json:"lume_url"`
+	StateDir               string                  `json:"state_dir"`
+	TokenFile              string                  `json:"token_file"`
+	MaxVMs                 int                     `json:"max_vms"`
+	Templates              []domain.Template       `json:"templates"`
 }
 
 type Principal struct {
@@ -92,6 +94,24 @@ func Load(path string) (Config, error) {
 		if !domain.ValidName(name) || !filepath.IsAbs(path) {
 			return c, errors.New("storage paths must map valid names to absolute directories")
 		}
+	}
+	storagePaths := c.StoragePaths
+	if storagePaths == nil {
+		storagePaths = map[string]string{"home": ""}
+	}
+	cloneLocations := append([]string{c.DefaultCloneLocation}, c.FallbackCloneLocations...)
+	seenCloneLocations := map[string]bool{}
+	for _, name := range cloneLocations {
+		if name == "" {
+			continue
+		}
+		if !domain.ValidName(name) || storagePaths[name] == "" && c.StoragePaths != nil {
+			return c, errors.New("clone locations must reference configured storage paths")
+		}
+		if seenCloneLocations[name] {
+			return c, errors.New("clone locations must be unique")
+		}
+		seenCloneLocations[name] = true
 	}
 	seenRegistries := map[string]bool{}
 	for _, source := range c.Registries {

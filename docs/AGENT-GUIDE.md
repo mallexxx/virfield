@@ -50,7 +50,7 @@ letters, digits, `_`, `.` or `-`. `ID` placeholders below are not interchangeabl
 | `image_pull` | `{"id":"NEW_TEMPLATE_ID","source":"SOURCE_ID","repository":"PACKAGE","tag":"TAG","macos":"EXPECTED_VERSION_OR_BUILD","xcode":"EXACT_VERSION","security":"automation","location":"home","idempotency_key":"NEW_KEY"}` | Import, prepare and verify a new golden; `xcode`, `security`, `location` optional; poll job |
 | `image_publish` | `{"template":"TEMPLATE_ID","source":"SOURCE_ID","repository":"PACKAGE","tag":"NEW_TAG","idempotency_key":"NEW_KEY"}` | Fresh portable rebuild of the verified recipe, upload and temporary-VM cleanup; poll job, retain `export.digest` |
 | `image_build` | `{"id":"TEMPLATE_ID","idempotency_key":"NEW_KEY"}` | Build an absent VM from its registered profile; poll `job.id` |
-| `vm_acquire` | `{"template":"TEMPLATE_ID","ttl_seconds":3600,"ssh_public_key":"ssh-ed25519 PUBLIC_KEY","idempotency_key":"NEW_KEY"}` | Durable operation; save `lease.id` and `job.id` |
+| `vm_acquire` | `{"template":"TEMPLATE_ID","ttl_seconds":3600,"ssh_public_key":"ssh-ed25519 PUBLIC_KEY","destination_location":"fast","idempotency_key":"NEW_KEY"}` | Durable operation; `destination_location` is optional and strict; omission uses configured clone storage fallback order |
 | `virfield_job` | `{"id":"JOB_ID"}` | Job state, phase, progress, deadline and error |
 | `image_apple_auth` | `{"id":"JOB_ID"}` | For `apple_auth_required`, issue a 15-minute local launcher link for Apple's website and that exact job; send it privately to the user on the Virfield Mac |
 | `vm_lease` | `{"id":"LEASE_OR_IMAGE_RECORD_ID"}` | Durable record; a ready worker includes `ip`, `ssh`, `expires_at` |
@@ -167,6 +167,8 @@ sandbox. Read the verification topic for the current live GHCR acceptance state.
 2. Generate a fresh Ed25519 identity outside Git for this lease. Save the private
    key locally and pass only its public key to `vm_acquire`. Save the returned
    lease/job IDs, request body and idempotency key in private workflow state.
+   Omit `destination_location` to use `default_clone_location` followed by
+   `fallback_clone_locations`. An explicit destination never silently falls back.
 3. Poll `virfield_job`; when it succeeds, read `vm_lease`. Require `state == ready`,
    a guest IP and the verified `ssh` connection. Never use the bootstrap password,
    inherited golden keys, disabled host checking or an unverified `ssh-keyscan`.

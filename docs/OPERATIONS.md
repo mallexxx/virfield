@@ -379,6 +379,24 @@ Lume location names to absolute directories. Defaults leave 25% of CPU/RAM and
 resources block admission. Sparse/APFS clone disks still reserve full potential
 growth, not just their current allocated blocks.
 
+`default_clone_location` and `fallback_clone_locations` select clone destinations
+from `storage_paths`. When an acquire request omits `destination_location`, the
+manager tries the default and then fallbacks in order, skipping locations that
+are unavailable or lack disk space. Without a configured default, the template's
+location remains the default. An explicit `destination_location` is strict and
+fails instead of falling back. CPU and RAM failures never trigger storage fallback.
+
+```json
+{
+  "storage_paths": {
+    "home": "/Users/operator/.lume",
+    "external": "/Volumes/VMs/lume"
+  },
+  "default_clone_location": "external",
+  "fallback_clone_locations": ["home"]
+}
+```
+
 `backup` requires an idle healthy pool and no unresolved jobs. It snapshots
 SQLite, the configured settings, a SHA-256 fingerprint of the owner token, and
 active image identities to an owner-only directory in `backups/`; five completed
