@@ -35,6 +35,7 @@ import (
 	"github.com/mallexxx/virfield/internal/registry"
 	"github.com/mallexxx/virfield/internal/store"
 	"github.com/mallexxx/virfield/internal/tart"
+	"github.com/mallexxx/virfield/internal/tartimage"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -112,6 +113,8 @@ func run() error {
 	defer db.Close()
 	var backend provider.Runtime
 	var lumeBackend *lume.Client
+	var tartBackend *tart.Client
+	var tartCredentials []tart.RegistryCredential
 	switch {
 	case cfg.Runtime == nil:
 		lumeBackend, err = lume.New(cfg.LumeURL)
@@ -129,7 +132,9 @@ func run() error {
 			}
 			credentials = append(credentials, tart.RegistryCredential{Host: credential.Host, Username: credential.Username, Token: registryToken})
 		}
-		backend, err = tart.New(tart.Config{Binary: cfg.Runtime.Tart.Binary, HostID: cfg.Runtime.Tart.HostID, HostName: cfg.Runtime.Tart.HostName, MaxVMs: cfg.Runtime.Tart.MaxVMs, CPULimit: cfg.Runtime.Tart.CPULimit, MemoryReserveBytes: cfg.Runtime.Tart.MemoryReserveBytes, Containers: containers, RegistryCredentials: credentials})
+		tartClient, tartErr := tart.New(tart.Config{Binary: cfg.Runtime.Tart.Binary, HostID: cfg.Runtime.Tart.HostID, HostName: cfg.Runtime.Tart.HostName, MaxVMs: cfg.Runtime.Tart.MaxVMs, CPULimit: cfg.Runtime.Tart.CPULimit, MemoryReserveBytes: cfg.Runtime.Tart.MemoryReserveBytes, Containers: containers, RegistryCredentials: credentials})
+		backend, err = tartClient, tartErr
+		tartBackend, tartCredentials = tartClient, credentials
 	case cfg.Runtime.Provider == "orchard":
 		orchardToken, tokenErr := config.Token(cfg.Runtime.Orchard.TokenFile)
 		if tokenErr != nil {
@@ -237,6 +242,20 @@ func run() error {
 			locations = append(locations, name)
 		}
 		manager.SetImageCatalog(catalog.New(), locations)
+	}
+	if tartBackend != nil && cfg.Runtime.Tart.Image != nil {
+		homes := make(map[string]string, len(cfg.Runtime.Tart.Containers))
+		for _, container := range cfg.Runtime.Tart.Containers {
+			homes[container.ID] = container.Path
+		}
+		manager.SetImageBuilder(tartimage.New(tartimage.Config{
+			StateDir:      cfg.StateDir,
+			Packer:        cfg.Runtime.Tart.Image.Packer,
+			XcodeArchives: cfg.Runtime.Tart.Image.XcodeArchives,
+			Homes:         homes,
+			Credentials:   tartCredentials,
+			Runtime:       tartBackend,
+		}))
 	}
 	// Bind before starting background effects: a conflicting port must not leave
 	// an invisible controller running beside the real service.

@@ -74,6 +74,37 @@ as Lume. A Tart template therefore needs a verified image profile and every
 acquire needs a fresh `ssh_public_key`; a bare digest-pinned `source` template
 without a qualified image record is rejected with `ssh_profile_missing`.
 
+### Tart image adoption
+
+A Tart daemon uses its own `config.json` and `state_dir`; it never shares the
+Lume journal. Switch the single launchd job only while no Lume lease is
+active, and switch back the same way. Tart pulls from GHCR need
+`runtime.tart.registry_credentials` for `ghcr.io`: Tart always reads
+`~/.docker/config.json`, and a stale GHCR entry there is rejected.
+
+```json
+"runtime": {
+  "provider": "tart",
+  "tart": {
+    "binary": "/opt/homebrew/bin/tart",
+    "host_id": "local",
+    "containers": [{"id": "samsung-tart", "path": "/Volumes/Samsung970EVO/virfield-tart", "kind": "external"}],
+    "registry_credentials": [{"host": "ghcr.io", "username": "mallexxx", "token_file": "/Users/admin/.virfield-v2/registry-credentials/ghcr-mallexxx.token"}],
+    "image": {"packer": "/opt/homebrew/bin/packer", "xcode_archives": "/Users/admin/.virfield-v2/cache/xcode"}
+  }
+}
+```
+
+A Tart template names the container as `location`, `guest_user: "admin"` and
+an `image` with a `tart.upstream` digest, exact `macos`/`build`, `xcode` and
+`developer-v1`. `image-build` then runs `resolve → build → qualify → stop`;
+evidence is `images/<id>/verification.json` with the upstream and recipe
+digests. Retry is available for `resolve` and `qualify`; an interrupted
+`build` needs `delete` and a new build. Cirrus guests report APFS encryption
+at rest with FileVault off; Tart keeps the machine identity on clone, so Tart
+qualification accepts it while still requiring FileVault off and unlocked
+volumes.
+
 Use MCP's workflows topic for arguments and completion criteria. CLI equivalents:
 
 ```sh
