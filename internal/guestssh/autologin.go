@@ -30,16 +30,21 @@ umask 077
 printf '%s' "$kcpassword" | /usr/bin/base64 -D > ~/.ssh/virfield-kcpassword
 printf '%s\n' "$new" | sudo -S -p '' /usr/bin/install -o root -g wheel -m 600 ~/.ssh/virfield-kcpassword /etc/kcpassword
 /bin/rm ~/.ssh/virfield-kcpassword
-printf '%s\n' "$new" | sudo -S -p '' /usr/bin/defaults write /Library/Preferences/com.apple.loginwindow autoLoginUser -string lume
+printf '%s\n' "$new" | sudo -S -p '' /usr/bin/defaults write /Library/Preferences/com.apple.loginwindow autoLoginUser -string "$user"
 
 `
 
 // VerifyAutoLogin reads the private cache over pinned SSH and never returns its
 // contents. sysadminctl can exit successfully without changing the stored secret.
-func VerifyAutoLogin(ctx context.Context, g *Client, password string) error {
-	out, err := g.Run(ctx, `test "$(/usr/bin/defaults read /Library/Preferences/com.apple.loginwindow autoLoginUser)" = lume && sudo -S -p '' /bin/sh -c 'test "$(/usr/bin/stat -f %u:%g:%Lp /etc/kcpassword)" = 0:0:600 && /usr/bin/base64 -i /etc/kcpassword'`, password+"\n")
+func VerifyAutoLogin(ctx context.Context, g *Client, user, password string) error {
+	failure := domain.Err("credential_autologin_failed", "Guest automatic login does not contain the current private password; image or lease will not be published")
+	// ValidName admits no quote or shell metacharacter.
+	if !domain.ValidName(user) {
+		return failure
+	}
+	out, err := g.Run(ctx, `test "$(/usr/bin/defaults read /Library/Preferences/com.apple.loginwindow autoLoginUser)" = '`+user+`' && sudo -S -p '' /bin/sh -c 'test "$(/usr/bin/stat -f %u:%g:%Lp /etc/kcpassword)" = 0:0:600 && /usr/bin/base64 -i /etc/kcpassword'`, password+"\n")
 	if err != nil || !matchesLoginPassword(out, password) {
-		return domain.Err("credential_autologin_failed", "Guest automatic login does not contain the current private password; image or lease will not be published")
+		return failure
 	}
 	return nil
 }
@@ -57,19 +62,20 @@ func matchesLoginPassword(encoded, password string) bool {
 	return end >= 0 && string(b[:end]) == password
 }
 
-// BootstrapAutoLogin is confined to a fresh guest's native Setup Assistant.
+// BootstrapAutoLogin is confined to a fresh Lume guest's native Setup Assistant.
 // Credential rotation remains in the subsequent journaled assistant stage.
 func BootstrapAutoLogin(ctx context.Context, g *Client) error {
 	script := `set -eu
+IFS= read -r user
 IFS= read -r new
 IFS= read -r kcpassword
 umask 077
 mkdir -p ~/.ssh
 chmod 700 ~/.ssh
 ` + autologinScript
-	_, err := g.Run(ctx, "/bin/bash -c '"+strings.ReplaceAll(script, "'", "'\"'\"'")+"'", "lume\n"+loginPassword("lume")+"\n")
+	_, err := g.Run(ctx, "/bin/bash -c '"+strings.ReplaceAll(script, "'", "'\"'\"'")+"'", "lume\nlume\n"+loginPassword("lume")+"\n")
 	if err != nil {
 		return err
 	}
-	return VerifyAutoLogin(ctx, g, "lume")
+	return VerifyAutoLogin(ctx, g, "lume", "lume")
 }

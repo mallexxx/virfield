@@ -25,11 +25,24 @@ func TestLoginPasswordTerminatesAndPads(t *testing.T) {
 }
 
 func TestCredentialScriptsParse(t *testing.T) {
-	for _, script := range []string{autologinScript, leaseScript} {
+	for _, script := range []string{autologinScript, leaseScript, rotateScript} {
 		cmd := exec.Command("/bin/bash", "-n")
 		cmd.Stdin = strings.NewReader(script)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("invalid credential script: %s: %v", out, err)
+		}
+	}
+}
+
+func TestCredentialScriptsUseConfiguredGuestUser(t *testing.T) {
+	for name, script := range map[string]string{"autologin": autologinScript, "lease": leaseScript, "rotate": rotateScript} {
+		if strings.Contains(script, "lume") || !strings.Contains(script, `"$user"`) {
+			t.Fatalf("%s script does not use the configured guest user", name)
+		}
+	}
+	for name, script := range map[string]string{"lease": leaseScript, "rotate": rotateScript} {
+		if !strings.HasPrefix(strings.TrimPrefix(script, "set -eu\n"), "IFS= read -r user\n") {
+			t.Fatalf("%s script must read the guest user first", name)
 		}
 	}
 }

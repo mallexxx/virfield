@@ -27,7 +27,7 @@ func (e *Manager) Prepare(ctx context.Context, l domain.Lease) (domain.SSHConnec
 		return result, err
 	}
 	source := &Manager{Dir: e.Dir, SSHPort: e.SSHPort}
-	image := domain.Lease{ID: l.ImageID}
+	image := domain.Lease{ID: l.ImageID, GuestUser: l.GuestUser}
 	// Do not bootstrap a missing source credential or trust a new host key.
 	if _, err := os.Stat(source.CredentialPath(image)); err != nil {
 		return result, domain.Err("image_credentials_missing", "Verified image credentials are unavailable")
@@ -80,7 +80,8 @@ func (e *Manager) Prepare(ctx context.Context, l domain.Lease) (domain.SSHConnec
 	if err := SaveCredentials(scoped.CredentialPath(l), c); err != nil {
 		return result, err
 	}
-	input := strings.Join([]string{inherited.Password, c.Password, management, public, base64.StdEncoding.EncodeToString(c.HostPrivate), loginPassword(c.Password)}, "\n") + "\n"
+	user := guestUser(l)
+	input := strings.Join([]string{user, inherited.Password, c.Password, management, public, base64.StdEncoding.EncodeToString(c.HostPrivate), loginPassword(c.Password)}, "\n") + "\n"
 	out, err := g.Run(ctx, "/bin/bash -c '"+strings.ReplaceAll(leaseScript, "'", "'\"'\"'")+"'", input)
 	if err != nil {
 		if saveErr := os.WriteFile(filepath.Join(scoped.Directory(l), "provision.log"), []byte(out), 0600); saveErr != nil {
@@ -95,7 +96,7 @@ func (e *Manager) Prepare(ctx context.Context, l domain.Lease) (domain.SSHConnec
 		return result, err
 	}
 	defer verified.Close()
-	if err := VerifyAutoLogin(ctx, verified, c.Password); err != nil {
+	if err := VerifyAutoLogin(ctx, verified, user, c.Password); err != nil {
 		return result, err
 	}
 	keys, err := verified.Run(ctx, "/bin/cat ~/.ssh/authorized_keys", "")
@@ -128,12 +129,13 @@ func (e *Manager) Prepare(ctx context.Context, l domain.Lease) (domain.SSHConnec
 	}
 	host, _ := ssh.ParsePublicKey(c.HostKey)
 	clientKey, _, _, _, _ := ssh.ParseAuthorizedKey([]byte(public))
-	return domain.SSHConnection{User: "lume", Port: 22, HostKey: strings.TrimSpace(string(ssh.MarshalAuthorizedKey(host))), ClientKeyFingerprint: ssh.FingerprintSHA256(clientKey)}, nil
+	return domain.SSHConnection{User: user, Port: 22, HostKey: strings.TrimSpace(string(ssh.MarshalAuthorizedKey(host))), ClientKeyFingerprint: ssh.FingerprintSHA256(clientKey)}, nil
 }
 
 // Fixed script, only generated secrets and canonical public keys arrive on stdin.
 // No script, path or host shell is supplied by an API client.
 const leaseScript = `set -eu
+IFS= read -r user
 IFS= read -r old
 IFS= read -r new
 IFS= read -r management
@@ -144,7 +146,7 @@ umask 077
 mkdir -p ~/.ssh ~/workspace
 chmod 700 ~/.ssh ~/workspace
 /usr/sbin/sysadminctl -newPassword "$new" -oldPassword "$old"
-/usr/bin/dscl . -authonly lume "$new" >/dev/null 2>&1
+/usr/bin/dscl . -authonly "$user" "$new" >/dev/null 2>&1
 ` + autologinScript + `
 printf '%s' "$hostkey" | /usr/bin/base64 -D > ~/.ssh/virfield-host-key
 printf '%s\n' "$new" | sudo -S -p '' /usr/bin/install -m 600 ~/.ssh/virfield-host-key /etc/ssh/ssh_host_ed25519_key

@@ -155,6 +155,16 @@ func guestUser(l domain.Lease) string {
 	return l.GuestUser
 }
 
+// Fixed script; user, old and new password arrive on SSH stdin.
+const rotateScript = `IFS= read -r user
+IFS= read -r old
+IFS= read -r new
+if ! /usr/bin/dscl . -authonly "$user" "$new" >/dev/null 2>&1; then
+ /usr/sbin/sysadminctl -newPassword "$new" -oldPassword "$old" || exit 1
+fi
+/usr/bin/dscl . -authonly "$user" "$new" >/dev/null 2>&1
+`
+
 func (e *Manager) connectCredentials(ctx context.Context, l domain.Lease, ip string, bootstrap bool, c Credentials) (*Client, error) {
 	user := guestUser(l)
 	if !domain.ValidName(user) {
@@ -301,28 +311,23 @@ func (e *Manager) SecureImage(ctx context.Context, l domain.Lease, ip string, g 
 		}
 		return nil
 	}
-	old := "lume"
+	user := guestUser(l)
+	old := user
 	if c.Secured {
 		old = c.Password
 	}
-	rotate := `IFS= read -r old
-IFS= read -r new
-if ! /usr/bin/dscl . -authonly lume "$new" >/dev/null 2>&1; then
- /usr/sbin/sysadminctl -newPassword "$new" -oldPassword "$old" || exit 1
-fi
-/usr/bin/dscl . -authonly lume "$new" >/dev/null 2>&1
-`
-	if err := runSecret("rotation", rotate, old+"\n"+c.Password+"\n"); err != nil {
+	if err := runSecret("rotation", rotateScript, user+"\n"+old+"\n"+c.Password+"\n"); err != nil {
 		return err
 	}
 	autologin := `set -eu
+IFS= read -r user
 IFS= read -r new
 IFS= read -r kcpassword
 ` + autologinScript
-	if err := runSecret("autologin", autologin, c.Password+"\n"+loginPassword(c.Password)+"\n"); err != nil {
+	if err := runSecret("autologin", autologin, user+"\n"+c.Password+"\n"+loginPassword(c.Password)+"\n"); err != nil {
 		return err
 	}
-	if err := VerifyAutoLogin(ctx, g, c.Password); err != nil {
+	if err := VerifyAutoLogin(ctx, g, user, c.Password); err != nil {
 		return err
 	}
 	harden := `IFS= read -r new
