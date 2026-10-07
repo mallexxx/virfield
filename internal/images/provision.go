@@ -13,6 +13,7 @@ import (
 
 	"github.com/mallexxx/virfield/internal/domain"
 	"github.com/mallexxx/virfield/internal/guestssh"
+	"github.com/mallexxx/virfield/internal/qualify"
 )
 
 //go:embed provision27.sh
@@ -137,7 +138,7 @@ mkdir -p /Users/lume/.virfield-xcode
 	if p.Xcode != nil {
 		// Read metadata and verify Apple's signature before ever executing an
 		// existing bundle. Failed checks cause replacement from the verified source.
-		reuseXcode = verifyGuestXcodeBundle(ctx, g, *p.Xcode) == nil
+		reuseXcode = qualify.XcodeBundle(ctx, g, *p.Xcode) == nil
 	} else {
 		if err := progress("Checking the existing Xcode signature before running it"); err != nil {
 			return err
@@ -172,7 +173,7 @@ mkdir -p /Users/lume/.virfield-xcode
 	}
 
 	if p.Xcode != nil && !reuseXcode {
-		if err := verifyGuestXcodeBundle(ctx, g, *p.Xcode); err != nil {
+		if err := qualify.XcodeBundle(ctx, g, *p.Xcode); err != nil {
 			return err
 		}
 	}
@@ -303,44 +304,11 @@ sysctl -n kern.bootargs | grep -q amfi_get_out_of_my_way=1
 }
 
 func (e *Engine) verifyXcode(ctx context.Context, l domain.Lease, g *guest, x domain.XcodeRelease) error {
-	if err := verifyGuestXcodeBundle(ctx, g, x); err != nil {
-		return err
+	out, err := qualify.Xcode(ctx, g, "lume", x)
+	if out != "" {
+		if logErr := e.provisionLog(l, "xcode-verify", out); logErr != nil {
+			return logErr
+		}
 	}
-	out, err := g.Run(ctx, "/usr/bin/xcodebuild -version", "")
-	if err != nil || strings.TrimSpace(out) != "Xcode "+x.Version+"\nBuild version "+x.Build {
-		return domain.Err("xcode_version_mismatch", "Guest Xcode version/build does not match the manifest")
-	}
-	probe := `set -eu
- test "$(/usr/bin/xcode-select -p)" = /Applications/Xcode.app/Contents/Developer
- /usr/bin/xcodebuild -checkFirstLaunchStatus
- /usr/bin/xcrun --find swiftc
- sudo -n /usr/sbin/DevToolsSecurity -status 2>&1 | grep -q 'currently enabled'
- id -Gn lume | tr ' ' '\n' | grep -qx _developer
- sudo -n /sbin/nfsd status
- grep -Eq '/(Cryptexes/OS/)?System/Library/dyld' /etc/exports
- probe_dir="$(/usr/bin/mktemp -d /tmp/virfield-swift.XXXXXX)"
- trap '/bin/rm -rf "$probe_dir"' EXIT
- printf '%s\n' 'import Foundation' 'print("virfield-swift-ok")' > "$probe_dir/probe.swift"
- /usr/bin/xcrun swiftc "$probe_dir/probe.swift" -o "$probe_dir/probe"
- test "$("$probe_dir/probe")" = virfield-swift-ok
- `
-	out, err = g.RunReader(ctx, 5*time.Minute, "/bin/bash -c "+shellQuote(probe), nil)
-	if logErr := e.provisionLog(l, "xcode-verify", out); logErr != nil {
-		return logErr
-	}
-	if err != nil {
-		return domain.Err("xcode_verification_failed", "Guest Xcode signature, first launch or Swift compilation check failed")
-	}
-	return nil
-}
-
-func verifyGuestXcodeBundle(ctx context.Context, g *guest, x domain.XcodeRelease) error {
-	out, err := g.Run(ctx, "/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' /Applications/Xcode.app/Contents/version.plist && /usr/libexec/PlistBuddy -c 'Print :ProductBuildVersion' /Applications/Xcode.app/Contents/version.plist", "")
-	if err != nil || strings.TrimSpace(out) != x.Version+"\n"+x.Build {
-		return domain.Err("xcode_version_mismatch", "Guest Xcode bundle metadata differs from the selected release")
-	}
-	if _, err := g.RunReader(ctx, 5*time.Minute, "/usr/bin/codesign --verify --deep --strict -R "+shellQuote(appleCodeRequirement)+" /Applications/Xcode.app", nil); err != nil {
-		return domain.Err("xcode_signature_failed", "Guest Xcode must have an intact Apple signature before execution")
-	}
-	return nil
+	return err
 }

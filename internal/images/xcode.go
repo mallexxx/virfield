@@ -18,12 +18,13 @@ import (
 
 	"github.com/mallexxx/virfield/internal/domain"
 	"github.com/mallexxx/virfield/internal/lume"
+	"github.com/mallexxx/virfield/internal/qualify"
 )
 
 const maxXcodeArchive = 32 << 30
 
 // The leading = selects inline requirement syntax; otherwise codesign opens a file.
-const appleCodeRequirement = "=anchor apple"
+const appleCodeRequirement = qualify.AppleCodeRequirement
 
 // CachedXcode reports archives verified by the download stage. The marker is
 // tied to file metadata; use still rechecks the full checksum.

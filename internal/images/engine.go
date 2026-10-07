@@ -199,36 +199,13 @@ func (e *Engine) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile
 			return err
 		}
 		defer guest.Close()
-		build, err := guest.Run(ctx, "/usr/bin/sw_vers -buildVersion", "")
+		actualVersion, err := qualify.OS(ctx, guest, p.MacOS, p.Build)
 		if err != nil {
 			return err
 		}
-		if strings.TrimSpace(build) != p.Build {
-			return domain.Err("guest_build_mismatch", "Guest macOS build differs from the image manifest")
-		}
-		version, err := guest.Run(ctx, "/usr/bin/sw_vers -productVersion", "")
+		sip, err := qualify.SIP(ctx, guest, p.DisableSIP)
 		if err != nil {
 			return err
-		}
-		actualVersion := strings.TrimSpace(version)
-		if !domain.ValidVersion(actualVersion) {
-			return domain.Err("guest_version_mismatch", "Guest reported an invalid macOS version")
-		}
-		if p.MacOS != "" {
-			if domain.CompareVersions(actualVersion, p.MacOS) != 0 {
-				return domain.Err("guest_version_mismatch", "Guest macOS version differs from the selected catalog release")
-			}
-		}
-		sip, err := guest.Run(ctx, "/usr/bin/csrutil status", "")
-		if err != nil {
-			return err
-		}
-		expected := "System Integrity Protection status: enabled."
-		if p.DisableSIP {
-			expected = "System Integrity Protection status: disabled."
-		}
-		if strings.TrimSpace(sip) != expected {
-			return domain.Err("sip_verification_failed", "Guest SIP status does not match the requested canonical state")
 		}
 		if err := e.prepareDesktop(ctx, l, guest); err != nil {
 			return err
@@ -262,8 +239,8 @@ func (e *Engine) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile
 		if err != nil {
 			return err
 		}
-		if _, err := secured.Run(ctx, "/bin/bash -c 'IFS= read -r password; /usr/bin/dscl . -authonly lume \"$password\"'", credentials.Password+"\n"); err != nil {
-			return domain.Err("credential_verification_failed", "Image password did not persist across reboot; image will not be published")
+		if err := qualify.Password(ctx, secured, "lume", credentials.Password); err != nil {
+			return err
 		}
 		if p.Xcode != nil {
 			if err := e.verifyXcode(ctx, l, secured, *p.Xcode); err != nil {
