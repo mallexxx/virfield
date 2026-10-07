@@ -55,4 +55,7 @@ build {
     script  = "scripts/xcode-post.sh"
     timeout = "1h"
   }
+  provisioner "shell" {
+    script = "scripts/reset-host-keys.sh"
+  }
 }

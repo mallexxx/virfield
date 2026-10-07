@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/mallexxx/virfield/internal/domain"
 	"github.com/mallexxx/virfield/internal/tart"
@@ -32,16 +33,21 @@ func (r *fakeRunner) Run(_ context.Context, dir string, env []string, _ string, 
 }
 
 type fakeRuntime struct {
-	mu     sync.Mutex
-	state  string
-	ip     string
-	starts int
-	stops  int
+	mu          sync.Mutex
+	state       string
+	ip          string
+	starts      int
+	stops       int
+	observeErrs int
 }
 
 func (f *fakeRuntime) Observe(context.Context) (domain.Observation, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.observeErrs > 0 {
+		f.observeErrs--
+		return domain.Observation{}, errors.New("tart list raced a clone")
+	}
 	if f.state == "" {
 		return domain.Observation{}, nil
 	}
@@ -87,12 +93,15 @@ func testBuilder(t *testing.T) (*Builder, *fakeRunner, *fakeRuntime, domain.Leas
 		config: Config{
 			StateDir:      t.TempDir(),
 			Packer:        "/opt/homebrew/bin/packer",
+			TartBinary:    "/opt/tart/bin/tart",
 			XcodeArchives: archives,
 			Homes:         map[string]string{"samsung": "/Volumes/S/tart"},
 			Credentials:   []tart.RegistryCredential{{Host: "ghcr.io", Username: "operator", Token: "secret"}},
 			Runtime:       runtime,
 		},
-		run: runner,
+		run:          runner,
+		stateTimeout: 200 * time.Millisecond,
+		statePoll:    time.Millisecond,
 	}
 	l := domain.Lease{ID: "image-test", Purpose: "image", VMName: "ventura-golden", Location: "samsung", GuestUser: "admin"}
 	return b, runner, runtime, l, p
@@ -138,7 +147,7 @@ func TestBuildPassesPinnedInputsAndScopedCredentials(t *testing.T) {
 		}
 	}
 	env := strings.Join(build.env, "\n")
-	for _, want := range []string{"TART_HOME=/Volumes/S/tart", "TART_REGISTRY_HOSTNAME=ghcr.io", "TART_REGISTRY_PASSWORD=secret", "CHECKPOINT_DISABLE=1", "PACKER_PLUGIN_PATH=" + filepath.Join(b.config.StateDir, "packer-plugins")} {
+	for _, want := range []string{"TART_HOME=/Volumes/S/tart", "TART_REGISTRY_HOSTNAME=ghcr.io", "TART_REGISTRY_PASSWORD=secret", "CHECKPOINT_DISABLE=1", "PACKER_PLUGIN_PATH=" + filepath.Join(b.config.StateDir, "packer-plugins"), "PATH=/opt/tart/bin:"} {
 		if !strings.Contains(env, want) {
 			t.Fatalf("build env lacks %q", want)
 		}
@@ -156,6 +165,34 @@ func TestStopConfirmsStoppedVM(t *testing.T) {
 		t.Fatal(runtime.stops, err)
 	}
 	if err := b.Step(context.Background(), l, p, "unknown", noProgress); !hasCode(err, "invalid_profile") {
+		t.Fatal(err)
+	}
+}
+
+func TestTartImagesRequireTheAdminAccount(t *testing.T) {
+	b, runner, _, l, p := testBuilder(t)
+	l.GuestUser = "lume"
+	if err := b.Step(context.Background(), l, p, "resolve", noProgress); !hasCode(err, "invalid_profile") || len(runner.calls) != 0 {
+		t.Fatal(err, runner.calls)
+	}
+}
+
+func TestStopFailsFastWhenTheVMIsMissing(t *testing.T) {
+	b, _, _, l, p := testBuilder(t)
+	b.stateTimeout = time.Hour
+	if err := b.Step(context.Background(), l, p, "stop", noProgress); !hasCode(err, "vm_missing") {
+		t.Fatal(err)
+	}
+}
+
+func TestStateWaitsSurviveTransientObserveErrors(t *testing.T) {
+	b, _, runtime, l, _ := testBuilder(t)
+	runtime.state, runtime.observeErrs = "stopped", 3
+	if err := b.waitState(context.Background(), l, "stopped"); err != nil {
+		t.Fatal(err)
+	}
+	runtime.observeErrs = 1 << 30
+	if err := b.waitState(context.Background(), l, "running"); !hasCode(err, "guest_timeout") {
 		t.Fatal(err)
 	}
 }

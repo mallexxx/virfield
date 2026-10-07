@@ -84,11 +84,21 @@ func TestXcodeProbeUsesConfiguredUser(t *testing.T) {
 		"/usr/bin/xcodebuild -version": "Xcode 15.2\nBuild version 15C500b\n",
 		"/bin/bash -c":                 "ok",
 	}}
-	if _, err := Xcode(context.Background(), g, "admin", x); err != nil {
+	logged := []string{}
+	record := func(out string) error { logged = append(logged, out); return nil }
+	if err := Xcode(context.Background(), g, "admin", x, record); err != nil {
 		t.Fatal(err)
 	}
 	probe := g.commands[len(g.commands)-1]
-	if !strings.Contains(probe, "id -Gn admin") || strings.Contains(probe, "lume") {
-		t.Fatal(probe)
+	if !strings.Contains(probe, "id -Gn admin") || strings.Contains(probe, "lume") || len(logged) != 1 || logged[0] != "ok" {
+		t.Fatal(probe, logged)
+	}
+	g.outputs["/bin/bash -c"] = ""
+	delete(g.outputs, "/bin/bash -c")
+	if err := Xcode(context.Background(), g, "admin", x, record); code(err) != "xcode_verification_failed" || len(logged) != 2 || logged[1] != "" {
+		t.Fatal("failed probe without output must still truncate the private log", err, logged)
+	}
+	if err := Xcode(context.Background(), g, "admin'x", x, record); code(err) != "xcode_verification_failed" {
+		t.Fatal(err)
 	}
 }

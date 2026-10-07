@@ -304,11 +304,7 @@ sysctl -n kern.bootargs | grep -q amfi_get_out_of_my_way=1
 }
 
 func (e *Engine) verifyXcode(ctx context.Context, l domain.Lease, g *guest, x domain.XcodeRelease) error {
-	out, err := qualify.Xcode(ctx, g, "lume", x)
-	if out != "" {
-		if logErr := e.provisionLog(l, "xcode-verify", out); logErr != nil {
-			return logErr
-		}
-	}
-	return err
+	return qualify.Xcode(ctx, g, "lume", x, func(out string) error {
+		return e.provisionLog(l, "xcode-verify", out)
+	})
 }

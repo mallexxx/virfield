@@ -251,6 +251,7 @@ func run() error {
 		manager.SetImageBuilder(tartimage.New(tartimage.Config{
 			StateDir:      cfg.StateDir,
 			Packer:        cfg.Runtime.Tart.Image.Packer,
+			TartBinary:    cfg.Runtime.Tart.Binary,
 			XcodeArchives: cfg.Runtime.Tart.Image.XcodeArchives,
 			Homes:         homes,
 			Credentials:   tartCredentials,

@@ -45,16 +45,15 @@ func (s sshGuests) Password(l domain.Lease) (string, error) {
 
 var qualifyDeviceSupport = qualify.DeviceSupport
 
-func guestUser(l domain.Lease) string {
-	if l.GuestUser == "" {
-		return "admin"
-	}
-	return l.GuestUser
-}
-
 // qualify secures the image credential, reboots, and verifies the golden
 // with the pinned host key before writing evidence and shutting down cleanly.
-func (b *Builder) qualify(ctx context.Context, l domain.Lease, p domain.ImageProfile, progress func(string) error) error {
+func (b *Builder) qualify(ctx context.Context, l domain.Lease, p domain.ImageProfile, progress func(string) error) (err error) {
+	// A failed stage must not keep a slot or a password-SSH guest running.
+	defer func() {
+		if err != nil {
+			b.halt(l)
+		}
+	}()
 	recipeDigest, err := os.ReadFile(filepath.Join(b.folder(l), "recipe.sha256"))
 	if err != nil {
 		return domain.Err("invalid_profile", "Image has no recorded build recipe")
@@ -105,7 +104,7 @@ func (b *Builder) qualify(ctx context.Context, l domain.Lease, p domain.ImagePro
 }
 
 func (b *Builder) verify(ctx context.Context, l domain.Lease, p domain.ImageProfile, g session, ip string, progress func(string) error) (map[string]any, error) {
-	user := guestUser(l)
+	user := l.GuestUser
 	version, err := qualify.OS(ctx, g, p.MacOS, p.Build)
 	if err != nil {
 		return nil, err
@@ -128,11 +127,10 @@ func (b *Builder) verify(ctx context.Context, l domain.Lease, p domain.ImageProf
 	if err := qualify.Password(ctx, g, user, password); err != nil {
 		return nil, err
 	}
-	out, err := qualify.Xcode(ctx, g, user, *p.Xcode)
-	if out != "" {
-		_ = os.WriteFile(filepath.Join(b.folder(l), "xcode-verify.log"), []byte(out), 0600)
+	logXcode := func(out string) error {
+		return os.WriteFile(filepath.Join(b.folder(l), "xcode-verify.log"), []byte(out), 0600)
 	}
-	if err != nil {
+	if err := qualify.Xcode(ctx, g, user, *p.Xcode, logXcode); err != nil {
 		return nil, err
 	}
 	support, err := b.deviceSupport(ctx, b.config.StateDir, ip, version, p.Build, progress)
@@ -154,8 +152,24 @@ func (b *Builder) boot(ctx context.Context, l domain.Lease) (string, error) {
 }
 
 // shutdown asks the guest for a clean halt; the session drops as it stops.
+// A guest that ignores the request is stopped through Tart instead.
 func (b *Builder) shutdown(ctx context.Context, l domain.Lease, g session) error {
 	_, _ = g.Run(ctx, "sudo -n /sbin/shutdown -h now", "")
 	g.Close()
+	if err := b.waitState(ctx, l, "stopped"); err == nil {
+		return nil
+	}
+	if err := b.config.Runtime.Stop(ctx, l); err != nil {
+		return err
+	}
 	return b.waitState(ctx, l, "stopped")
+}
+
+// halt is best effort after a failure; the journal already records the error.
+func (b *Builder) halt(l domain.Lease) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	if vm, ok, err := b.vm(ctx, l); err == nil && ok && vm.State != "stopped" {
+		_ = b.config.Runtime.Stop(ctx, l)
+	}
 }

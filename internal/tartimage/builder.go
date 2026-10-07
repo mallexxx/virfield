@@ -28,8 +28,10 @@ type runner interface {
 }
 
 type Config struct {
-	StateDir      string
-	Packer        string
+	StateDir string
+	Packer   string
+	// TartBinary is put first on Packer's PATH so both use one Tart.
+	TartBinary    string
 	XcodeArchives string
 	// Homes maps a Tart container ID to its TART_HOME.
 	Homes       map[string]string
@@ -42,11 +44,13 @@ type Builder struct {
 	run           runner
 	guests        guests
 	deviceSupport func(ctx context.Context, dir, ip, version, build string, progress func(string) error) (string, error)
+	stateTimeout  time.Duration
+	statePoll     time.Duration
 }
 
 func New(config Config) *Builder {
 	manager := &guestssh.Manager{Dir: config.StateDir}
-	return &Builder{config: config, run: execRunner{}, guests: sshGuests{manager}, deviceSupport: qualifyDeviceSupport}
+	return &Builder{config: config, run: execRunner{}, guests: sshGuests{manager}, deviceSupport: qualifyDeviceSupport, stateTimeout: 3 * time.Minute, statePoll: 2 * time.Second}
 }
 
 func (b *Builder) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile, step string, progress func(string) error) error {
@@ -56,6 +60,9 @@ func (b *Builder) Step(ctx context.Context, l domain.Lease, p domain.ImageProfil
 	home, ok := b.config.Homes[l.Location]
 	if !ok {
 		return domain.Err("invalid_profile", "Image location is not a configured Tart container")
+	}
+	if l.GuestUser != "admin" {
+		return domain.Err("invalid_profile", "Tart images use the Cirrus admin account")
 	}
 	switch step {
 	case "resolve":
@@ -139,6 +146,9 @@ func (b *Builder) registryEnv(ref string) []string {
 
 func (b *Builder) packer(ctx context.Context, l domain.Lease, env []string, log string, args ...string) error {
 	base := []string{"CHECKPOINT_DISABLE=1", "PACKER_PLUGIN_PATH=" + filepath.Join(b.config.StateDir, "packer-plugins")}
+	if b.config.TartBinary != "" {
+		base = append(base, "PATH="+filepath.Dir(b.config.TartBinary)+":"+os.Getenv("PATH"))
+	}
 	dir := filepath.Join(b.folder(l), "recipe")
 	return b.run.Run(ctx, dir, append(base, env...), filepath.Join(b.folder(l), log), b.config.Packer, args...)
 }
@@ -148,7 +158,10 @@ func (b *Builder) stop(ctx context.Context, l domain.Lease) error {
 	if err != nil {
 		return err
 	}
-	if ok && vm.State != "stopped" {
+	if !ok {
+		return domain.Err("vm_missing", "Image VM is missing from its Tart container")
+	}
+	if vm.State != "stopped" {
 		if err := b.config.Runtime.Stop(ctx, l); err != nil {
 			return err
 		}
@@ -170,21 +183,25 @@ func (b *Builder) vm(ctx context.Context, l domain.Lease) (domain.VM, bool, erro
 }
 
 // waitState polls the runtime; "running" additionally requires an IP.
+// Inventory errors are retried: tart list fails while another VM is cloned.
 func (b *Builder) waitState(ctx context.Context, l domain.Lease, state string) error {
-	wait, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	wait, cancel := context.WithTimeout(ctx, b.stateTimeout)
 	defer cancel()
 	for {
 		vm, ok, err := b.vm(wait, l)
-		if err != nil {
-			return err
-		}
-		if ok && vm.State == state && (state != "running" || vm.IP != "") {
+		if err == nil && ok && vm.State == state && (state != "running" || vm.IP != "") {
 			return nil
 		}
 		select {
 		case <-wait.Done():
-			return domain.Err("stop_timeout", "Image VM did not reach state "+state)
-		case <-time.After(2 * time.Second):
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			if state == "running" {
+				return domain.Err("guest_timeout", "Image VM did not start with an IP address")
+			}
+			return domain.Err("stop_timeout", "Image VM did not stop")
+		case <-time.After(b.statePoll):
 		}
 	}
 }

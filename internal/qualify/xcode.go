@@ -25,17 +25,18 @@ func XcodeBundle(ctx context.Context, g Guest, x domain.XcodeRelease) error {
 }
 
 // Xcode verifies the bundle, the toolchain and the debugging prerequisites.
-// It returns the probe output (for the caller's private log) once the probe ran.
-func Xcode(ctx context.Context, g Guest, user string, x domain.XcodeRelease) (string, error) {
+// Once the probe has run, its output goes to log (the caller's private log),
+// even when it is empty, so a stale log never survives a failed attempt.
+func Xcode(ctx context.Context, g Guest, user string, x domain.XcodeRelease, log func(string) error) error {
 	if !domain.ValidName(user) {
-		return "", domain.Err("xcode_verification_failed", "Guest user name is invalid")
+		return domain.Err("xcode_verification_failed", "Guest user name is invalid")
 	}
 	if err := XcodeBundle(ctx, g, x); err != nil {
-		return "", err
+		return err
 	}
 	out, err := g.Run(ctx, "/usr/bin/xcodebuild -version", "")
 	if err != nil || strings.TrimSpace(out) != "Xcode "+x.Version+"\nBuild version "+x.Build {
-		return "", domain.Err("xcode_version_mismatch", "Guest Xcode version/build does not match the manifest")
+		return domain.Err("xcode_version_mismatch", "Guest Xcode version/build does not match the manifest")
 	}
 	probe := `set -eu
  test "$(/usr/bin/xcode-select -p)" = /Applications/Xcode.app/Contents/Developer
@@ -52,8 +53,11 @@ func Xcode(ctx context.Context, g Guest, user string, x domain.XcodeRelease) (st
  test "$("$probe_dir/probe")" = virfield-swift-ok
  `
 	out, err = g.RunReader(ctx, 5*time.Minute, "/bin/bash -c "+Quote(probe), nil)
-	if err != nil {
-		return out, domain.Err("xcode_verification_failed", "Guest Xcode signature, first launch or Swift compilation check failed")
+	if logErr := log(out); logErr != nil {
+		return logErr
 	}
-	return out, nil
+	if err != nil {
+		return domain.Err("xcode_verification_failed", "Guest Xcode signature, first launch or Swift compilation check failed")
+	}
+	return nil
 }

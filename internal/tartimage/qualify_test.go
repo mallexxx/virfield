@@ -14,14 +14,19 @@ import (
 )
 
 type fakeSession struct {
-	runtime  *fakeRuntime
-	commands *[]string
+	runtime    *fakeRuntime
+	commands   *[]string
+	build      string
+	noShutdown bool
 }
 
 func (s fakeSession) Run(_ context.Context, command, _ string) (string, error) {
 	*s.commands = append(*s.commands, command)
 	switch {
 	case strings.HasPrefix(command, "/usr/bin/sw_vers -buildVersion"):
+		if s.build != "" {
+			return s.build + "\n", nil
+		}
 		return "22H420\n", nil
 	case strings.HasPrefix(command, "/usr/bin/sw_vers -productVersion"):
 		return "13.7.4\n", nil
@@ -36,7 +41,11 @@ func (s fakeSession) Run(_ context.Context, command, _ string) (string, error) {
 	case strings.HasPrefix(command, "/usr/bin/xcodebuild -version"):
 		return "Xcode 15.2\nBuild version 15C500b\n", nil
 	case strings.HasPrefix(command, "sudo -n /sbin/shutdown"):
-		_ = s.runtime.Stop(context.Background(), domain.Lease{})
+		if !s.noShutdown {
+			s.runtime.mu.Lock()
+			s.runtime.state, s.runtime.ip = "stopped", ""
+			s.runtime.mu.Unlock()
+		}
 		return "", nil
 	}
 	return "", nil
@@ -49,15 +58,17 @@ func (s fakeSession) RunReader(ctx context.Context, _ time.Duration, command str
 func (fakeSession) Close() {}
 
 type fakeGuests struct {
-	runtime  *fakeRuntime
-	commands []string
-	connects []bool
-	secured  int
+	runtime    *fakeRuntime
+	commands   []string
+	connects   []bool
+	secured    int
+	build      string
+	noShutdown bool
 }
 
 func (g *fakeGuests) Connect(_ context.Context, _ domain.Lease, _ string, bootstrap bool) (session, error) {
 	g.connects = append(g.connects, bootstrap)
-	return fakeSession{g.runtime, &g.commands}, nil
+	return fakeSession{runtime: g.runtime, commands: &g.commands, build: g.build, noShutdown: g.noShutdown}, nil
 }
 
 func (g *fakeGuests) Secure(context.Context, domain.Lease, string, session) error {
@@ -67,8 +78,10 @@ func (g *fakeGuests) Secure(context.Context, domain.Lease, string, session) erro
 
 func (g *fakeGuests) Password(domain.Lease) (string, error) { return "vf-rotated", nil }
 
-func TestQualifySecuresRebootsVerifiesAndRecordsEvidence(t *testing.T) {
+func qualifyBuilder(t *testing.T) (*Builder, *fakeRuntime, *fakeGuests, domain.Lease, domain.ImageProfile) {
+	t.Helper()
 	b, _, runtime, l, p := testBuilder(t)
+	b.stateTimeout = 5 * time.Second
 	runtime.state = "stopped"
 	g := &fakeGuests{runtime: runtime}
 	b.guests = g
@@ -81,6 +94,33 @@ func TestQualifySecuresRebootsVerifiesAndRecordsEvidence(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(b.folder(l), "recipe.sha256"), []byte(RecipeDigest()), 0600); err != nil {
 		t.Fatal(err)
 	}
+	return b, runtime, g, l, p
+}
+
+func TestQualifyFailureStopsTheImageVM(t *testing.T) {
+	b, runtime, g, l, p := qualifyBuilder(t)
+	g.build = "22G120"
+	if err := b.Step(context.Background(), l, p, "qualify", noProgress); !hasCode(err, "guest_build_mismatch") {
+		t.Fatal(err)
+	}
+	if runtime.state != "stopped" {
+		t.Fatal("failed qualification left the image VM running")
+	}
+}
+
+func TestShutdownFallsBackToRuntimeStop(t *testing.T) {
+	b, runtime, g, l, _ := qualifyBuilder(t)
+	b.stateTimeout = 100 * time.Millisecond
+	g.noShutdown = true
+	runtime.state = "running"
+	session, _ := g.Connect(context.Background(), l, "", false)
+	if err := b.shutdown(context.Background(), l, session); err != nil || runtime.stops != 1 {
+		t.Fatal(runtime.stops, err)
+	}
+}
+
+func TestQualifySecuresRebootsVerifiesAndRecordsEvidence(t *testing.T) {
+	b, runtime, g, l, p := qualifyBuilder(t)
 	if err := b.Step(context.Background(), l, p, "qualify", noProgress); err != nil {
 		t.Fatal(err)
 	}
