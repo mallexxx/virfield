@@ -55,6 +55,9 @@ func TestUITestRecipeAdoptsUpstreamXcodeAndRunsSharedRecipe(t *testing.T) {
 			t.Fatalf("uitest recipe lacks %s", want)
 		}
 	}
+	if strings.Contains(string(uitest), "recovery_partition") {
+		t.Fatal("the plugin cannot relocate the macOS 27 recovery partition")
+	}
 	if _, err := recipe.ReadFile("recipe/disable-sip.pkr.hcl"); err == nil {
 		t.Fatal("Recovery SIP stage is not used: the pinned upstream ships SIP disabled")
 	}

@@ -1,5 +1,7 @@
 # Virfield uitest-27-v1 recipe for a Cirrus macOS 27 Xcode image (SIP ships
-# disabled; check-guest enforces it). Inputs are fixed by the image job.
+# disabled; check-guest enforces it). The disk is not resized: the plugin
+# cannot relocate this image's recovery partition, and grow-disk gates on the
+# free space the upstream already has. Inputs are fixed by the image job.
 packer {
   required_plugins {
     tart = {
@@ -15,16 +17,14 @@ variable "macos_version" { type = string }
 variable "macos_build" { type = string }
 
 source "tart-cli" "uitest" {
-  vm_base_name       = var.base
-  vm_name            = var.vm_name
-  cpu_count          = 4
-  memory_gb          = 8
-  disk_size_gb       = 150
-  recovery_partition = "relocate"
-  headless           = true
-  ssh_username       = "admin"
-  ssh_password       = "admin"
-  ssh_timeout        = "180s"
+  vm_base_name = var.base
+  vm_name      = var.vm_name
+  cpu_count    = 4
+  memory_gb    = 8
+  headless     = true
+  ssh_username = "admin"
+  ssh_password = "admin"
+  ssh_timeout  = "180s"
 }
 
 build {
