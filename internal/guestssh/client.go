@@ -345,7 +345,9 @@ printf '%s\n' "$new" | sudo -S -p '' /bin/sh -c 'umask 077; mkdir -p /etc/ssh/ss
 		return err
 	}
 
-	verified, err := e.Connect(ctx, l, ip, false)
+	// Retry only failed TCP dials: macOS resets a daemon's local-network
+	// session after an update, and the first dial is then refused.
+	verified, err := e.ConnectReady(ctx, l, ip, false)
 	if err != nil {
 		return err
 	}

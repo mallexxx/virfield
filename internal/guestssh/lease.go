@@ -91,7 +91,7 @@ func (e *Manager) Prepare(ctx context.Context, l domain.Lease) (domain.SSHConnec
 	}
 	// The new daemon key must authenticate against the new host key. Inspect the
 	// effective daemon policy and exact authorized keys, not merely an open port.
-	verified, err := scoped.Connect(ctx, l, l.IP, false)
+	verified, err := scoped.ConnectReady(ctx, l, l.IP, false)
 	if err != nil {
 		return result, err
 	}
