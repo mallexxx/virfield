@@ -45,22 +45,18 @@ func TestRecipeScriptsParseAndMaterializePrivately(t *testing.T) {
 	}
 }
 
-func TestUITestRecipeDisablesSIPInRecoveryAndProvisionsInPlace(t *testing.T) {
-	sip, err := recipe.ReadFile("recipe/disable-sip.pkr.hcl")
-	if err != nil {
-		t.Fatal(err)
-	}
+func TestUITestRecipeAdoptsUpstreamXcodeAndRunsSharedRecipe(t *testing.T) {
 	uitest, err := recipe.ReadFile("recipe/uitest.pkr.hcl")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`version = "= 1.21.0"`, "recovery     = true", `"<wait10s>csrutil disable<enter>"`} {
-		if !strings.Contains(string(sip), want) {
-			t.Fatalf("disable-sip recipe lacks %s", want)
+	for _, want := range []string{"vm_base_name       = var.base", `script = "scripts/adopt-xcode.sh"`, `script           = "scripts/provision27.sh"`, `"VF_SIP=disabled"`} {
+		if !strings.Contains(string(uitest), want) {
+			t.Fatalf("uitest recipe lacks %s", want)
 		}
 	}
-	if strings.Contains(string(uitest), "vm_base_name") || !strings.Contains(string(uitest), `script           = "scripts/provision27.sh"`) {
-		t.Fatal("uitest recipe must provision the cloned VM in place with the shared recipe")
+	if _, err := recipe.ReadFile("recipe/disable-sip.pkr.hcl"); err == nil {
+		t.Fatal("Recovery SIP stage is not used: the pinned upstream ships SIP disabled")
 	}
 	dir := filepath.Join(t.TempDir(), "recipe")
 	if err := writeRecipe(dir); err != nil {
@@ -68,5 +64,8 @@ func TestUITestRecipeDisablesSIPInRecoveryAndProvisionsInPlace(t *testing.T) {
 	}
 	if b, err := os.ReadFile(filepath.Join(dir, "scripts", "provision27.sh")); err != nil || string(b) != guestscripts.Provision27 {
 		t.Fatal("shared UI-test recipe not materialized", err)
+	}
+	if out, err := exec.Command("/bin/bash", "-n", filepath.Join(dir, "scripts", "adopt-xcode.sh")).CombinedOutput(); err != nil {
+		t.Fatal(string(out), err)
 	}
 }

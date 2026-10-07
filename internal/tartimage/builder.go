@@ -145,23 +145,16 @@ func (b *Builder) build(ctx context.Context, l domain.Lease, p domain.ImageProfi
 	return nil
 }
 
-// buildUITest adopts an upstream Xcode image: clone it, disable SIP through
-// Recovery (TCC grants and AMFI need it), then provision the VM in place.
+// buildUITest adopts the upstream Xcode image and runs the shared
+// uitest-27-v1 recipe; no Xcode archive is uploaded.
 func (b *Builder) buildUITest(ctx context.Context, l domain.Lease, p domain.ImageProfile, home string) error {
+	vars := []string{"base=" + p.Tart.Upstream, "vm_name=" + l.VMName, "macos_version=" + p.MacOS, "macos_build=" + p.Build}
+	args := []string{"build"}
+	for _, v := range vars {
+		args = append(args, "-var", v)
+	}
+	args = append(args, "uitest.pkr.hcl")
 	env := append([]string{"TART_HOME=" + home}, b.registryEnv(p.Tart.Upstream)...)
-	tart := b.config.TartBinary
-	if tart == "" {
-		tart = "tart"
-	}
-	recipe := filepath.Join(b.folder(l), "recipe")
-	if err := b.run.Run(ctx, recipe, env, filepath.Join(b.folder(l), "tart-clone.log"), tart, "clone", p.Tart.Upstream, l.VMName); err != nil {
-		return domain.Err("image_command_failed", "Tart clone of the pinned upstream failed; inspect the private tart-clone log")
-	}
-	vm := "vm_name=" + l.VMName
-	if err := b.packer(ctx, l, env, "packer-sip.log", "build", "-var", vm, "disable-sip.pkr.hcl"); err != nil {
-		return domain.Err("image_command_failed", "Recovery SIP stage failed; inspect the private packer-sip log")
-	}
-	args := []string{"build", "-var", vm, "-var", "macos_version=" + p.MacOS, "-var", "macos_build=" + p.Build, "uitest.pkr.hcl"}
 	if err := b.packer(ctx, l, env, "packer-build.log", args...); err != nil {
 		return domain.Err("image_command_failed", "Packer build failed; inspect the private packer-build log")
 	}

@@ -1,6 +1,5 @@
-# Virfield uitest-27-v1 recipe for a cloned Cirrus macOS 27 Xcode image whose
-# SIP was disabled in Recovery. Provisions the VM in place; inputs are fixed by
-# the image job.
+# Virfield uitest-27-v1 recipe for a Cirrus macOS 27 Xcode image (SIP ships
+# disabled; check-guest enforces it). Inputs are fixed by the image job.
 packer {
   required_plugins {
     tart = {
@@ -10,11 +9,13 @@ packer {
   }
 }
 
+variable "base" { type = string }
 variable "vm_name" { type = string }
 variable "macos_version" { type = string }
 variable "macos_build" { type = string }
 
 source "tart-cli" "uitest" {
+  vm_base_name       = var.base
   vm_name            = var.vm_name
   cpu_count          = 4
   memory_gb          = 8
@@ -35,6 +36,9 @@ build {
   }
   provisioner "shell" {
     script = "scripts/grow-disk.sh"
+  }
+  provisioner "shell" {
+    script = "scripts/adopt-xcode.sh"
   }
   provisioner "shell" {
     script           = "scripts/provision27.sh"

@@ -242,7 +242,7 @@ func uitestProfile() domain.ImageProfile {
 	}
 }
 
-func TestUITestBuildClonesDisablesSIPThenProvisionsInPlace(t *testing.T) {
+func TestUITestBuildUsesTheUITestRecipeFromThePinnedBase(t *testing.T) {
 	b, runner, _, l, _ := testBuilder(t)
 	p := uitestProfile()
 	if err := b.Step(context.Background(), l, p, "resolve", noProgress); err != nil {
@@ -251,19 +251,16 @@ func TestUITestBuildClonesDisablesSIPThenProvisionsInPlace(t *testing.T) {
 	if err := b.Step(context.Background(), l, p, "build", noProgress); err != nil {
 		t.Fatal(err)
 	}
-	if len(runner.calls) != 4 {
+	if len(runner.calls) != 2 {
 		t.Fatal(len(runner.calls), runner.calls)
 	}
-	clone := strings.Join(runner.calls[1].args, " ")
-	sip := strings.Join(runner.calls[2].args, " ")
-	provision := strings.Join(runner.calls[3].args, " ")
-	if clone != "clone "+p.Tart.Upstream+" ventura-golden" || !strings.Contains(strings.Join(runner.calls[1].env, " "), "TART_REGISTRY_HOSTNAME=ghcr.io") {
-		t.Fatal(clone)
+	build := strings.Join(runner.calls[1].args, " ")
+	for _, want := range []string{"-var base=" + p.Tart.Upstream, "-var vm_name=ventura-golden", "-var macos_build=26A428", "uitest.pkr.hcl"} {
+		if !strings.Contains(build, want) {
+			t.Fatalf("uitest build lacks %q: %s", want, build)
+		}
 	}
-	if !strings.HasSuffix(sip, "disable-sip.pkr.hcl") || !strings.Contains(sip, "-var vm_name=ventura-golden") {
-		t.Fatal(sip)
-	}
-	if !strings.HasSuffix(provision, "uitest.pkr.hcl") || !strings.Contains(provision, "-var macos_build=26A428") {
-		t.Fatal(provision)
+	if strings.Contains(build, "xip") {
+		t.Fatal("uitest build must not upload an Xcode archive")
 	}
 }
