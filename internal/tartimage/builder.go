@@ -225,12 +225,3 @@ func (execRunner) Run(ctx context.Context, dir string, env []string, log, name s
 	cmd.WaitDelay = 2 * time.Minute
 	return cmd.Run()
 }
-
-type guests interface{}
-type sshGuests struct{ m *guestssh.Manager }
-
-var qualifyDeviceSupport func(ctx context.Context, dir, ip, version, build string, progress func(string) error) (string, error)
-
-func (b *Builder) qualify(context.Context, domain.Lease, domain.ImageProfile, func(string) error) error {
-	return domain.Err("invalid_profile", "qualification is not implemented yet")
-}
