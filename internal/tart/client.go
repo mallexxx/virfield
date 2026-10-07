@@ -176,11 +176,11 @@ func (c *Client) Observe(ctx context.Context) (domain.Observation, error) {
 		if err != nil {
 			return domain.Observation{}, fmt.Errorf("tart inventory for %s: %w", configured.ID, err)
 		}
-		for _, row := range rows {
-			vm, err := c.inspect(ctx, configured, row, now)
-			if err != nil {
-				return domain.Observation{}, fmt.Errorf("tart inspect %s/%s: %w", configured.ID, row.Name, err)
-			}
+		vms, err := c.inspectAll(ctx, configured, rows, now)
+		if err != nil {
+			return domain.Observation{}, err
+		}
+		for _, vm := range vms {
 			if seenVMs[vm.Key()] {
 				return domain.Observation{}, errors.New("duplicate Tart VM identity")
 			}
@@ -231,6 +231,31 @@ func (c *Client) list(ctx context.Context, container ContainerConfig) ([]listRow
 		return nil, errors.New("invalid Tart list response")
 	}
 	return rows, nil
+}
+
+// inspectAll runs tart get for every VM with bounded concurrency and keeps
+// list order. tart get computes allocated size, about a second per ASIF disk.
+func (c *Client) inspectAll(ctx context.Context, container ContainerConfig, rows []listRow, now time.Time) ([]domain.VM, error) {
+	vms := make([]domain.VM, len(rows))
+	errs := make([]error, len(rows))
+	slots := make(chan struct{}, 4)
+	var wg sync.WaitGroup
+	for i, row := range rows {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			slots <- struct{}{}
+			defer func() { <-slots }()
+			vms[i], errs[i] = c.inspect(ctx, container, row, now)
+		}()
+	}
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			return nil, fmt.Errorf("tart inspect %s/%s: %w", container.ID, rows[i].Name, err)
+		}
+	}
+	return vms, nil
 }
 
 func (c *Client) inspect(ctx context.Context, container ContainerConfig, row listRow, now time.Time) (domain.VM, error) {

@@ -164,6 +164,11 @@ func mergeTemplateDefinition(a, b domain.Template) (domain.Template, bool) {
 	}
 	return a, true
 }
+
+// observeTimeout bounds one inventory refresh. Tart inventory runs tart list
+// plus tart get per VM; each ASIF disk costs about a second to size.
+const observeTimeout = 30 * time.Second
+
 func fingerprint(v any) string {
 	b, _ := json.Marshal(v)
 	sum := sha256.Sum256(b)
@@ -636,7 +641,7 @@ func (c *Controller) Tick(ctx context.Context) error {
 	if c.resourceProbe != nil {
 		disk, resourceErr = c.resourceProbe()
 	}
-	readCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	readCtx, cancel := context.WithTimeout(ctx, observeTimeout)
 	o, obsErr := c.backend.Observe(readCtx)
 	cancel()
 	c.mu.Lock()

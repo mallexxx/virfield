@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -154,5 +155,54 @@ func TestStartDetachedReportsImmediateExit(t *testing.T) {
 	r = &execRunner{binary: running}
 	if err := r.StartDetached(dir, []string{"run", "x"}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+type slowGetRunner struct {
+	mu    sync.Mutex
+	names []string
+	delay time.Duration
+}
+
+func (r *slowGetRunner) Run(_ context.Context, _ string, args []string) ([]byte, error) {
+	switch args[0] {
+	case "list":
+		rows := make([]string, 0, len(r.names))
+		for _, name := range r.names {
+			rows = append(rows, `{"Name":"`+name+`","Running":false,"State":"stopped"}`)
+		}
+		return []byte("[" + strings.Join(rows, ",") + "]"), nil
+	case "get":
+		// ASIF disks make tart get compute allocated size (~1 s per VM).
+		time.Sleep(r.delay)
+		return []byte(`{"OS":"darwin","CPU":4,"Memory":8192,"Disk":80,"Running":false,"State":"stopped"}`), nil
+	}
+	return nil, errors.New("unexpected command")
+}
+
+func (r *slowGetRunner) StartDetached(string, []string) error { return nil }
+
+func TestObserveInspectsVMsConcurrentlyInListOrder(t *testing.T) {
+	names := []string{"a", "b", "c", "d", "e", "f"}
+	client := &Client{
+		config: Config{HostID: "macbook", MaxVMs: 2, Containers: []ContainerConfig{{ID: "local", Path: "/local", Kind: "local"}}},
+		runner: &slowGetRunner{names: names, delay: 200 * time.Millisecond},
+		probe: func(context.Context, string) (volume, error) {
+			return volume{Identity: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", Total: 1 << 40, Free: 500 << 30}, nil
+		},
+		now: func() time.Time { return time.Unix(100, 0).UTC() },
+	}
+	started := time.Now()
+	observation, err := client.Observe(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(started); elapsed > 800*time.Millisecond {
+		t.Fatalf("inventory of %d VMs took %v; tart get calls ran sequentially", len(names), elapsed)
+	}
+	for i, vm := range observation.VMs {
+		if vm.Name != names[i] {
+			t.Fatalf("VM order changed: %v", observation.VMs)
+		}
 	}
 }
