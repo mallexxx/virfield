@@ -44,8 +44,30 @@ enabled (`ae7b3df`). Host requirements: Full Disk Access for the signed
 `virfieldd` (identifier `ai.virfield.virfieldd`), and Tart
 `registry_credentials` for GHCR because the host Docker credential is rejected.
 
-Not yet covered: Broker smoke and VS Code remote-debug against Tart leases,
-GHCR publication of the goldens, Orchard, and restart during a Tart build.
+### macOS 27 UI-test golden and Broker smoke (2026-10-08)
+
+Template `macos27` (the ID Broker's macOS workers already use) now resolves to
+a Tart golden built from `macos-golden-gate-xcode@sha256:324ea565…6fab88fab`:
+macOS 27.0 (26A428, the same IPSW as the former Lume golden), SIP disabled,
+upstream Xcode 27.0 (27A266a) adopted as `/Applications/Xcode.app`, and the
+shared `uitest-27-v1` recipe (Homebrew tools, Peekaboo, TCC grants, AMFI,
+automation mode). Qualification passed including the UI-test probe; the build
+took 1.5 minutes and qualification 2.5 minutes.
+
+Broker's unchanged live smoke (`scripts/macos-smoke.py` in `execution-broker`,
+Balda MCP → Prism story → Broker `macos-xcode` worker → Virfield lease → XCTest)
+passed on run `run-af3ed27f9f7466cca2401cc5ab44897f`: state `succeeded`,
+cleanup `done`, XCTest 1 executed / 0 failed, xcresult present, six hashed
+artifacts. No Broker code or configuration changed.
+
+The first smoke attempt found two more defects, both fixed: a detached
+`tart run` that exited at once (VM still held after Packer) was reported as a
+start (`b0e5bf7`), and the Tart inventory ran `tart get` sequentially inside a
+5-second budget, which ASIF disks (about one second each) exceeded, pausing
+admission (`2101918`).
+
+Not yet covered: VS Code remote-debug against Tart leases, GHCR publication of
+the goldens, Orchard, and restart during a Tart build.
 
 ## VS Code remote LLDB (2026-10-07)
 

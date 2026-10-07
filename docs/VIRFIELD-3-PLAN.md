@@ -18,11 +18,13 @@ follows [the Tart image adoption design](superpowers/specs/2026-10-07-tart-image
 | Adoption pipeline: Tart image source, `internal/qualify`, Packer recipe, `internal/tartimage`, controller Tart phases ([plan](superpowers/plans/2026-10-07-tart-adoption-pipeline.md)) | Done, unit-tested, reviewed; recipe validated with Packer plugin 1.21.0 |
 | Live service switched to Tart (separate `state_dir`; Lume config and binary kept for rollback) | Done; Lume lease released |
 | Live golden builds and two-clone acceptance (Ventura 13.7.4 + Xcode 15.2, Monterey 12.7.6 + Xcode 13.4.1) | **Passed** 2026-10-07: both goldens qualified by the service; 23/23 two-clone checks each ([record](VERIFICATION.md#tart-image-adoption-2026-10-07)) |
-| Broker v1 smoke and VS Code remote-debug on Tart leases; GHCR publication | Not started |
+| macOS 27 UI-test golden (`macos27`) and Broker v1 smoke on Tart | **Passed** 2026-10-08, Broker unchanged ([record](VERIFICATION.md#macos-27-ui-test-golden-and-broker-smoke-2026-10-08)) |
+| VS Code remote-debug on Tart leases; GHCR publication | Not started |
+| Remote nodes R1: bare-metal SSH provider (2014 MacBook Pro, Bazzite HTPC), per-host capacity, Wake-on-LAN | Design proposed, awaiting approval |
 | Orchard live pool acceptance | Not started |
 
-The local Tart golden and two-clone part of the Phase 1 exit gate is met; the
-Broker smoke and Orchard parts are not. Live runs exposed six defects, all
+The local Tart golden, two-clone and Broker smoke parts of the Phase 1 exit
+gate are met; Orchard is not. Live runs exposed six defects, all
 fixed with tests (see the verification record). One `virfieldd` still
 selects one runtime at a time; see the Obsidian Virfield handoff for live
 deployment paths.
