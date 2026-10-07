@@ -102,3 +102,30 @@ func TestXcodeProbeUsesConfiguredUser(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestInstalledXcodeReadsBundleMetadata(t *testing.T) {
+	g := &fakeGuest{outputs: map[string]string{"/usr/libexec/PlistBuddy": "27.0\n27A100\n"}}
+	x, err := InstalledXcode(context.Background(), g)
+	if err != nil || x.Version != "27.0" || x.Build != "27A100" {
+		t.Fatal(x, err)
+	}
+	g.outputs["/usr/libexec/PlistBuddy"] = "garbage"
+	if _, err := InstalledXcode(context.Background(), g); code(err) != "xcode_version_mismatch" {
+		t.Fatal(err)
+	}
+}
+
+func TestProvisionProbeUsesConfiguredUser(t *testing.T) {
+	g := &fakeGuest{outputs: map[string]string{"/bin/bash -c": "assessments disabled"}}
+	logged := ""
+	if err := Provision(context.Background(), g, "admin", func(out string) error { logged = out; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	probe := g.commands[0]
+	if !strings.Contains(probe, "id -Gn admin") || strings.Contains(probe, "id -Gn lume") || logged != "assessments disabled" {
+		t.Fatal(probe, logged)
+	}
+	if err := Provision(context.Background(), g, "a b", func(string) error { return nil }); code(err) != "provision_verification_failed" {
+		t.Fatal(err)
+	}
+}

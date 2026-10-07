@@ -270,36 +270,15 @@ func (e *Engine) provisionLog(l domain.Lease, stage, out string) error {
 	return os.WriteFile(filepath.Join(e.Dir, "images", l.ID, "provision-"+stage+".log"), []byte(out), 0600)
 }
 func (e *Engine) verifyProvision(ctx context.Context, l domain.Lease, g *guest) error {
-	probe := `set -eu
-export PATH=/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin
-for tool in brew jq socat peekaboo screenresolution xcbeautify; do command -v "$tool"; done
-xcodebuild -version
-xcrun --find swiftc
-sudo -n /usr/sbin/DevToolsSecurity -status 2>&1 | grep -q 'currently enabled'
-id -Gn lume | tr ' ' '\n' | grep -qx _developer
-sudo -n /sbin/nfsd status
-probe_dir="$(/usr/bin/mktemp -d /tmp/virfield-swift.XXXXXX)"
-trap '/bin/rm -rf "$probe_dir"' EXIT
-printf '%s\n' 'import Foundation' 'print("virfield-swift-ok")' > "$probe_dir/probe.swift"
-xcrun swiftc "$probe_dir/probe.swift" -o "$probe_dir/probe"
-test "$("$probe_dir/probe")" = virfield-swift-ok
-sudo -n true
-assessment="$(spctl --status 2>&1 || true)"
-printf '%s\n' "$assessment"
-test "$assessment" = 'assessments disabled'
-sysctl -n kern.bootargs | grep -q amfi_get_out_of_my_way=1
-[ "$(sudo sqlite3 '/Library/Application Support/com.apple.TCC/TCC.db' "select count(*) from access where client='com.apple.Terminal' and auth_value=2 and service in ('kTCCServiceAccessibility','kTCCServiceScreenCapture','kTCCServiceSystemPolicyAllFiles');")" = 3 ]
-/usr/bin/osascript -e 'tell application "System Events" to get name of first process'
-/opt/homebrew/bin/peekaboo permissions status --json --no-remote | jq -e '.success == true and .data.source == "local" and ([.data.permissions[] | select(.isRequired == true)] | length >= 2 and all(.isGranted == true))'
-`
-	out, err := g.Run(ctx, "/bin/bash -c "+shellQuote(probe), "")
-	if logErr := e.provisionLog(l, "verify", out); logErr != nil {
-		return logErr
+	var probes string
+	record := func(out string) error {
+		probes = out
+		return e.provisionLog(l, "verify", out)
 	}
-	if err != nil || !strings.Contains(out, "assessments disabled") {
-		return domain.Err("provision_verification_failed", "Guest tool, TCC, AMFI or Gatekeeper verification failed after reboot")
+	if err := qualify.Provision(ctx, g, "lume", record); err != nil {
+		return err
 	}
-	b, _ := json.MarshalIndent(map[string]any{"recipe": "uitest-27-v1", "verified_at": time.Now().UTC(), "probes": out}, "", "  ")
+	b, _ := json.MarshalIndent(map[string]any{"recipe": "uitest-27-v1", "verified_at": time.Now().UTC(), "probes": probes}, "", "  ")
 	return os.WriteFile(filepath.Join(e.Dir, "images", l.ID, "provision-verification.json"), b, 0600)
 }
 
