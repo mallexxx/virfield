@@ -15,6 +15,7 @@ in the Git branch `v1`; it is not part of the current build or deployment.
 | [Agent guide](docs/AGENT-GUIDE.md) | MCP workflows, tool arguments, pinned SSH, artifacts, retries and errors; embedded as `virfield_help` |
 | [Operations](docs/OPERATIONS.md) | Installation, paths, configuration, CLI/MCP, service operation, recovery and backups |
 | [Image pipeline](docs/IMAGE-PIPELINE.md) | Supported image profile, dependencies, build stages, guest policy and image recovery |
+| [VS Code remote debugging](docs/REMOTE-DEBUG.md) | Host SwiftPM build/test, artifact sync and remote `debugserver` |
 | [Architecture](docs/ARCHITECTURE.md) | Modules, API boundary, lifecycle invariants and development rules |
 | [Verification](docs/VERIFICATION.md) | Acceptance evidence, reproducible checks and unverified/deferred scope |
 

@@ -58,7 +58,7 @@ func New(dir string, b *lume.Client, t domain.ImageTools) (*Engine, error) {
 	return &Engine{Dir: dir, Backend: b, Tools: t, HTTP: client}, nil
 }
 func (e *Engine) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile, step string, progress func(string) error) error {
-	timeout, known := map[string]time.Duration{"download": 3 * time.Hour, "create": 45 * time.Minute, "setup": 25 * time.Minute, "assistant": 10 * time.Minute, "sip": 20 * time.Minute, "provision": 2 * time.Hour, "verify": 10 * time.Minute, "stop": 2 * time.Minute}[step]
+	timeout, known := map[string]time.Duration{"download": 3 * time.Hour, "create": 45 * time.Minute, "setup": 25 * time.Minute, "assistant": 10 * time.Minute, "sip": 20 * time.Minute, "provision": 2 * time.Hour, "verify": 20 * time.Minute, "stop": 2 * time.Minute}[step]
 	if !known {
 		return domain.Err("invalid_profile", "unsupported image pipeline stage")
 	}
@@ -201,13 +201,16 @@ func (e *Engine) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile
 		if strings.TrimSpace(build) != p.Build {
 			return domain.Err("guest_build_mismatch", "Guest macOS build differs from the image manifest")
 		}
+		version, err := guest.Run(ctx, "/usr/bin/sw_vers -productVersion", "")
+		if err != nil {
+			return err
+		}
+		actualVersion := strings.TrimSpace(version)
+		if !domain.ValidVersion(actualVersion) {
+			return domain.Err("guest_version_mismatch", "Guest reported an invalid macOS version")
+		}
 		if p.MacOS != "" {
-			version, err := guest.Run(ctx, "/usr/bin/sw_vers -productVersion", "")
-			if err != nil {
-				return err
-			}
-			actual := strings.TrimSpace(version)
-			if !domain.ValidVersion(actual) || domain.CompareVersions(actual, p.MacOS) != 0 {
+			if domain.CompareVersions(actualVersion, p.MacOS) != 0 {
 				return domain.Err("guest_version_mismatch", "Guest macOS version differs from the selected catalog release")
 			}
 		}
@@ -272,7 +275,14 @@ func (e *Engine) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile
 				return err
 			}
 		}
-		evidence, _ := json.MarshalIndent(map[string]any{"macos": p.MacOS, "xcode": p.Xcode, "build": p.Build, "ipsw_sha256": p.SHA256, "registry": p.Registry, "sip": strings.TrimSpace(sip), "desktop": true, "scoped_image_ssh": true, "disk": disk, "provision": p.Provision, "security": p.Security, "verified_at": time.Now().UTC()}, "", "  ")
+		deviceSupport := ""
+		if p.Provision == "developer-v1" || p.Provision == "uitest-27-v1" {
+			deviceSupport, err = e.prepareDeviceSupport(ctx, rebooted.IP, actualVersion, p.Build, progress)
+			if err != nil {
+				return err
+			}
+		}
+		evidence, _ := json.MarshalIndent(map[string]any{"macos": actualVersion, "xcode": p.Xcode, "build": p.Build, "ipsw_sha256": p.SHA256, "registry": p.Registry, "sip": strings.TrimSpace(sip), "desktop": true, "scoped_image_ssh": true, "disk": disk, "provision": p.Provision, "security": p.Security, "device_support": deviceSupport, "verified_at": time.Now().UTC()}, "", "  ")
 		return os.WriteFile(filepath.Join(folder, "verification.json"), evidence, 0600)
 	case "stop":
 		return e.stop(ctx, l)

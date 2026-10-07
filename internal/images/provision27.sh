@@ -30,6 +30,23 @@ want() {
 if want system; then
   echo "--- System settings ---"
 
+  # Remote LLDB launches debugserver non-interactively. This is mandatory for
+  # every golden developer image, including ad-hoc signed builds.
+  sudo /usr/sbin/DevToolsSecurity -enable
+  sudo /usr/sbin/dseditgroup -o edit -a lume -t user _developer
+  sudo /usr/sbin/DevToolsSecurity -status 2>&1 | grep -q 'currently enabled'
+
+  # Export only the immutable dyld cache to the private VM subnet. The host can
+  # mount it read-only instead of asking debugserver to transfer system images.
+  _dyld_cache=/System/Volumes/Preboot/Cryptexes/OS/System/Library/dyld
+  test -d "$_dyld_cache"
+  _dyld_export="\"$_dyld_cache\" -ro -mapall=$(id -u):$(id -g) -network 192.168.64.0 -mask 255.255.255.0"
+  sudo touch /etc/exports
+  sudo grep -Fqx "$_dyld_export" /etc/exports || printf '%s\n' "$_dyld_export" | sudo tee -a /etc/exports >/dev/null
+  sudo /sbin/nfsd enable
+  sudo /sbin/nfsd restart
+  sudo /sbin/nfsd status
+
   # Apple's Security policydb uses CFString "enabled" == "no", not the legacy
   # recipe's ineffective Boolean EnableAssessment. Non-root spctl must read it.
   sudo defaults write /var/db/SystemPolicyConfiguration/SystemPolicy-prefs enabled -string no

@@ -2,9 +2,21 @@
 
 This is the current acceptance record and test runbook. It distinguishes the
 verified local host and image-tool deployment from the unaccepted full Balda
-workflow. Results were collected on Apple Silicon macOS through 2026-10-03 (timestamps UTC),
+workflow. Results were collected on Apple Silicon macOS through 2026-10-07 (timestamps UTC),
 using Go 1.26.8 and patched Lume 0.5.3. The full UI-test suite is verified on
 macOS 27 build `26A428`; versioned image coverage is recorded separately below.
+
+## VS Code remote LLDB (2026-10-07)
+
+The DuckDuckGo SwiftPM worktree was built on the host with its existing
+SwiftBuild tasks, ad-hoc signed, and incrementally copied to a macOS 27.0
+Virfield lease. Host LLDB 2103.0.34.105 connected through an SSH tunnel to the
+matching guest `debugserver`. With on-demand symbols, minimal remote module
+loading, and system libraries extracted from the read-only NFS dyld cache, the
+generated LLDB-DAP configuration connected in 0.14–0.15 seconds and reached
+`DuckDuckGoBrowserMain` in a median 7.56 seconds. It reported 1,150 loaded
+modules without transferring `libobjc.A.dylib` from process memory. Three
+repeated runs were 7.51, 7.56, and 7.72 seconds.
 
 ## Pending release gates
 
@@ -195,6 +207,11 @@ The following audit risks remain open:
 
 - Container ingress, TLS and tunnel reachability need an end-to-end test from
   the actual Balda container.
+- VS Code remote debugging has fixture coverage for pinned configuration,
+  non-overwrite behavior, generic SwiftPM actions and the DuckDuckGo
+  `swiftbuild`/host-app/sign/test scheme. The generated adapter, prepare helper,
+  host build, signing, tests, deployment and live DAP breakpoint were exercised
+  against the large `apple-browsers` worktree.
 - Monterey/Xcode image preparation and one disposable legacy clone now passed.
   Big Sur remains untested. The default
   portable policy still reports `disk_encrypted` for Monterey.

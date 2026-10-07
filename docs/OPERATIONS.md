@@ -263,6 +263,26 @@ connection sharing. `tunnel LEASE_ID` opens a loopback forwarding endpoint;
 `tunnel-close LEASE_ID` closes it. Reopen a tunnel after daemon restart. Direct
 guest-IP access is also supported. Tunnels close on expiry, release or drift.
 
+For a SwiftPM worktree, generate VS Code build, test and debug actions after the
+SSH config exists:
+
+```sh
+"$VIRFIELD_HOME/bin/virfield" -token-file "$VIRFIELD_HOME/token" \
+  vscode-config LEASE_A /absolute/private/story-42 /absolute/path/to/worktree \
+  LEASE_B /absolute/private/story-43
+```
+
+This builds and tests on the host, incrementally syncs runtime artifacts, and
+connects host LLDB-DAP to guest `debugserver` through a loopback SSH tunnel. A
+read-only NFS export supplies the dyld cache without gdb-remote image copies. See
+[VS Code remote debugging](REMOTE-DEBUG.md). The generated `.code-workspace`
+offers every supplied VM in the Run/Debug dropdown and includes tasks for the
+Virfield web console and each VM's pinned SSH terminal.
+
+Golden verification prepares the corresponding Xcode `macOS DeviceSupport`
+directory on each host. Registry-pulled developer images run the same verify
+stage, so their system symbols are prepared before the image becomes ready.
+
 `renew LEASE_ID FUTURE_RFC3339` extends expiry within 24 hours; an earlier value
 never shortens it. Repeating the same acquisition request and idempotency key
 returns the original lease, including after release. Reusing that key with a

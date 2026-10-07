@@ -6,10 +6,13 @@ final class AppleBrowser: NSObject, NSApplicationDelegate, NSWindowDelegate, WKN
     private var webView: WKWebView!
     private var address: NSTextField!
     private var status: NSTextField!
+    private var backButton: NSButton!
     private var token: String?
     private var origin: URL?
+    private var downloadURL: URL?
     private var submitting = false
     private var pendingLinks: [URL] = []
+    private var popupWindows: [ObjectIdentifier: NSWindow] = [:]
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         installMainMenu()
@@ -34,8 +37,11 @@ final class AppleBrowser: NSObject, NSApplicationDelegate, NSWindowDelegate, WKN
         status = NSTextField(labelWithString: "Open the one-time link from Virfield.")
         status.lineBreakMode = .byTruncatingTail
         status.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        backButton = NSButton(title: "Back", target: self, action: #selector(goBack))
+        backButton.isEnabled = false
+        let restartButton = NSButton(title: "Restart Sign-In", target: self, action: #selector(restartSignIn))
         let button = NSButton(title: "Continue Xcode download", target: self, action: #selector(continueDownload))
-        let controls = NSStackView(views: [address, button])
+        let controls = NSStackView(views: [backButton, restartButton, address, button])
         controls.orientation = .horizontal
         controls.spacing = 12
         controls.distribution = .fill
@@ -98,6 +104,15 @@ final class AppleBrowser: NSObject, NSApplicationDelegate, NSWindowDelegate, WKN
             item.keyEquivalentModifierMask = .command
         }
         main.addItem(editItem)
+
+        let navigationItem = NSMenuItem()
+        let navigationMenu = NSMenu(title: "Navigation")
+        navigationItem.submenu = navigationMenu
+        let back = navigationMenu.addItem(withTitle: "Back", action: #selector(goBack), keyEquivalent: "[")
+        back.keyEquivalentModifierMask = .command
+        let restart = navigationMenu.addItem(withTitle: "Restart Apple Sign-In", action: #selector(restartSignIn), keyEquivalent: "r")
+        restart.keyEquivalentModifierMask = [.command, .shift]
+        main.addItem(navigationItem)
         NSApp.mainMenu = main
     }
 
@@ -166,6 +181,7 @@ final class AppleBrowser: NSObject, NSApplicationDelegate, NSWindowDelegate, WKN
         }
         token = value
         origin = originURL
+        self.downloadURL = downloadURL
         submitting = false
         status.stringValue = "Sign in on Apple's page. Download will continue in Virfield."
         webView.load(URLRequest(url: downloadURL))
@@ -174,7 +190,10 @@ final class AppleBrowser: NSObject, NSApplicationDelegate, NSWindowDelegate, WKN
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        address.stringValue = webView.url?.absoluteString ?? "Apple Developer"
+        if webView === self.webView {
+            address.stringValue = webView.url?.absoluteString ?? "Apple Developer"
+            backButton.isEnabled = webView.canGoBack
+        }
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
@@ -218,8 +237,67 @@ final class AppleBrowser: NSObject, NSApplicationDelegate, NSWindowDelegate, WKN
 
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        if let url = navigationAction.request.url { webView.load(URLRequest(url: url)) }
-        return nil
+        guard navigationAction.targetFrame == nil else { return nil }
+        let popup = WKWebView(frame: .zero, configuration: configuration)
+        popup.navigationDelegate = self
+        popup.uiDelegate = self
+        let visible = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 900, height: 700)
+        let width = min(760, visible.width - 40)
+        let height = min(720, visible.height - 60)
+        let popupWindow = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: height),
+                                   styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                                   backing: .buffered, defer: false)
+        popupWindow.title = "Apple Account Verification"
+        popupWindow.contentView = popup
+        popupWindow.delegate = self
+        popupWindow.center()
+        popupWindows[ObjectIdentifier(popup)] = popupWindow
+        popupWindow.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        return popup
+    }
+
+    func webViewDidClose(_ webView: WKWebView) {
+        let key = ObjectIdentifier(webView)
+        if let popupWindow = popupWindows.removeValue(forKey: key) {
+            popupWindow.delegate = nil
+            popupWindow.close()
+        }
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard let closing = notification.object as? NSWindow, closing !== window else { return }
+        if let key = popupWindows.first(where: { $0.value === closing })?.key {
+            popupWindows.removeValue(forKey: key)
+        }
+    }
+
+    @objc private func goBack() {
+        guard webView.canGoBack else { return }
+        webView.goBack()
+        backButton.isEnabled = webView.canGoBack
+    }
+
+    @objc private func restartSignIn() {
+        guard let downloadURL else { return }
+        submitting = false
+        let windows = Array(popupWindows.values)
+        popupWindows.removeAll()
+        for popup in windows {
+            popup.delegate = nil
+            popup.close()
+        }
+        status.stringValue = "Restarting Apple sign-in…"
+        webView.configuration.websiteDataStore.removeData(
+            ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(),
+            modifiedSince: .distantPast
+        ) { [weak self] in
+            DispatchQueue.main.async {
+                guard let self, self.downloadURL == downloadURL else { return }
+                self.webView.load(URLRequest(url: downloadURL))
+                self.status.stringValue = "Sign in on Apple's page. Download will continue in Virfield."
+            }
+        }
     }
 
     @objc private func continueDownload() {
@@ -252,14 +330,19 @@ final class AppleBrowser: NSObject, NSApplicationDelegate, NSWindowDelegate, WKN
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try? JSONSerialization.data(withJSONObject: ["cookies": lines.joined(separator: "\n") + "\n"])
-            URLSession(configuration: .ephemeral).dataTask(with: request) { _, response, _ in
+            URLSession(configuration: .ephemeral).dataTask(with: request) { _, response, error in
                 DispatchQueue.main.async {
                     self.submitting = false
-                    if (response as? HTTPURLResponse)?.statusCode == 202 {
+                    let statusCode = (response as? HTTPURLResponse)?.statusCode
+                    if statusCode == 202 {
                         self.status.stringValue = "Virfield resumed the Xcode download."
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                             if self.token == token { NSApp.terminate(nil) }
                         }
+                    } else if statusCode == 404 {
+                        self.status.stringValue = "This 15-minute link expired. Request a new Virfield Apple sign-in link."
+                    } else if error != nil {
+                        self.status.stringValue = "Virfield is unreachable. Keep this window open and retry."
                     } else {
                         self.status.stringValue = "Download session was not accepted. Finish sign-in on Apple's page, then retry."
                     }

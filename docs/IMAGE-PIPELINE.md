@@ -55,6 +55,12 @@ version-specific; guest security is independent of that tool suite. Other versio
 Virtualization framework must support the restore image on the actual host.
 Unknown Assistant screens fail rather than publishing an incomplete desktop.
 
+Final verification also mounts the golden VM's dyld cache read-only and
+atomically extracts it into Xcode's host-side `macOS DeviceSupport/<version>
+(<build>)/Symbols` directory. This happens before the golden becomes ready and
+also runs after a registry pull on a new host. A complete matching directory is
+reused; a partial directory is preserved with an `.invalid-*` suffix.
+
 ### Golden disk policy
 
 Default portable golden boot volumes must be unencrypted. Native Setup Assistant leaves FileVault

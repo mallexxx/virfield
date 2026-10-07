@@ -211,6 +211,15 @@ Keep the private key/config available through export and cleanup. Do not reuse
 an active lease's key for another lease. No generic workload, artifact uploader,
 Xcode project scheme or repository checkout is inferred by the VM manager.
 
+For an explicitly selected SwiftPM worktree, the host CLI command
+`vscode-config LEASE_ID IDENTITY_DIRECTORY WORKTREE [LEASE_ID IDENTITY_DIRECTORY ...]`
+creates non-overwriting VS Code actions for host `swift build`/`swift test`,
+artifact sync, Virfield/VM consoles, and host LLDB-DAP to guest `debugserver`.
+The generated workspace exposes each supplied VM in the Debug dropdown. See
+[VS Code remote debugging](REMOTE-DEBUG.md). Generic SwiftPM workspaces prompt
+for the executable product; the recognized DuckDuckGo workspace receives its
+fixed host-build scheme.
+
 ### Optional SSH tunnel
 
 If direct guest routing is unavailable from the daemon host, call `vm_tunnel`.

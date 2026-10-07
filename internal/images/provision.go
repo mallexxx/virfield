@@ -178,6 +178,21 @@ mkdir -p /Users/lume/.virfield-xcode
 sudo /usr/bin/xcode-select -s /Applications/Xcode.app
 sudo /usr/bin/xcodebuild -license accept
 sudo /usr/bin/xcodebuild -runFirstLaunch
+sudo -n /usr/sbin/DevToolsSecurity -enable
+sudo -n /usr/sbin/dseditgroup -o edit -a lume -t user _developer
+dyld_cache=
+for candidate in /System/Volumes/Preboot/Cryptexes/OS/System/Library/dyld /System/Library/dyld; do
+  if test -d "$candidate"; then
+    dyld_cache="$candidate"
+    break
+  fi
+done
+test -n "$dyld_cache"
+dyld_export="\"$dyld_cache\" -ro -mapall=$(id -u):$(id -g) -network 192.168.64.0 -mask 255.255.255.0"
+sudo touch /etc/exports
+sudo grep -Fqx "$dyld_export" /etc/exports || printf '%s\n' "$dyld_export" | sudo tee -a /etc/exports >/dev/null
+sudo /sbin/nfsd enable
+sudo /sbin/nfsd restart
 /usr/bin/xcodebuild -version
 `
 	out, err = g.RunReader(ctx, 30*time.Minute, "/bin/bash -c "+shellQuote(install), nil)
@@ -188,8 +203,6 @@ sudo /usr/bin/xcodebuild -runFirstLaunch
 	if p.Xcode != nil {
 		if p.Security == "automation" {
 			automation := `set -eu
-sudo -n /usr/sbin/DevToolsSecurity -enable
-sudo -n /usr/sbin/dseditgroup -o edit -a lume -t user _developer
 sudo -n /usr/bin/automationmodetool enable-automationmode-without-authentication
 `
 			if out, err := g.Run(ctx, "/bin/bash -c "+shellQuote(automation), c.Password+"\n"); err != nil {
@@ -259,6 +272,9 @@ export PATH=/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin
 for tool in brew jq socat peekaboo screenresolution xcbeautify; do command -v "$tool"; done
 xcodebuild -version
 xcrun --find swiftc
+sudo -n /usr/sbin/DevToolsSecurity -status 2>&1 | grep -q 'currently enabled'
+id -Gn lume | tr ' ' '\n' | grep -qx _developer
+sudo -n /sbin/nfsd status
 probe_dir="$(/usr/bin/mktemp -d /tmp/virfield-swift.XXXXXX)"
 trap '/bin/rm -rf "$probe_dir"' EXIT
 printf '%s\n' 'import Foundation' 'print("virfield-swift-ok")' > "$probe_dir/probe.swift"
@@ -296,6 +312,10 @@ func (e *Engine) verifyXcode(ctx context.Context, l domain.Lease, g *guest, x do
  test "$(/usr/bin/xcode-select -p)" = /Applications/Xcode.app/Contents/Developer
  /usr/bin/xcodebuild -checkFirstLaunchStatus
  /usr/bin/xcrun --find swiftc
+ sudo -n /usr/sbin/DevToolsSecurity -status 2>&1 | grep -q 'currently enabled'
+ id -Gn lume | tr ' ' '\n' | grep -qx _developer
+ sudo -n /sbin/nfsd status
+ grep -Eq '/(Cryptexes/OS/)?System/Library/dyld' /etc/exports
  probe_dir="$(/usr/bin/mktemp -d /tmp/virfield-swift.XXXXXX)"
  trap '/bin/rm -rf "$probe_dir"' EXIT
  printf '%s\n' 'import Foundation' 'print("virfield-swift-ok")' > "$probe_dir/probe.swift"

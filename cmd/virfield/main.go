@@ -40,6 +40,7 @@ func run() error {
 Inspect: status | lease ID | job ID | events [AFTER] (-lease-id ID, -tail, -limit N)
 Leases:  acquire TEMPLATE TTL_SECONDS PUBLIC_KEY_FILE | renew ID RFC3339 | release ID
 SSH:     keygen DIRECTORY | ssh-config LEASE_ID IDENTITY_DIRECTORY | tunnel LEASE_ID | tunnel-close LEASE_ID
+VS Code: vscode-config LEASE_ID IDENTITY_DIRECTORY SWIFTPM_WORKSPACE [LEASE_ID IDENTITY_DIRECTORY ...]
 Registry: registry-sources | registry-resolve SOURCE REPOSITORY TAG
           image-pull ID SOURCE REPOSITORY TAG MACOS [XCODE]
           image-publish TEMPLATE_ID SOURCE REPOSITORY NEW_TAG
@@ -222,6 +223,34 @@ Recovery requires prior inspection that no operation remains in flight.
 		}
 		fmt.Println(filepath.Join(args[2], "config"))
 		return nil
+	case "vscode-config":
+		if len(args) < 4 || (len(args)-4)%2 != 0 || !domain.ValidName(args[1]) {
+			return errors.New("usage: vscode-config LEASE_ID IDENTITY_DIRECTORY SWIFTPM_WORKSPACE [LEASE_ID IDENTITY_DIRECTORY ...]")
+		}
+		pairs := [][2]string{{args[1], args[2]}}
+		for i := 4; i < len(args); i += 2 {
+			if !domain.ValidName(args[i]) {
+				return errors.New("vscode-config requires valid lease IDs")
+			}
+			pairs = append(pairs, [2]string{args[i], args[i+1]})
+		}
+		targets := make([]client.VSCodeTarget, 0, len(pairs))
+		for _, pair := range pairs {
+			b, err := c.Do(context.Background(), "GET", "leases/"+pair[0], nil, "")
+			if err != nil {
+				return err
+			}
+			var l domain.Lease
+			if err := json.Unmarshal(b, &l); err != nil {
+				return err
+			}
+			targets = append(targets, client.VSCodeTarget{IdentityDir: pair[1], Lease: l})
+		}
+		files, err := client.WriteVSCodeConfigs(args[3], targets)
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(os.Stdout).Encode(files)
 	case "tunnel", "tunnel-close":
 		if len(args) != 2 || !domain.ValidName(args[1]) {
 			return errors.New("usage: tunnel|tunnel-close LEASE_ID")

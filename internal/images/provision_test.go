@@ -51,6 +51,20 @@ func TestSharedXcodeInstallScriptUsesVirtioFSMount(t *testing.T) {
 	}
 }
 
+func TestGoldenProvisionEnablesRemoteDebugPrerequisites(t *testing.T) {
+	for _, want := range []string{
+		"DevToolsSecurity -enable",
+		"dseditgroup -o edit -a lume -t user _developer",
+		"/System/Volumes/Preboot/Cryptexes/OS/System/Library/dyld",
+		"/System/Library/dyld",
+		"nfsd enable",
+	} {
+		if !strings.Contains(provisionScript, want) {
+			t.Fatalf("golden provision script missing %q", want)
+		}
+	}
+}
+
 func TestLumeRunSharedArgsUseNativeSharedDirContract(t *testing.T) {
 	got := lumeRunSharedArgs(domain.Lease{VMName: "vf-test", Location: "home"}, "/tmp/source")
 	want := []string{"run", "vf-test", "--storage", "home", "--no-display", "--shared-dir", "/tmp/source"}

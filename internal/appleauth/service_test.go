@@ -145,6 +145,23 @@ func TestAppleBrowserSessionResumesExactJobWithoutCredentials(t *testing.T) {
 	}
 }
 
+func TestAppleBrowserSessionRejectsNonAuthenticationCookies(t *testing.T) {
+	dir := t.TempDir()
+	jobs := &authJobs{}
+	s, err := New("", filepath.Join(dir, "cookies"), jobs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := s.Begin(context.Background(), "job-one")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cookies := ".apple.com\tTRUE\t/\tTRUE\t0\tdslang\ten-US\n.apple.com\tTRUE\t/\tFALSE\t0\tgeo\tUS\n"
+	if err := s.ResumeBrowserCookies(context.Background(), token, cookies); err == nil || jobs.resumed != 0 {
+		t.Fatal("non-authentication cookies resumed the download")
+	}
+}
+
 func TestCookiePathMustCoverDeveloperTools(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "cookies")
 	for _, scope := range []string{"/", "/Developer_Tools/", "/Developer_Tools/Xcode/"} {

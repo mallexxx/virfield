@@ -285,6 +285,7 @@ func writeCookies(path, contents string) error {
 		return domain.Err("apple_auth_unavailable", "Apple returned no usable download cookies")
 	}
 	usable := 0
+	hasDownloadAuth := false
 	for _, line := range strings.Split(strings.TrimSuffix(contents, "\n"), "\n") {
 		fields := strings.Split(line, "\t")
 		if len(fields) != 7 || strings.ContainsAny(line, "\r") {
@@ -304,8 +305,11 @@ func writeCookies(path, contents string) error {
 		if host == "download.developer.apple.com" || host == "developer.apple.com" || fields[1] == "TRUE" {
 			usable++
 		}
+		if fields[5] == "ADCDownloadAuth" && (host == "apple.com" || host == "developer.apple.com" || host == "download.developer.apple.com") {
+			hasDownloadAuth = true
+		}
 	}
-	if usable == 0 {
+	if usable == 0 || !hasDownloadAuth {
 		return domain.Err("apple_auth_unavailable", "Apple returned no usable download cookies")
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {

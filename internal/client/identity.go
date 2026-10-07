@@ -41,49 +41,60 @@ func GenerateIdentity(dir string) error {
 // WriteSSHConfig binds the locally generated identity to the authenticated
 // lease host key. No shell is invoked and existing connection files are refused.
 func WriteSSHConfig(dir string, l domain.Lease) error {
-	dir, err := filepath.Abs(dir)
+	dir, knownContent, configContent, err := sshConnectionFiles(dir, l)
 	if err != nil {
 		return err
-	}
-	// OpenSSH expands tokens in paths even inside quotes. Refuse those paths.
-	if strings.ContainsAny(dir, "\r\n\"\\%$") {
-		return fmt.Errorf("SSH identity path contains unsupported characters")
-	}
-	if l.State != "ready" || l.SSH == nil || net.ParseIP(l.IP) == nil || l.SSH.User != "lume" || l.SSH.Port != 22 || !domain.ValidName(l.ID) {
-		return fmt.Errorf("lease has no verified SSH connection")
-	}
-	host, err := domain.CanonicalPublicKey(l.SSH.HostKey)
-	if err != nil {
-		return err
-	}
-	keyPath := filepath.Join(dir, "id_ed25519")
-	info, err := os.Lstat(keyPath)
-	if err != nil {
-		return err
-	}
-	if !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 {
-		return fmt.Errorf("private key must be an owner-only regular file")
-	}
-	b, err := os.ReadFile(keyPath)
-	if err != nil {
-		return err
-	}
-	signer, err := ssh.ParsePrivateKey(b)
-	if err != nil {
-		return err
-	}
-	if ssh.FingerprintSHA256(signer.PublicKey()) != l.SSH.ClientKeyFingerprint {
-		return fmt.Errorf("local private key does not belong to this lease")
 	}
 	knownPath := filepath.Join(dir, "known_hosts")
-	if err := writeNew(knownPath, l.ID+" "+host+"\n"); err != nil {
+	if err := writeNew(knownPath, knownContent); err != nil {
 		return err
 	}
-	err = writeNew(filepath.Join(dir, "config"), fmt.Sprintf("Host virfield\n  HostName %s\n  User lume\n  Port 22\n  HostKeyAlias %s\n  IdentityFile \"%s\"\n  UserKnownHostsFile \"%s\"\n  GlobalKnownHostsFile /dev/null\n  StrictHostKeyChecking yes\n  IdentitiesOnly yes\n  IdentityAgent none\n  ForwardAgent no\n  PasswordAuthentication no\n  KbdInteractiveAuthentication no\n  ControlMaster no\n  ControlPath none\n  ConnectTimeout 10\n", l.IP, l.ID, keyPath, knownPath))
+	err = writeNew(filepath.Join(dir, "config"), configContent)
 	if err != nil {
 		_ = os.Remove(knownPath)
 	}
 	return err
+}
+
+func sshConnectionFiles(dir string, l domain.Lease) (string, string, string, error) {
+	dir, err := filepath.Abs(dir)
+	if err != nil {
+		return "", "", "", err
+	}
+	// OpenSSH expands tokens in paths even inside quotes. Refuse those paths.
+	if strings.ContainsAny(dir, "\r\n\"\\%$") {
+		return "", "", "", fmt.Errorf("SSH identity path contains unsupported characters")
+	}
+	if l.State != "ready" || l.SSH == nil || net.ParseIP(l.IP) == nil || l.SSH.User != "lume" || l.SSH.Port != 22 || !domain.ValidName(l.ID) {
+		return "", "", "", fmt.Errorf("lease has no verified SSH connection")
+	}
+	host, err := domain.CanonicalPublicKey(l.SSH.HostKey)
+	if err != nil {
+		return "", "", "", err
+	}
+	keyPath := filepath.Join(dir, "id_ed25519")
+	info, err := os.Lstat(keyPath)
+	if err != nil {
+		return "", "", "", err
+	}
+	if !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 {
+		return "", "", "", fmt.Errorf("private key must be an owner-only regular file")
+	}
+	b, err := os.ReadFile(keyPath)
+	if err != nil {
+		return "", "", "", err
+	}
+	signer, err := ssh.ParsePrivateKey(b)
+	if err != nil {
+		return "", "", "", err
+	}
+	if ssh.FingerprintSHA256(signer.PublicKey()) != l.SSH.ClientKeyFingerprint {
+		return "", "", "", fmt.Errorf("local private key does not belong to this lease")
+	}
+	knownPath := filepath.Join(dir, "known_hosts")
+	knownContent := l.ID + " " + host + "\n"
+	configContent := fmt.Sprintf("Host virfield\n  HostName %s\n  User lume\n  Port 22\n  HostKeyAlias %s\n  IdentityFile \"%s\"\n  UserKnownHostsFile \"%s\"\n  GlobalKnownHostsFile /dev/null\n  StrictHostKeyChecking yes\n  IdentitiesOnly yes\n  IdentityAgent none\n  ForwardAgent no\n  PasswordAuthentication no\n  KbdInteractiveAuthentication no\n  ControlMaster no\n  ControlPath none\n  ConnectTimeout 10\n", l.IP, l.ID, keyPath, knownPath)
+	return dir, knownContent, configContent, nil
 }
 
 func writeNew(path, content string) error {
