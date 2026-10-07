@@ -5,20 +5,26 @@ Linux VMs, interactive developers and automated workloads. It reuses the v2
 durability and guest-policy code, delegates virtualization to established
 runtimes, and keeps workload execution in Execution Broker.
 
-## Current delivery status — 2026-10-07
+## Current delivery status — 2026-10-07 (evening)
 
 The agreed first implementation stage is **local Tart + Orchard adoption**;
-the broader target architecture below remains aspirational. The current
-worktree has Tart and Orchard runtime adapters, host/storage observations,
-per-host capacity reporting and a Hosts/storage web view. `make check` passes
-on the current worktree. This is code-level progress, not live acceptance:
-there is no verified Cirrus image adoption, real Tart VM lifecycle run, or
-live Orchard pool run yet. One `virfieldd` still selects one runtime at a time.
+the broader target architecture below remains aspirational. Tart adoption
+follows [the Tart image adoption design](superpowers/specs/2026-10-07-tart-image-adoption-design.md):
 
-The tracked local branch is `codex/virfield-v3-stage1` at `8830ad9` with
-uncommitted changes. The current service on `127.0.0.1:7780` serves the v3 UI,
-but its exact source revision has not been established. See the Obsidian
-Virfield handoff for the live deployment paths and current dirty-file list.
+| Step | State |
+|---|---|
+| Runtime adapters, host/storage observation, Hosts/storage console | Done (`8830ad9`, `ceb2747`, `1ec30c4`) |
+| Guest identity from the template; per-lease SSH isolation for Tart ([plan](superpowers/plans/2026-10-07-tart-guest-identity.md)) | Done, unit-tested |
+| Adoption pipeline: Tart image source, `internal/qualify`, Packer recipe, `internal/tartimage`, controller Tart phases ([plan](superpowers/plans/2026-10-07-tart-adoption-pipeline.md)) | Done, unit-tested, reviewed; recipe validated with Packer plugin 1.21.0 |
+| Live service switched to Tart (separate `state_dir`; Lume config and binary kept for rollback) | Done; Lume lease released |
+| Live golden builds and two-clone acceptance (Ventura 13.7.4 + Xcode 15.2, Monterey 12.7.6 + Xcode 13.4.1) | **Blocked**: macOS withholds Removable Volumes access from `virfieldd`, so Tart cannot open its home on the external SSD |
+| Orchard live pool acceptance | Not started |
+
+This is still code-level progress, not live acceptance: no Tart golden has been
+built or cloned by the service yet. Live runs exposed one fixed defect (Tart
+storage probe on a non-mount-point path, `f491ed4`). One `virfieldd` still
+selects one runtime at a time; see the Obsidian Virfield handoff for live
+deployment paths.
 
 ## Outcome
 
@@ -389,7 +395,7 @@ second workflow engine, second artifact store or custom overlay network.
 | Keep the existing durable controller | Reuse SQLite, lease/job journal and lifecycle reconciliation; preserve v1 API and Broker compatibility |
 | Add runtime adapters | Tart local VM lifecycle and Orchard remote worker/VM lifecycle implement the shared provider seam |
 | Show host and storage state | Report configured hosts, containers, availability reasons, disk/RAM/CPU and VM-slot capacity in the web console |
-| Adopt a pinned upstream image | Pull a digest-pinned Cirrus Tart image, verify OS/Xcode, apply Virfield guest policy and publish a qualified derived golden |
+| Adopt a pinned upstream image | Pull a digest-pinned Cirrus Tart image, verify OS/Xcode, apply Virfield guest policy and qualify a local derived golden; GHCR publication follows acceptance |
 | Accept each runtime | Prove clone, boot, unique SSH identity, access, release and confirmed cleanup against real Tart; separately exercise Orchard pool and restart behavior |
 | Preserve legacy backend | Keep Lume as an explicit fallback during migration; do not run one VM through two runtimes |
 

@@ -32,7 +32,7 @@
 - Modify: `internal/guestssh/client.go` (`connectCredentials`)
 - Test: `internal/guestssh/client_test.go`
 
-- [ ] **Step 1: Make the fake SSH server's account configurable**
+- [x] **Step 1: Make the fake SSH server's account configurable**
 
 In `internal/guestssh/client_test.go`, rename `sshServer` to `sshServerFor` with a `user` parameter, and keep `sshServer` as the Lume wrapper:
 
@@ -54,7 +54,7 @@ func sshServerFor(t *testing.T, model, user string) (string, ssh.Signer) {
 }
 ```
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 Append to `internal/guestssh/client_test.go`:
 
@@ -90,12 +90,12 @@ func TestInvalidGuestUserIsRefused(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: Run the tests to verify they fail**
+- [x] **Step 3: Run the tests to verify they fail**
 
 Run: `go test ./internal/guestssh/ -run 'TestBootstrapUsesTemplateGuestUser|TestRecordsWithoutGuestUserRemainLume|TestInvalidGuestUserIsRefused' -v`
 Expected: FAIL to compile with `undefined: guestUser`.
 
-- [ ] **Step 4: Implement**
+- [x] **Step 4: Implement**
 
 In `internal/guestssh/client.go`, add above `connectCredentials`:
 
@@ -134,12 +134,12 @@ Replace the start of `connectCredentials` through the `cfg :=` line with:
 
 (the rest of the `HostKeyCallback` body and the function are unchanged).
 
-- [ ] **Step 5: Run the package tests**
+- [x] **Step 5: Run the package tests**
 
 Run: `go test ./internal/guestssh/ -v`
 Expected: PASS, including the existing `TestGuestPinsKeyBoundsOutputAndCancels`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add internal/guestssh/client.go internal/guestssh/client_test.go
@@ -154,7 +154,7 @@ git commit -m "Connect to guests as the template guest user"
 - Modify: `internal/guestssh/client.go` (`SecureImage`), `internal/guestssh/autologin.go`, `internal/guestssh/lease.go`
 - Test: `internal/guestssh/autologin_test.go`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `internal/guestssh/autologin_test.go`, replace `TestCredentialScriptsParse` with:
 
@@ -183,12 +183,12 @@ func TestCredentialScriptsUseConfiguredGuestUser(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `go test ./internal/guestssh/ -run 'TestCredentialScripts' -v`
 Expected: FAIL to compile with `undefined: rotateScript`.
 
-- [ ] **Step 3: Implement `autologin.go`**
+- [x] **Step 3: Implement `autologin.go`**
 
 Change the last line of `autologinScript` so it reads:
 
@@ -233,7 +233,7 @@ chmod 700 ~/.ssh
 }
 ```
 
-- [ ] **Step 4: Implement `client.go` (`SecureImage`)**
+- [x] **Step 4: Implement `client.go` (`SecureImage`)**
 
 Add next to `guestUser`:
 
@@ -273,7 +273,7 @@ IFS= read -r kcpassword
 	}
 ```
 
-- [ ] **Step 5: Implement `lease.go`**
+- [x] **Step 5: Implement `lease.go`**
 
 In `leaseScript`, insert `IFS= read -r user` as the first line after `set -eu`, and change the `dscl` line to:
 
@@ -300,12 +300,12 @@ In `Prepare`:
 	return domain.SSHConnection{User: user, Port: 22, HostKey: strings.TrimSpace(string(ssh.MarshalAuthorizedKey(host))), ClientKeyFingerprint: ssh.FingerprintSHA256(clientKey)}, nil
 ```
 
-- [ ] **Step 6: Run the tests**
+- [x] **Step 6: Run the tests**
 
 Run: `go test ./internal/guestssh/ ./internal/images/ -v 2>&1 | tail -30`
 Expected: PASS. `internal/images` still compiles because `BootstrapAutoLogin`'s signature is unchanged.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add internal/guestssh/
@@ -320,7 +320,7 @@ git commit -m "Pass the guest user to credential scripts"
 - Modify: `internal/control/image_build.go:58`, `internal/control/registry_publish.go:109`
 - Test: `internal/control/image_build_test.go`, `internal/control/ssh_test.go`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `internal/control/image_build_test.go`:
 
@@ -378,12 +378,12 @@ func TestPreparedLeaseCarriesTemplateGuestUser(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `go test ./internal/control/ -run 'TestImageRecordCarriesTemplateGuestUser|TestPreparedLeaseCarriesTemplateGuestUser' -v`
 Expected: `TestImageRecordCarriesTemplateGuestUser` FAILS with `image record guest = "" ""`. `TestPreparedLeaseCarriesTemplateGuestUser` should already PASS (acquire copies the user at `controller.go:400`); it guards that behavior.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `internal/control/image_build.go:58`, add `GuestUser: t.GuestUser, GuestHome: t.GuestHome` to the image record:
 
@@ -397,12 +397,12 @@ Expected: `TestImageRecordCarriesTemplateGuestUser` FAILS with `image record gue
 	l := domain.Lease{ID: id, Purpose: "image", Portable: true, Template: t.ID, VMName: "vf-export-" + id[6:], Location: t.Location, GuestUser: t.GuestUser, GuestHome: t.GuestHome, State: "image_building", Source: &t, CreatedAt: now, UpdatedAt: now}
 ```
 
-- [ ] **Step 4: Run the control tests**
+- [x] **Step 4: Run the control tests**
 
 Run: `go test ./internal/control/ 2>&1 | tail -5`
 Expected: `ok  github.com/mallexxx/virfield/internal/control`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/control/
@@ -416,7 +416,7 @@ git commit -m "Record the template guest user on image builds"
 **Files:**
 - Modify: `cmd/virfieldd/main.go:196-198`, `docs/OPERATIONS.md`
 
-- [ ] **Step 1: Implement**
+- [x] **Step 1: Implement**
 
 Replace
 
@@ -436,7 +436,7 @@ with
 	}
 ```
 
-- [ ] **Step 2: Document the consequence**
+- [x] **Step 2: Document the consequence**
 
 In `docs/OPERATIONS.md`, after the import paragraph that ends at line 70 with "The pinned Lume decoder is not an untrusted-input sandbox.", add a new paragraph:
 
@@ -447,12 +447,12 @@ acquire needs a fresh `ssh_public_key`; a bare digest-pinned `source` template
 without a qualified image record is rejected with `ssh_profile_missing`.
 ```
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 
 Run: `make check 2>&1 | tail -5; echo exit=$?`
 Expected: last lines show `ok` packages and `exit=0`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add cmd/virfieldd/main.go docs/OPERATIONS.md

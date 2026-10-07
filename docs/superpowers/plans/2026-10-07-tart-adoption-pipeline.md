@@ -39,7 +39,7 @@
 - Modify: `internal/domain/image.go`, `internal/control/image_identity.go`
 - Test: `internal/domain/image_test.go`, `internal/control/image_identity_test.go`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `internal/domain/image_test.go`:
 
@@ -112,12 +112,12 @@ func TestTartUpstreamIsPartOfTheFingerprint(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `go test ./internal/domain/ ./internal/control/ -run 'Tart|LumeFingerprint' 2>&1 | tail -5`
 Expected: FAIL to compile with `undefined: TartSource` / `unknown field Tart`.
 
-- [ ] **Step 3: Implement the domain type**
+- [x] **Step 3: Implement the domain type**
 
 In `internal/domain/image.go` add `"regexp"` to the imports, add the field to `ImageProfile` (first field):
 
@@ -155,7 +155,7 @@ In `Validate`, insert immediately before `if p.Registry != nil {`:
 	}
 ```
 
-- [ ] **Step 4: Implement the fingerprint**
+- [x] **Step 4: Implement the fingerprint**
 
 In `internal/control/image_identity.go` add inside `imageFingerprint`, after `type xcode struct {…}`:
 
@@ -179,12 +179,12 @@ and before `return fingerprint(v)`:
 	}
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `go test ./internal/domain/ ./internal/control/ 2>&1 | tail -3`
 Expected: both `ok`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add internal/domain/image.go internal/domain/image_test.go internal/control/image_identity.go internal/control/image_identity_test.go
@@ -199,7 +199,7 @@ git commit -m "Add digest-pinned Tart image source"
 - Modify: `internal/config/config.go`
 - Test: `internal/config/config_test.go`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `internal/config/config_test.go`:
 
@@ -232,12 +232,12 @@ func TestTartImageToolsRequireAbsolutePaths(t *testing.T) {
 
 (Add `"fmt"` to the imports if missing. Check the loader's name with `grep -n "^func Load" internal/config/config.go`; if it differs, use that name.)
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `go test ./internal/config/ -run TestTartImageToolsRequireAbsolutePaths -v 2>&1 | tail -5`
 Expected: FAIL to compile — `cfg.Runtime.Tart.Image undefined`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `internal/config/config.go`, add to `type Tart struct` (last field):
 
@@ -263,12 +263,12 @@ and in `validateRuntime`, right after the registry-credential loop:
 		}
 ```
 
-- [ ] **Step 4: Run the config tests**
+- [x] **Step 4: Run the config tests**
 
 Run: `go test ./internal/config/ 2>&1 | tail -3`
 Expected: `ok`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/config/
@@ -284,7 +284,7 @@ git commit -m "Configure Tart image adoption tools"
 - Move tests: `internal/images/disk_policy_test.go` → `internal/qualify/disk_test.go`, `internal/images/desktop_test.go` → `internal/qualify/desktop_test.go`
 - Modify: `internal/images/disk_policy.go`, `internal/images/engine.go`
 
-- [ ] **Step 1: Move the tests (they become the failing tests)**
+- [x] **Step 1: Move the tests (they become the failing tests)**
 
 ```bash
 git mv internal/images/disk_policy_test.go internal/qualify/disk_test.go
@@ -294,12 +294,12 @@ sed -i '' 's/parseDiskEvidence(/ParseDiskEvidence(/; s/disk\.validate(/disk.Vali
 sed -i '' 's/waitDesktop(/WaitDesktop(/g' internal/qualify/desktop_test.go
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `go test ./internal/qualify/ 2>&1 | tail -3`
 Expected: FAIL — `undefined: ParseDiskEvidence`, `undefined: WaitDesktop`.
 
-- [ ] **Step 3: Create `internal/qualify/qualify.go`**
+- [x] **Step 3: Create `internal/qualify/qualify.go`**
 
 ```go
 // Package qualify holds runtime-agnostic guest qualification checks. Every
@@ -334,7 +334,7 @@ func pause(ctx context.Context, d time.Duration) error {
 }
 ```
 
-- [ ] **Step 4: Create `internal/qualify/disk.go`**
+- [x] **Step 4: Create `internal/qualify/disk.go`**
 
 Move `diskPolicyProbe`, `diskPolicyEvidence`, `diskEvidence`, `parseDiskEvidence` and `validate` from `internal/images/disk_policy.go` verbatim, exporting the names `DiskPolicyEvidence`, `DiskEvidence`, `ParseDiskEvidence`, `Validate` and renaming the `validate` parameter to `allowEncryptionAtRest`. Then add:
 
@@ -375,7 +375,7 @@ func (e *Engine) verifyDiskPolicy(ctx context.Context, l domain.Lease, g *guest)
 }
 ```
 
-- [ ] **Step 5: Create `internal/qualify/desktop.go`**
+- [x] **Step 5: Create `internal/qualify/desktop.go`**
 
 ```go
 package qualify
@@ -427,12 +427,12 @@ func (e *Engine) waitDesktopState(ctx context.Context, g *guest) (string, error)
 
 Add `"github.com/mallexxx/virfield/internal/qualify"` to the imports of both changed `images` files; run `goimports`-style cleanup by hand (remove unused `strings` if the compiler reports it).
 
-- [ ] **Step 6: Run the tests**
+- [x] **Step 6: Run the tests**
 
 Run: `go vet ./internal/qualify/ ./internal/images/ && go test ./internal/qualify/ ./internal/images/ 2>&1 | tail -3`
 Expected: both `ok`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add internal/qualify/ internal/images/
@@ -448,7 +448,7 @@ git commit -m "Extract disk policy and desktop checks into qualify"
 - Test: `internal/qualify/guest_test.go`
 - Modify: `internal/images/engine.go` (verify step), `internal/images/provision.go`, `internal/images/xcode.go`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `internal/qualify/guest_test.go`:
 
@@ -549,12 +549,12 @@ func TestXcodeProbeUsesConfiguredUser(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `go test ./internal/qualify/ 2>&1 | tail -3`
 Expected: FAIL — `undefined: OS`, `SIP`, `Password`, `Xcode`.
 
-- [ ] **Step 3: Create `internal/qualify/guest.go`**
+- [x] **Step 3: Create `internal/qualify/guest.go`**
 
 ```go
 package qualify
@@ -620,7 +620,7 @@ func Password(ctx context.Context, g Guest, user, password string) error {
 }
 ```
 
-- [ ] **Step 4: Create `internal/qualify/xcode.go`**
+- [x] **Step 4: Create `internal/qualify/xcode.go`**
 
 ```go
 package qualify
@@ -675,7 +675,7 @@ func Xcode(ctx context.Context, g Guest, user string, x domain.XcodeRelease) (st
 }
 ```
 
-- [ ] **Step 5: Switch `internal/images` to the extracted checks**
+- [x] **Step 5: Switch `internal/images` to the extracted checks**
 
 - `internal/images/xcode.go:26`: `const appleCodeRequirement = qualify.AppleCodeRequirement` (add the import).
 - `internal/images/provision.go`: delete `verifyGuestXcodeBundle`; replace its three call sites with `qualify.XcodeBundle(ctx, g, …)`; replace `Engine.verifyXcode` with:
@@ -720,12 +720,12 @@ and the `dscl -authonly lume` block with
 
 The evidence map keeps `"sip": strings.TrimSpace(sip)` working unchanged (the value is now already trimmed).
 
-- [ ] **Step 6: Run the tests**
+- [x] **Step 6: Run the tests**
 
 Run: `go vet ./internal/qualify/ ./internal/images/ && go test ./internal/qualify/ ./internal/images/ 2>&1 | tail -3`
 Expected: both `ok`. `TestMontereyXIPTransferChecksDigestAndSignatureBeforeReplacingApp` still passes (it inspects the script strings that use `appleCodeRequirement`).
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add internal/qualify/ internal/images/
@@ -740,7 +740,7 @@ git commit -m "Extract guest and Xcode checks into qualify"
 - Move: `internal/images/devicesupport.go` → `internal/qualify/devicesupport.go`, `internal/images/devicesupport_test.go` → `internal/qualify/devicesupport_test.go`
 - Modify: `internal/images/engine.go:284`
 
-- [ ] **Step 1: Move code and tests**
+- [x] **Step 1: Move code and tests**
 
 ```bash
 git mv internal/images/devicesupport.go internal/qualify/devicesupport.go
@@ -757,7 +757,7 @@ Add a doc comment above `DeviceSupport`:
 // dir is the daemon state directory used for the extractor cache and log.
 ```
 
-- [ ] **Step 2: Update the Lume call site**
+- [x] **Step 2: Update the Lume call site**
 
 `internal/images/engine.go:284`:
 
@@ -765,12 +765,12 @@ Add a doc comment above `DeviceSupport`:
 			deviceSupport, err = qualify.DeviceSupport(ctx, e.Dir, rebooted.IP, actualVersion, p.Build, progress)
 ```
 
-- [ ] **Step 3: Run the tests**
+- [x] **Step 3: Run the tests**
 
 Run: `go vet ./internal/... && go test ./internal/qualify/ ./internal/images/ 2>&1 | tail -3`
 Expected: both `ok` (`TestDeviceSupportPath*` now run in `qualify`).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add internal/qualify/ internal/images/
@@ -785,7 +785,7 @@ git commit -m "Move DeviceSupport preparation into qualify"
 - Create: `internal/tartimage/recipe/developer.pkr.hcl`, `internal/tartimage/recipe/scripts/check-guest.sh`, `internal/tartimage/recipe/scripts/install-xcode.sh`, `internal/tartimage/recipe/scripts/xcode-post.sh`, `internal/tartimage/recipe.go`
 - Test: `internal/tartimage/recipe_test.go`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 package tartimage
@@ -834,12 +834,12 @@ func TestRecipeScriptsParseAndMaterializePrivately(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `go test ./internal/tartimage/ 2>&1 | tail -3`
 Expected: FAIL — `no non-test Go files` / `undefined: RecipeDigest`.
 
-- [ ] **Step 3: Create the recipe files**
+- [x] **Step 3: Create the recipe files**
 
 `internal/tartimage/recipe/developer.pkr.hcl`:
 
@@ -976,7 +976,7 @@ sudo -n /sbin/nfsd restart
 /usr/bin/xcodebuild -version
 ```
 
-- [ ] **Step 4: Create `internal/tartimage/recipe.go`**
+- [x] **Step 4: Create `internal/tartimage/recipe.go`**
 
 ```go
 // Package tartimage builds and qualifies Tart goldens from pinned Cirrus
@@ -1037,17 +1037,17 @@ func writeRecipe(dir string) error {
 }
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `gofmt -l internal/tartimage; go test ./internal/tartimage/ -v 2>&1 | tail -6`
 Expected: `PASS` for both tests. (Packer runs `bash` on the uploaded copy, so mode 0600 scripts are fine.)
 
-- [ ] **Step 6: Validate the template with Packer**
+- [x] **Step 6: Validate the template with Packer**
 
 Run: `cd "$(mktemp -d)" && cp -R /Users/admin/Developer/virfield-v3/internal/tartimage/recipe/. . && packer init developer.pkr.hcl && packer validate -syntax-only developer.pkr.hcl; echo exit=$?`
 Expected: `The configuration is valid.` and `exit=0`. If `packer init` reports that version `1.21.0` does not exist, run `packer plugins installed` and pin the newest listed release instead, in both the template and the test.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add internal/tartimage/
@@ -1062,7 +1062,7 @@ git commit -m "Add embedded Packer recipe for Tart developer images"
 - Create: `internal/tartimage/builder.go`
 - Test: `internal/tartimage/builder_test.go`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```go
 package tartimage
@@ -1226,12 +1226,12 @@ func hasCode(err error, want string) bool {
 }
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `go test ./internal/tartimage/ 2>&1 | tail -3`
 Expected: FAIL — `undefined: Builder`, `Config`.
 
-- [ ] **Step 3: Implement `internal/tartimage/builder.go`**
+- [x] **Step 3: Implement `internal/tartimage/builder.go`**
 
 ```go
 package tartimage
@@ -1472,12 +1472,12 @@ func (b *Builder) qualify(context.Context, domain.Lease, domain.ImageProfile, fu
 }
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `go vet ./internal/tartimage/ && go test ./internal/tartimage/ -v 2>&1 | grep -E '^(---|ok|FAIL)'`
 Expected: all `--- PASS`, then `ok`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/tartimage/
@@ -1493,7 +1493,7 @@ git commit -m "Add Tart image builder resolve, build and stop steps"
 - Modify: `internal/tartimage/builder.go` (remove the Task 7 stub)
 - Test: `internal/tartimage/qualify_test.go`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 package tartimage
@@ -1593,12 +1593,12 @@ func TestQualifySecuresRebootsVerifiesAndRecordsEvidence(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `go test ./internal/tartimage/ -run TestQualify 2>&1 | tail -3`
 Expected: FAIL to compile — `undefined: session`; the stub `guests` has no methods.
 
-- [ ] **Step 3: Implement `internal/tartimage/qualify.go`**
+- [x] **Step 3: Implement `internal/tartimage/qualify.go`**
 
 Delete the Task 7 stub block from `builder.go`, then create:
 
@@ -1764,12 +1764,12 @@ func (b *Builder) shutdown(ctx context.Context, l domain.Lease, g session) error
 }
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `go vet ./internal/tartimage/ && go test ./internal/tartimage/ -v 2>&1 | grep -E '^(---|ok|FAIL)'`
 Expected: all `--- PASS`, `ok`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/tartimage/
@@ -1784,7 +1784,7 @@ git commit -m "Qualify Tart images after credential rotation and reboot"
 - Modify: `internal/control/image_build.go`
 - Test: `internal/control/image_build_test.go`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `fakeImageBuilder.Step`, make the fake VM appear on Tart builds too — change `if step == "create" {` to `if step == "create" || step == "build" {`. Then append:
 
@@ -1843,12 +1843,12 @@ func TestTartQualifyFailureAllowsOnlyQualifyRetry(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `go test ./internal/control/ -run TestTart -v 2>&1 | grep -E '^(---|ok|FAIL)|steps'`
 Expected: FAIL — the steps start with `download` because the Lume phase map is used.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `internal/control/image_build.go`, below `imageNext` add:
 
@@ -1895,12 +1895,12 @@ Add three entries to the progress map literal (same line, after `"stop": …`):
 
 In `RecoverImage`, extend the `previous` map with `"resolve_dispatched": "queued", "qualify_dispatched": "build_done"`.
 
-- [ ] **Step 4: Run the control tests**
+- [x] **Step 4: Run the control tests**
 
 Run: `go test ./internal/control/ 2>&1 | tail -3`
 Expected: `ok`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/control/
@@ -1914,7 +1914,7 @@ git commit -m "Run Tart image builds through Tart phases"
 **Files:**
 - Modify: `cmd/virfieldd/main.go`, `docs/OPERATIONS.md`
 
-- [ ] **Step 1: Wire the builder**
+- [x] **Step 1: Wire the builder**
 
 In `cmd/virfieldd/main.go`, inside `case cfg.Runtime.Provider == "tart":`, keep a reference to the client and the credentials for later use. Change `backend, err = tart.New(…)` to:
 
@@ -1945,7 +1945,7 @@ declaring `var tartBackend *tart.Client` and `var tartCredentials []tart.Registr
 
 and import `"github.com/mallexxx/virfield/internal/tartimage"`.
 
-- [ ] **Step 2: Document the Tart window**
+- [x] **Step 2: Document the Tart window**
 
 In `docs/OPERATIONS.md`, after the paragraph added by the guest-identity plan ("With `runtime.provider = "tart"` …"), add:
 
@@ -1979,12 +1979,12 @@ digests. Retry is available for `resolve` and `qualify`; an interrupted
 `build` needs `delete` and a new build.
 ````
 
-- [ ] **Step 3: Verify everything**
+- [x] **Step 3: Verify everything**
 
 Run: `make check >/tmp/virfield-check.log 2>&1; echo exit=$?; grep -E 'FAIL' /tmp/virfield-check.log | head`
 Expected: `exit=0` and no `FAIL` lines.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add cmd/virfieldd/main.go docs/OPERATIONS.md
