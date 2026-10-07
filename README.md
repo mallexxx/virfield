@@ -5,8 +5,9 @@ host. It builds and verifies golden images, leases isolated clones, enforces a
 maximum of two macOS VMs, exposes authenticated HTTP/MCP APIs, and cleans up
 expired or released leases.
 
-`main` contains only this implementation. The previous application is preserved
-in the Git branch `v1`; it is not part of the current build or deployment.
+`main` is the only maintained source of truth. Retired implementations remain
+available through Git history; they are not separate supported branches, builds
+or deployments.
 
 ## Start here
 
@@ -17,6 +18,7 @@ in the Git branch `v1`; it is not part of the current build or deployment.
 | [Image pipeline](docs/IMAGE-PIPELINE.md) | Supported image profile, dependencies, build stages, guest policy and image recovery |
 | [VS Code remote debugging](docs/REMOTE-DEBUG.md) | Host SwiftPM build/test, artifact sync and remote `debugserver` |
 | [Architecture](docs/ARCHITECTURE.md) | Modules, API boundary, lifecycle invariants and development rules |
+| [Compositional platform plan](docs/COMPOSITIONAL-PLATFORM.md) | Use cases, implemented inventory, upstream coverage and target product boundaries |
 | [Verification](docs/VERIFICATION.md) | Acceptance evidence, reproducible checks and unverified/deferred scope |
 
 These documents describe the current implementation. Installation instructions

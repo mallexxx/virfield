@@ -295,7 +295,8 @@ The three unrelated VMs (`macos-15-golden`, `pdf-hud-macos27`,
 `uitest-26.4.1-golden`) remained stopped and untouched. Host SIP and Gatekeeper
 remain enabled. The previous service and MCP processes were stopped; their
 source and build artifacts are now absent from the current worktree. The
-previous application is available only by checking out branch `v1`.
+previous application remains available in Git history and is not a supported
+branch or deployment.
 
 ## Automated checks
 

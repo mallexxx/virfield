@@ -86,8 +86,8 @@ personal SSH credentials. Operational commands are documented in
 [Image pipeline](IMAGE-PIPELINE.md).
 
 The `/api/v1` route prefix, SQLite schema versions and `uitest-27-v1` image recipe
-are current protocol identifiers. They are independent of the retired
-application's Git branch and must not be renamed as cosmetic cleanup.
+are current protocol identifiers. They are independent of retired implementation
+history and must not be renamed as cosmetic cleanup.
 
 ## Sources and implementation rules
 
