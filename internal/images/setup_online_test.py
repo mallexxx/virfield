@@ -59,8 +59,33 @@ class OnlineSetupTests(unittest.TestCase):
                 for color in [(0, 0, 0), (255, 255, 255), (68, 20, 174), (235, 235, 235)]:
                     f.pixels = [color] * len(f.pixels)
                     self.assertIsNone(recognize(f))
-                f.size = (1920, 1080)
-                self.assertIsNone(recognize(f))
+
+    def test_ventura_hello_arrow_at_1080p(self):
+        class Patch:
+            def __init__(self, pixels):
+                self.pixels = pixels
+            def convert(self, mode):
+                return self
+            def getdata(self):
+                return self.pixels
+        class Frame:
+            size = (1920, 1080)
+            def __init__(self, pixels):
+                self.pixels = pixels
+            def crop(self, box):
+                self.asserted_box = box
+                return Patch(self.pixels)
+        pixels = [(215, 72, 8)] * (80 * 80)
+        for y in range(26, 55):
+            for x in range(48, 54):
+                pixels[y * 80 + x] = (250, 250, 250)
+        for x in range(25, 55):
+            pixels[40 * 80 + x] = (250, 250, 250)
+        frame = Frame(pixels)
+        self.assertEqual(setup_online.hello_button(frame), (960, 847))
+        self.assertEqual(frame.asserted_box, (920, 807, 1000, 887))
+        for color in [(0, 0, 0), (255, 255, 255), (215, 72, 8)]:
+            self.assertIsNone(setup_online.hello_button(Frame([color] * (80 * 80))))
 
     def test_monterey_login_password_field_without_ocr(self):
         frame = Image.new('RGB', (1920, 1440), (70, 20, 140))

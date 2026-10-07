@@ -157,6 +157,26 @@ _HELLO_ARROW = int('0000000000000000000000000000000001ff0000000fffe000001fc7f000
 
 
 def hello_button(frame):
+    if frame.size == (1920, 1080):
+        # Ventura renders its language-independent Hello arrow in a fixed
+        # circular button above the localized label. OCR cannot identify the
+        # rotating greeting, so accept only the bounded white arrow geometry.
+        patch = frame.crop((920, 807, 1000, 887)).convert('RGB')
+        white = []
+        for index, (r, g, b) in enumerate(patch.getdata()):
+            # Ventura composites the nominally white arrow through the tinted
+            # Hello background, producing pale pink as well as white pixels.
+            if r > 235 and g > 100 and b > 75 and r - g < 170:
+                white.append((index % 80, index // 80))
+        if not 120 <= len(white) <= 400:
+            return None
+        left, right = min(x for x, _ in white), max(x for x, _ in white)
+        top, bottom = min(y for _, y in white), max(y for _, y in white)
+        if not (20 <= right - left <= 42 and 20 <= bottom - top <= 42):
+            return None
+        if not (32 <= (left + right) // 2 <= 48 and 32 <= (top + bottom) // 2 <= 48):
+            return None
+        return (960, 847)
     if frame.size != (1920, 1440):
         return None
     patch = frame.crop((940, 1185, 980, 1225)).convert('RGB')
