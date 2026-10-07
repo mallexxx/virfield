@@ -1,4 +1,4 @@
-package images
+package qualify
 
 import (
 	"context"
@@ -35,7 +35,10 @@ func deviceSupportPath(home, version, build string) (string, error) {
 	return filepath.Join(home, "Library", "Developer", "Xcode", "macOS DeviceSupport", version+" ("+build+")", "Symbols"), nil
 }
 
-func (e *Engine) prepareDeviceSupport(ctx context.Context, guestIP, version, build string, progress func(string) error) (string, error) {
+// DeviceSupport extracts the golden's dyld shared cache over its read-only NFS
+// export into the host's Xcode DeviceSupport, so host LLDB can symbolicate.
+// dir is the daemon state directory used for the extractor cache and log.
+func DeviceSupport(ctx context.Context, dir, guestIP, version, build string, progress func(string) error) (string, error) {
 	if net.ParseIP(guestIP) == nil {
 		return "", domain.Err("device_support_failed", "Golden VM has no valid IP for its read-only dyld export")
 	}
@@ -65,7 +68,7 @@ func (e *Engine) prepareDeviceSupport(ctx context.Context, guestIP, version, bui
 	if st, statErr := os.Lstat(bundle); statErr != nil || !st.IsDir() {
 		return "", domain.Err("device_support_failed", "Host Xcode has no dyld shared-cache extractor")
 	}
-	cacheDir := filepath.Join(e.Dir, "cache", "device-support")
+	cacheDir := filepath.Join(dir, "cache", "device-support")
 	if err := os.MkdirAll(cacheDir, 0700); err != nil {
 		return "", err
 	}
@@ -132,7 +135,7 @@ func (e *Engine) prepareDeviceSupport(ctx context.Context, guestIP, version, bui
 			_ = os.RemoveAll(staging)
 		}
 	}()
-	logPath := filepath.Join(e.Dir, "images", "device-support-"+build+".log")
+	logPath := filepath.Join(dir, "images", "device-support-"+build+".log")
 	logFile, err := os.OpenFile(logPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		return "", err

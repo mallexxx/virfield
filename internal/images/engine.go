@@ -259,7 +259,7 @@ func (e *Engine) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile
 		}
 		deviceSupport := ""
 		if p.Provision == "developer-v1" || p.Provision == "uitest-27-v1" {
-			deviceSupport, err = e.prepareDeviceSupport(ctx, rebooted.IP, actualVersion, p.Build, progress)
+			deviceSupport, err = qualify.DeviceSupport(ctx, e.Dir, rebooted.IP, actualVersion, p.Build, progress)
 			if err != nil {
 				return err
 			}
