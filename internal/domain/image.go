@@ -86,8 +86,8 @@ func (p ImageProfile) Validate() error {
 		}
 	}
 	if p.Tart != nil {
-		if p.Registry != nil || p.URL != "" || p.SHA256 != "" || p.Size != 0 || !ValidVersion(p.MacOS) || !ValidName(p.Build) || p.Provision != "developer-v1" {
-			return Err("invalid_profile", "Tart images need expected macOS/build, developer-v1 and no competing source")
+		if p.Registry != nil || p.URL != "" || p.SHA256 != "" || p.Size != 0 || !ValidVersion(p.MacOS) || !ValidName(p.Build) || (p.Provision != "developer-v1" && p.Provision != "uitest-27-v1") {
+			return Err("invalid_profile", "Tart images need expected macOS/build, developer-v1 or uitest-27-v1, and no competing source")
 		}
 		return p.Tart.Validate()
 	}

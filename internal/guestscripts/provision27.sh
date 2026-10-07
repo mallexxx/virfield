@@ -33,7 +33,7 @@ if want system; then
   # Remote LLDB launches debugserver non-interactively. This is mandatory for
   # every golden developer image, including ad-hoc signed builds.
   sudo /usr/sbin/DevToolsSecurity -enable
-  sudo /usr/sbin/dseditgroup -o edit -a lume -t user _developer
+  sudo /usr/sbin/dseditgroup -o edit -a "$(id -un)" -t user _developer
   sudo /usr/sbin/DevToolsSecurity -status 2>&1 | grep -q 'currently enabled'
 
   # Export only the immutable dyld cache to the private VM subnet. The host can
@@ -83,7 +83,7 @@ if want system; then
   rm -rf ~/Library/Saved\ Application\ State/ 2>/dev/null || true
 
   # LaunchDaemon (runs as root at system boot, BEFORE autologin/LaunchAgents) that
-  # wipes the lume user's saved-application-state directory.  This fires earlier than
+  # wipes the guest user's saved-application-state directory.  This fires earlier than
   # any LaunchAgent, so no app can read stale state on the current boot cycle.
   sudo tee /Library/LaunchDaemons/com.uitest.clear-saved-state.plist > /dev/null << 'DAEMON_EOF'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -96,7 +96,7 @@ if want system; then
   <array>
     <string>/bin/sh</string>
     <string>-c</string>
-    <string>rm -rf /Users/lume/Library/Saved\ Application\ State 2>/dev/null; true</string>
+    <string>rm -rf __VF_HOME__/Library/Saved\ Application\ State 2>/dev/null; true</string>
   </array>
   <key>RunAtLoad</key>
   <true/>
@@ -105,6 +105,8 @@ if want system; then
 </dict>
 </plist>
 DAEMON_EOF
+  # The quoted heredoc keeps the plist literal; bind it to this guest's home.
+  sudo /usr/bin/sed -i '' "s#__VF_HOME__#${HOME}#" /Library/LaunchDaemons/com.uitest.clear-saved-state.plist
   sudo chmod 644 /Library/LaunchDaemons/com.uitest.clear-saved-state.plist
   sudo chown root:wheel /Library/LaunchDaemons/com.uitest.clear-saved-state.plist
   echo "  LaunchDaemon installed: com.uitest.clear-saved-state (clears saved state before autologin)"

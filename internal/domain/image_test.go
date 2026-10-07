@@ -67,3 +67,20 @@ func TestTartProfileRejectsUnpinnedOrCompetingSources(t *testing.T) {
 		}
 	}
 }
+
+func TestTartUITestProfileValidates(t *testing.T) {
+	p := ImageProfile{
+		Tart:       &TartSource{Upstream: "ghcr.io/cirruslabs/macos-golden-gate-xcode@sha256:324ea5656dee8ab9b0a0df70fda2cfed8912051ad0eca3b1b883bf6ddac88fab"},
+		MacOS:      "27.0",
+		Build:      "26A428",
+		DisableSIP: true,
+		Provision:  "uitest-27-v1",
+	}
+	if err := p.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	p.DisableSIP = false
+	if err := p.Validate(); err == nil {
+		t.Fatal("accepted a UI-test profile with SIP enabled")
+	}
+}

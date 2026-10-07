@@ -12,12 +12,12 @@ import (
 	"time"
 
 	"github.com/mallexxx/virfield/internal/domain"
+	"github.com/mallexxx/virfield/internal/guestscripts"
 	"github.com/mallexxx/virfield/internal/guestssh"
 	"github.com/mallexxx/virfield/internal/qualify"
 )
 
-//go:embed provision27.sh
-var provisionScript string
+var provisionScript = guestscripts.Provision27
 
 const guestSharedFolder = "/Volumes/My Shared Files"
 

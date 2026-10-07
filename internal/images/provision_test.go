@@ -54,7 +54,7 @@ func TestSharedXcodeInstallScriptUsesVirtioFSMount(t *testing.T) {
 func TestGoldenProvisionEnablesRemoteDebugPrerequisites(t *testing.T) {
 	for _, want := range []string{
 		"DevToolsSecurity -enable",
-		"dseditgroup -o edit -a lume -t user _developer",
+		`dseditgroup -o edit -a "$(id -un)" -t user _developer`,
 		"/System/Volumes/Preboot/Cryptexes/OS/System/Library/dyld",
 		"/System/Library/dyld",
 		"nfsd enable",
