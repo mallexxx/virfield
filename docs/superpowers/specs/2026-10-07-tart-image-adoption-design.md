@@ -13,7 +13,7 @@ isolation:
 | Profile | Upstream (pinned) | Guest | Xcode | SIP |
 |---|---|---|---|---|
 | `ventura-xcode-15.2` | `ghcr.io/cirruslabs/macos-ventura-base@sha256:9fb387bb987cdda942fbc27118296ed8e16a3359a672c95c6d5ac960165ef1c5` | 13.7.4 (22H420) | 15.2 (15C500b) | disabled |
-| `monterey-xcode-13.4.1` | `ghcr.io/cirruslabs/macos-monterey-vanilla@sha256:4bc904cf8f2447dfa6e6fb9a5eb70eba14196dd0f4236d30fc92aff9c2391842` | 12.7.6 (build from first probe) | 13.4.1 (13F100) | as shipped (probe) |
+| `monterey-xcode-13.4.1` | `ghcr.io/cirruslabs/macos-monterey-vanilla@sha256:4bc904cf8f2447dfa6e6fb9a5eb70eba14196dd0f4236d30fc92aff9c2391842` | 12.7.6 (21H1320) | 13.4.1 (13F100) | enabled |
 
 Both use `developer-v1`. Guiding rule: reuse Tart, Cirrus images and Packer's
 Tart plugin as far as possible; Virfield keeps only what upstream lacks. Lume is
@@ -26,7 +26,7 @@ not extended or generalized; its removal is Phase 2.
 | Coexistence with live Lume service | **Tart window**: the same launchd service switches between a Lume config and a Tart config with **separate state dirs**; swap only when no Lume lease is active. Rollback is config swap + restart. |
 | Storage | Tart container on `/Volumes/Samsung970EVO/virfield-tart` (323 GB free); `/` has too little room for two goldens. |
 | Ventura base | Ships 13.7.4 (22H420), SIP **disabled**, `admin`/`admin`, passwordless sudo, autologin `admin`, Finder desktop, Tart Guest Agent. 50 GB disk, 19 GB free. No Ventura Xcode 15.2 image exists upstream. |
-| Monterey base | `macos-monterey-xcode` and `macos-monterey-base` use the legacy `tart.disk.v1` layer format that Tart 2.40 refuses (`disk chunks must start with a disk.v2 base`); only `macos-monterey-vanilla` is usable. 12.7.6 is the final Monterey release. |
+| Monterey base | `macos-monterey-xcode` and `macos-monterey-base` use the legacy `tart.disk.v1` layer format that Tart 2.40 refuses (`disk chunks must start with a disk.v2 base`); only `macos-monterey-vanilla` is usable. 12.7.6 (21H1320) is the final Monterey release; it ships SIP enabled, `admin`/`admin`, passwordless sudo, autologin and Finder, no Tart Guest Agent, 41 GB disk with 22 GB free. |
 | Clone identity | `tart clone` keeps the ECID (machine identity) for OCI→local and local→local clones; local clones get a new MAC. Cirrus guests report APFS `Encryption=true` with FileVault off, so Tart profiles allow encryption at rest (FileVault off and unlocked volumes are still required). Concurrent same-ECID clones are proven in live acceptance. |
 | Image construction | Packer 1.15.2 with `github.com/cirruslabs/tart` plugin pinned `= 1.21.0`. |
 | Xcode transport | Packer `file` provisioner uploads the cached, sha1-verified XIP over SSH; the guest checks sha1, Apple signature and version, then expands it. Same path for both profiles (Monterey has no VirtioFS). Disk grown to 120 GB by the plugin. |
