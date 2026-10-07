@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -103,6 +104,31 @@ func TestOrchardHostLimitsRequireExplicitReserve(t *testing.T) {
 		_, err := Load(path)
 		if (err == nil) != !strings.Contains(limit, `:0}`) {
 			t.Fatalf("limit %s: %v", limit, err)
+		}
+	}
+}
+
+func TestTartImageToolsRequireAbsolutePaths(t *testing.T) {
+	dir := t.TempDir()
+	base := `{"listen":"127.0.0.1:7780","state_dir":"/tmp/a","token_file":"/tmp/t","max_vms":2,"runtime":{"provider":"tart","tart":{"binary":"/opt/homebrew/bin/tart","host_id":"macbook","containers":[{"id":"samsung","path":"/Volumes/S/tart","kind":"external"}],"image":%s}},"templates":[]}`
+	for name, image := range map[string]string{
+		"valid":            `{"packer":"/opt/homebrew/bin/packer","xcode_archives":"/Users/a/cache/xcode"}`,
+		"relative packer":  `{"packer":"packer","xcode_archives":"/Users/a/cache/xcode"}`,
+		"missing archives": `{"packer":"/opt/homebrew/bin/packer"}`,
+	} {
+		path := filepath.Join(dir, name+".json")
+		if err := os.WriteFile(path, []byte(fmt.Sprintf(base, image)), 0600); err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := Load(path)
+		if name == "valid" {
+			if err != nil || cfg.Runtime.Tart.Image.Packer != "/opt/homebrew/bin/packer" {
+				t.Fatal(cfg, err)
+			}
+			continue
+		}
+		if err == nil {
+			t.Fatalf("%s accepted", name)
 		}
 	}
 }

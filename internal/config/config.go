@@ -53,12 +53,19 @@ type Tart struct {
 	DiskReserveBytes    int64                    `json:"disk_reserve_bytes,omitempty"`
 	Containers          []TartContainer          `json:"containers"`
 	RegistryCredentials []TartRegistryCredential `json:"registry_credentials,omitempty"`
+	Image               *TartImage               `json:"image,omitempty"`
 }
 
 type TartRegistryCredential struct {
 	Host      string `json:"host"`
 	Username  string `json:"username"`
 	TokenFile string `json:"token_file"`
+}
+
+// TartImage enables Tart image adoption. Paths are operator-owned host paths.
+type TartImage struct {
+	Packer        string `json:"packer"`
+	XcodeArchives string `json:"xcode_archives"`
 }
 
 type TartContainer struct {
@@ -248,6 +255,9 @@ func validateRuntime(c *Config) error {
 				return errors.New("tart registry credentials require a unique host, username and absolute token_file")
 			}
 			credentialHosts[credential.Host] = true
+		}
+		if t.Image != nil && (!filepath.IsAbs(t.Image.Packer) || !filepath.IsAbs(t.Image.XcodeArchives)) {
+			return errors.New("tart image requires absolute packer and xcode_archives paths")
 		}
 		if c.StoragePaths != nil {
 			return errors.New("tart containers replace legacy storage_paths")
