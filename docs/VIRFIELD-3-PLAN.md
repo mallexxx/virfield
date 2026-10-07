@@ -5,6 +5,21 @@ Linux VMs, interactive developers and automated workloads. It reuses the v2
 durability and guest-policy code, delegates virtualization to established
 runtimes, and keeps workload execution in Execution Broker.
 
+## Current delivery status — 2026-10-07
+
+The agreed first implementation stage is **local Tart + Orchard adoption**;
+the broader target architecture below remains aspirational. The current
+worktree has Tart and Orchard runtime adapters, host/storage observations,
+per-host capacity reporting and a Hosts/storage web view. `make check` passes
+on the current worktree. This is code-level progress, not live acceptance:
+there is no verified Cirrus image adoption, real Tart VM lifecycle run, or
+live Orchard pool run yet. One `virfieldd` still selects one runtime at a time.
+
+The tracked local branch is `codex/virfield-v3-stage1` at `8830ad9` with
+uncommitted changes. The current service on `127.0.0.1:7780` serves the v3 UI,
+but its exact source revision has not been established. See the Obsidian
+Virfield handoff for the live deployment paths and current dirty-file list.
+
 ## Outcome
 
 One client contract covers local and remote targets without hiding real
@@ -367,21 +382,23 @@ second workflow engine, second artifact store or custom overlay network.
 
 ## Delivery plan
 
-### Phase 1 — stabilize contracts and extract seams
+### Phase 1 — Tart and Orchard adoption (in progress)
 
 | Work | Reuse-first implementation |
 |---|---|
-| Add v3 domain objects and schema | Add migrations to the current store; preserve v1 tables and API projection |
-| Add durable device inventory | Persist hosts, storage containers and artifacts separately; mark unavailable with reasons instead of deleting on an inventory miss |
-| Split runtime, connection and power responsibilities | Adapt current `Backend` and tunnel code behind `RuntimeProvider`, `Connector` and optional `PowerController` interfaces |
-| Remove Lume assumptions | Parameterize guest user/home, provider/host capacity and error text; keep a `lume-legacy` adapter |
-| Establish compatibility tests | Run every current v1 HTTP/MCP/Broker contract against the refactored controller before adding a new runtime |
+| Keep the existing durable controller | Reuse SQLite, lease/job journal and lifecycle reconciliation; preserve v1 API and Broker compatibility |
+| Add runtime adapters | Tart local VM lifecycle and Orchard remote worker/VM lifecycle implement the shared provider seam |
+| Show host and storage state | Report configured hosts, containers, availability reasons, disk/RAM/CPU and VM-slot capacity in the web console |
+| Adopt a pinned upstream image | Pull a digest-pinned Cirrus Tart image, verify OS/Xcode, apply Virfield guest policy and publish a qualified derived golden |
+| Accept each runtime | Prove clone, boot, unique SSH identity, access, release and confirmed cleanup against real Tart; separately exercise Orchard pool and restart behavior |
+| Preserve legacy backend | Keep Lume as an explicit fallback during migration; do not run one VM through two runtimes |
 
-Exit gate: current Lume workflows and Broker smoke pass unchanged through the
-new interfaces; local and Samsung storage are separate durable groups; restart
-and uncertain-mutation tests retain their behavior.
+Exit gate: a pinned Cirrus-derived golden passes two disposable Tart clones;
+Orchard lifecycle has a separate passing acceptance run; current Lume workflows
+and Broker v1 smoke remain unchanged. Mixed provider routing is not part of this
+exit gate and must not be implied by a one-runtime-per-daemon configuration.
 
-### Phase 2 — hosts, access and Wake-on-LAN
+### Phase 2 — node-agent, physical hosts and access
 
 | Work | Reuse-first implementation |
 |---|---|
@@ -394,7 +411,7 @@ and uncertain-mutation tests retain their behavior.
 Exit gate: a sleeping Intel Mac is woken, reserved, reached by pinned SSH and
 desktop, used for a debug smoke, released and never assigned concurrently.
 
-### Phase 3 — image adoption and runtime providers
+### Phase 3 — additional VM providers and lab targets
 
 | Order | Provider slice and gate |
 |---|---|
@@ -435,18 +452,18 @@ operators can trace between those IDs from the Console.
 
 ## First implementation slice
 
-The minimum vertical slice is:
+The first accepted vertical slice is:
 
 ```text
-current virfieldd
-  + provider/connector/power interfaces
-  + one node-agent
-  + bare-metal Intel Mac lease with optional Wake-on-LAN
-  + existing SSH/LLDB flow through a connection grant
-  + unchanged Broker v1 compatibility
+existing virfieldd and durable lease controller
+  + local Tart provider
+  + one digest-pinned Cirrus macOS image
+  + Virfield image adoption and guest-policy qualification
+  + two disposable Tart clone / boot / SSH / release checks
+  + unchanged Lume and Broker v1 compatibility
 ```
 
-This proves host discovery, remote routing, power state and client transparency
-without waiting for a new image format. The next slice is `tart-local` with one
-pinned Ventura/Xcode 15.2 image. Orchard and libvirt follow only after the same
-contract passes on one host.
+Orchard is a parallel adapter slice and requires its own live pool acceptance;
+unit tests do not prove Orchard deployment readiness. After Tart adoption, add
+node-agent and bare-metal host access, then mixed-provider selection only when
+the controller can safely route a lease to the selected host/runtime.
