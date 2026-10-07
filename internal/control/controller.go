@@ -92,12 +92,17 @@ func New(s *store.Store, b Backend, templates []domain.Template, limit int, log 
 		if t.Arch != "arm64" && t.Arch != "amd64" {
 			return nil, fmt.Errorf("template %s has unsupported architecture", t.ID)
 		}
+		// Cirrus Tart images ship the admin account; the build recipe uses it.
+		tartImage := t.Image != nil && t.Image.Tart != nil
 		if t.GuestUser == "" {
-			if t.Source != "" {
+			if t.Source != "" || tartImage {
 				t.GuestUser = "admin"
 			} else {
 				t.GuestUser = "lume"
 			}
+		}
+		if tartImage && t.GuestUser != "admin" {
+			return nil, fmt.Errorf("template %s: Tart images use the Cirrus admin account", t.ID)
 		}
 		if !domain.ValidName(t.GuestUser) {
 			return nil, fmt.Errorf("template %s has invalid guest user", t.ID)

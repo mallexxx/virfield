@@ -301,6 +301,9 @@ func (c *Controller) ProvisionImage(ctx context.Context, id, key, name string) (
 	if !ok || t.Image == nil || t.Image.Provision == "" || t.Name != name || c.imageBuilder == nil {
 		return domain.Operation{}, domain.Err("invalid_profile", "Confirm the exact configured image with a provisioning recipe")
 	}
+	if t.Image.Tart != nil {
+		return domain.Operation{}, domain.Err("invalid_profile", "Tart images are rebuilt from their pinned recipe, not reprovisioned")
+	}
 	ls, err := c.store.Leases(ctx)
 	if err != nil {
 		return domain.Operation{}, err

@@ -3,11 +3,15 @@ package control
 import (
 	"context"
 	"errors"
+	"io"
+	"log/slog"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/mallexxx/virfield/internal/domain"
+	"github.com/mallexxx/virfield/internal/store"
 )
 
 type imageCleanupPreparer struct {
@@ -669,4 +673,54 @@ func TestTartQualifyFailureAllowsOnlyQualifyRetry(t *testing.T) {
 	if err != nil || l.State != "image_ready" {
 		t.Fatal(l.State, err)
 	}
+}
+
+func tartTemplate(user string) domain.Template {
+	p := domain.ImageProfile{Tart: &domain.TartSource{Upstream: "ghcr.io/cirruslabs/macos-ventura-base@sha256:" + strings.Repeat("a", 64)}, MacOS: "13.7.4", Build: "22H420", Security: "sip-disabled", DisableSIP: true, Provision: "developer-v1", Xcode: &domain.XcodeRelease{Version: "15.2", Build: "15C500b", Requires: "13.5", URL: "https://download.developer.apple.com/Developer_Tools/Xcode_15.2/Xcode_15.2.xip", SHA1: strings.Repeat("b", 40)}}
+	return domain.Template{ID: "ventura", Name: "ventura-golden", Location: "home", OS: "macOS", GuestUser: user, Image: &p}
+}
+
+func TestTartTemplatesUseTheCirrusAdminAccount(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	c, err := New(s, newBackend(), []domain.Template{tartTemplate("")}, 2, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := c.templates["ventura"]; got.GuestUser != "admin" || got.GuestHome != "/Users/admin" {
+		t.Fatal(got.GuestUser, got.GuestHome)
+	}
+	if _, err := New(s, newBackend(), []domain.Template{tartTemplate("lume")}, 2, logger); err == nil {
+		t.Fatal("accepted a Tart template with a non-Cirrus account")
+	}
+}
+
+func TestTartImagesAreNotReprovisioned(t *testing.T) {
+	c, _ := tartImageController(t)
+	if _, err := c.BuildImage(context.Background(), "test", "tart-provision-build"); err != nil {
+		t.Fatal(err)
+	}
+	for range 10 {
+		tick(t, c)
+	}
+	_, err := c.ProvisionImage(context.Background(), "test", "tart-provision", "golden")
+	code(t, err, "invalid_profile")
+}
+
+func TestTartBuildFailureCannotBeRetried(t *testing.T) {
+	c, b := tartImageController(t)
+	b.fail = "build"
+	op, err := c.BuildImage(context.Background(), "test", "tart-build-fail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 6 {
+		tick(t, c)
+	}
+	_, err = c.RecoverImage(context.Background(), op.Lease.ID, "tart-retry-build", "golden", "retry", true)
+	code(t, err, "unsafe_retry")
 }
