@@ -69,6 +69,11 @@ code inside a guest. Only Lume VM formats are supported, not arbitrary OCI/Tart
 packages. Current disk limit is 512 GiB; allow space for compressed cache and
 expanded disk. The pinned Lume decoder is not an untrusted-input sandbox.
 
+With `runtime.provider = "tart"`, leases use the same per-lease SSH isolation
+as Lume. A Tart template therefore needs a verified image profile and every
+acquire needs a fresh `ssh_public_key`; a bare digest-pinned `source` template
+without a qualified image record is rejected with `ssh_profile_missing`.
+
 Use MCP's workflows topic for arguments and completion criteria. CLI equivalents:
 
 ```sh

@@ -193,7 +193,9 @@ func run() error {
 	if cfg.ResourceLimits != nil && !remoteRuntime {
 		manager.SetResources(*cfg.ResourceLimits, func() (map[string]int64, error) { return hostresources.Disk(cfg.StoragePaths) })
 	}
-	if lumeBackend != nil {
+	// Every local runtime hands out leases only after per-lease credential
+	// isolation; Orchard leases are isolated by the Orchard worker path later.
+	if !remoteRuntime {
 		manager.SetLeasePreparer(&guestssh.Manager{Dir: cfg.StateDir})
 	}
 	registryClient, err := registry.New(cfg.Registries)
