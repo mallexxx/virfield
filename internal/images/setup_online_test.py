@@ -117,6 +117,7 @@ class OnlineSetupTests(unittest.TestCase):
             ('A dialog never seen before Continue', 'unknown'),
             ('Creating your account', 'busy'),
             ('Create a Computer Account Full name Creating account...', 'busy'),
+            ('Язык English English (UK) English (Australia) English (India)', 'language'),
         ]:
             with self.subTest(text=text):
                 self.assertEqual(setup_online.classify(text), expected)

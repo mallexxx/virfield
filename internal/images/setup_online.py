@@ -64,7 +64,7 @@ def classify(text):
         return 'login'
     if ('finder' in t and 'file' in t and 'edit' in t) or ('terminal' in t and 'shell' in t and 'edit' in t):
         return 'desktop'
-    if 'language' in t and 'english' in t:
+    if ('language' in t and 'english' in t) or all(x in t for x in ('englishuk', 'englishaustralia', 'englishindia')):
         return 'language'
     return 'boot' if not t else 'unknown'
 
@@ -447,14 +447,21 @@ def run():
                 client.mouseUp(1)
             elif action == 'language':
                 tap('English', first=True)
-                arrow = language_button(frame)
-                if arrow is None:
-                    raise RuntimeError('Language continue arrow not recognized')
-                client.mouseMove(*arrow)
-                time.sleep(0.1)
-                client.mouseDown(1)
-                time.sleep(0.1)
-                client.mouseUp(1)
+                if frame.size == (1920, 1080):
+                    # Ventura's native language picker places the continue
+                    # button partly below this framebuffer. Enter activates the
+                    # selected row's default action without a blind click.
+                    time.sleep(0.5)
+                    client.keyPress('enter')
+                else:
+                    arrow = language_button(frame)
+                    if arrow is None:
+                        raise RuntimeError('Language continue arrow not recognized')
+                    client.mouseMove(*arrow)
+                    time.sleep(0.1)
+                    client.mouseDown(1)
+                    time.sleep(0.1)
+                    client.mouseUp(1)
             elif action == 'region':
                 if tap('United States', optional=True):
                     tap('Continue')
