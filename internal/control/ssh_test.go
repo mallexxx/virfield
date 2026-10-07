@@ -148,3 +148,37 @@ func TestSSHExpiryDoesNotPublishReady(t *testing.T) {
 		t.Fatal("expired lease became ready", err)
 	}
 }
+
+func TestPreparedLeaseCarriesTemplateGuestUser(t *testing.T) {
+	c, _ := imageController(t)
+	tmpl := c.templates["test"]
+	tmpl.GuestUser, tmpl.GuestHome = "admin", "/Users/admin"
+	c.templates["test"] = tmpl
+	ctx := context.Background()
+	if _, err := c.BuildImage(ctx, "test", "guest-user-build"); err != nil {
+		t.Fatal(err)
+	}
+	for range 8 {
+		tick(t, c)
+	}
+	p := &blockingPreparer{started: make(chan domain.Lease, 1), finish: make(chan struct{})}
+	c.SetLeasePreparer(p)
+	r := domain.AcquireRequest{Template: "test", TTLSeconds: 3600, SSHPublicKey: testPublicKey(t)}
+	if _, err := c.Acquire(ctx, "guest-user-acquire", r); err != nil {
+		t.Fatal(err)
+	}
+	tick(t, c)
+	tick(t, c)
+	if err := c.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case l := <-p.started:
+		if l.GuestUser != "admin" {
+			t.Fatalf("prepared lease guest user = %q", l.GuestUser)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("SSH worker not started")
+	}
+	close(p.finish)
+}

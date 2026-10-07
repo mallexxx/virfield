@@ -55,7 +55,7 @@ func (c *Controller) buildImageLocked(ctx context.Context, t domain.Template, ke
 		}
 	}
 	now := c.now()
-	l := domain.Lease{ID: domain.NewID("image-"), Purpose: "image", Template: t.ID, VMName: t.Name, Location: t.Location, LegacyUUID: t.LegacyUUID, State: "image_building", CreatedAt: now, UpdatedAt: now}
+	l := domain.Lease{ID: domain.NewID("image-"), Purpose: "image", Template: t.ID, VMName: t.Name, Location: t.Location, LegacyUUID: t.LegacyUUID, GuestUser: t.GuestUser, GuestHome: t.GuestHome, State: "image_building", CreatedAt: now, UpdatedAt: now}
 	profile := *t.Image
 	j := domain.Job{ID: domain.NewID("job-"), LeaseID: l.ID, Kind: "image_build", Image: &profile, Phase: "queued", State: "queued", CreatedAt: now, UpdatedAt: now, Deadline: now.Add(10 * time.Hour)}
 	save := func() error {

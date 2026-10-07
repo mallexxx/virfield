@@ -106,7 +106,7 @@ func (c *Controller) PublishImage(ctx context.Context, r domain.ImagePublishRequ
 	}
 	now := c.now()
 	id := domain.NewID("image-")
-	l := domain.Lease{ID: id, Purpose: "image", Portable: true, Template: t.ID, VMName: "vf-export-" + id[6:], Location: t.Location, State: "image_building", Source: &t, CreatedAt: now, UpdatedAt: now}
+	l := domain.Lease{ID: id, Purpose: "image", Portable: true, Template: t.ID, VMName: "vf-export-" + id[6:], Location: t.Location, GuestUser: t.GuestUser, GuestHome: t.GuestHome, State: "image_building", Source: &t, CreatedAt: now, UpdatedAt: now}
 	j := domain.Job{ID: domain.NewID("job-"), LeaseID: id, Kind: "image_build", Image: &p, Export: &domain.RegistryExport{Source: r.Source, Organization: organization, Repository: r.Repository, Tag: r.Tag}, Phase: "queued", State: "queued", Deadline: now.Add(8 * time.Hour), CreatedAt: now, UpdatedAt: now}
 	if err := c.store.Save(ctx, l, &j, key, fp, "image.publish_accepted", "Portable rebuild accepted; original VM disk and private credentials will not be uploaded"); err != nil {
 		return domain.Operation{}, err

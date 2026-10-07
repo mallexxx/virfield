@@ -603,3 +603,17 @@ func TestOnlineSetupRecoveryDoesNotRepeatCreate(t *testing.T) {
 		t.Fatal("replayed restore", b.steps)
 	}
 }
+
+func TestImageRecordCarriesTemplateGuestUser(t *testing.T) {
+	c, _ := imageController(t)
+	tmpl := c.templates["test"]
+	tmpl.GuestUser, tmpl.GuestHome = "admin", "/Users/admin"
+	c.templates["test"] = tmpl
+	op, err := c.BuildImage(context.Background(), "test", "image-guest-user")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if op.Lease.GuestUser != "admin" || op.Lease.GuestHome != "/Users/admin" {
+		t.Fatalf("image record guest = %q %q", op.Lease.GuestUser, op.Lease.GuestHome)
+	}
+}
