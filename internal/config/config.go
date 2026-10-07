@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -16,6 +17,7 @@ import (
 )
 
 type Config struct {
+	Runtime                *Runtime                `json:"runtime,omitempty"`
 	AllowedHosts           []string                `json:"allowed_hosts,omitempty"`
 	FallbackCloneLocations []string                `json:"fallback_clone_locations,omitempty"`
 	Principals             []Principal             `json:"principals,omitempty"`
@@ -30,6 +32,55 @@ type Config struct {
 	TokenFile              string                  `json:"token_file"`
 	MaxVMs                 int                     `json:"max_vms"`
 	Templates              []domain.Template       `json:"templates"`
+}
+
+// Runtime selects one infrastructure authority for this virfieldd instance.
+// Orchard may fan out to many remote workers; Tart manages this Mac directly.
+// A missing runtime preserves the v2 Lume configuration.
+type Runtime struct {
+	Provider string   `json:"provider"`
+	Tart     *Tart    `json:"tart,omitempty"`
+	Orchard  *Orchard `json:"orchard,omitempty"`
+}
+
+type Tart struct {
+	Binary             string          `json:"binary"`
+	HostID             string          `json:"host_id"`
+	HostName           string          `json:"host_name,omitempty"`
+	MaxVMs             int             `json:"max_vms,omitempty"`
+	CPULimit           int             `json:"cpu_limit,omitempty"`
+	MemoryReserveBytes int64           `json:"memory_reserve_bytes,omitempty"`
+	DiskReserveBytes   int64           `json:"disk_reserve_bytes,omitempty"`
+	Containers         []TartContainer `json:"containers"`
+}
+
+type TartContainer struct {
+	ID         string `json:"id"`
+	Path       string `json:"path"`
+	Kind       string `json:"kind"`
+	VolumeUUID string `json:"volume_uuid,omitempty"`
+}
+
+type Orchard struct {
+	URL                       string               `json:"url"`
+	ServiceAccount            string               `json:"service_account"`
+	TokenFile                 string               `json:"token_file"`
+	PoolID                    string               `json:"pool_id"`
+	WorkerLabels              map[string]string    `json:"worker_labels,omitempty"`
+	HostLimits                map[string]HostLimit `json:"host_limits,omitempty"`
+	MaxVMs                    int                  `json:"max_vms,omitempty"`
+	WorkerOfflineAfterSeconds int                  `json:"worker_offline_after_seconds,omitempty"`
+}
+
+type HostLimit struct {
+	MaxVMs             int        `json:"max_vms"`
+	MemoryReserveBytes int64      `json:"memory_reserve_bytes"`
+	WakeOnLAN          *WakeOnLAN `json:"wake_on_lan,omitempty"`
+}
+
+type WakeOnLAN struct {
+	MACAddress       string `json:"mac_address"`
+	BroadcastAddress string `json:"broadcast_address"`
 }
 
 type Principal struct {
@@ -65,8 +116,11 @@ func Load(path string) (Config, error) {
 	if !filepath.IsAbs(c.StateDir) || !filepath.IsAbs(c.TokenFile) {
 		return c, errors.New("state_dir and token_file must be absolute paths")
 	}
-	if c.MaxVMs < 1 || c.MaxVMs > 2 {
-		return c, errors.New("max_vms must be 1 or 2")
+	if c.MaxVMs < 1 || c.MaxVMs > domain.MaxVMs {
+		return c, fmt.Errorf("max_vms must be between 1 and %d", domain.MaxVMs)
+	}
+	if err := validateRuntime(&c); err != nil {
+		return c, err
 	}
 	for _, allowed := range c.AllowedHosts {
 		host, port, err := net.SplitHostPort(allowed)
@@ -124,6 +178,123 @@ func Load(path string) (Config, error) {
 		seenRegistries[source.ID] = true
 	}
 	return c, nil
+}
+
+func validateRuntime(c *Config) error {
+	if c.Runtime == nil {
+		return nil
+	}
+	switch c.Runtime.Provider {
+	case "tart":
+		if c.Runtime.Tart == nil || c.Runtime.Orchard != nil {
+			return errors.New("runtime tart requires only the tart configuration")
+		}
+		t := c.Runtime.Tart
+		if c.ResourceLimits != nil {
+			return errors.New("runtime-specific host limits replace legacy resource_limits")
+		}
+		if !filepath.IsAbs(t.Binary) || !domain.ValidName(t.HostID) || len(t.Containers) == 0 {
+			return errors.New("tart runtime requires an absolute binary, host_id and containers")
+		}
+		if t.HostName == "" {
+			t.HostName = t.HostID
+		}
+		if t.MaxVMs == 0 {
+			t.MaxVMs = c.MaxVMs
+		}
+		if t.CPULimit < 0 {
+			return errors.New("tart cpu_limit must be positive when configured")
+		}
+		if t.MemoryReserveBytes == 0 {
+			t.MemoryReserveBytes = 4 << 30
+		}
+		if t.MemoryReserveBytes < 1 {
+			return errors.New("tart memory_reserve_bytes must be positive")
+		}
+		if t.DiskReserveBytes == 0 {
+			t.DiskReserveBytes = 20 << 30
+		}
+		if t.DiskReserveBytes < 1 {
+			return errors.New("tart disk_reserve_bytes must be positive")
+		}
+		if t.MaxVMs < 1 || t.MaxVMs > domain.MaxVMs {
+			return errors.New("tart max_vms is out of range")
+		}
+		seen := map[string]bool{}
+		paths := make(map[string]string, len(t.Containers))
+		for _, container := range t.Containers {
+			if !domain.ValidName(container.ID) || seen[container.ID] || !filepath.IsAbs(container.Path) {
+				return errors.New("tart containers require unique IDs and absolute paths")
+			}
+			if container.Kind != "local" && container.Kind != "external" {
+				return errors.New("tart container kind must be local or external")
+			}
+			if container.VolumeUUID != "" && !domain.ValidUUID(container.VolumeUUID) {
+				return errors.New("tart container volume_uuid must be a UUID")
+			}
+			seen[container.ID] = true
+			paths[container.ID] = container.Path
+		}
+		if c.StoragePaths != nil {
+			return errors.New("tart containers replace legacy storage_paths")
+		}
+		c.StoragePaths = paths
+	case "orchard":
+		if c.Runtime.Orchard == nil || c.Runtime.Tart != nil {
+			return errors.New("runtime orchard requires only the orchard configuration")
+		}
+		o := c.Runtime.Orchard
+		if c.ResourceLimits != nil {
+			return errors.New("runtime-specific host limits replace legacy resource_limits")
+		}
+		u, err := url.Parse(o.URL)
+		if err != nil || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
+			return errors.New("orchard url must be an http(s) origin")
+		}
+		if u.Scheme != "https" {
+			ip := net.ParseIP(u.Hostname())
+			if u.Scheme != "http" || u.Hostname() != "localhost" && (ip == nil || !ip.IsLoopback()) {
+				return errors.New("remote orchard url must use HTTPS")
+			}
+		}
+		if !domain.ValidName(o.ServiceAccount) || !filepath.IsAbs(o.TokenFile) || !domain.ValidName(o.PoolID) {
+			return errors.New("orchard requires service_account, absolute token_file and pool_id")
+		}
+		for key, value := range o.WorkerLabels {
+			if !domain.ValidName(key) || !domain.ValidName(value) {
+				return errors.New("orchard worker_labels must use valid names")
+			}
+		}
+		for hostID, limit := range o.HostLimits {
+			if !domain.ValidName(hostID) || limit.MaxVMs < 1 || limit.MaxVMs > domain.MaxVMs || limit.MemoryReserveBytes < 1 {
+				return errors.New("orchard host_limits require a valid host, max_vms and memory_reserve_bytes")
+			}
+			if limit.WakeOnLAN != nil {
+				mac, macErr := net.ParseMAC(limit.WakeOnLAN.MACAddress)
+				host, port, addressErr := net.SplitHostPort(limit.WakeOnLAN.BroadcastAddress)
+				portNumber, portErr := strconv.Atoi(port)
+				ip := net.ParseIP(host)
+				if macErr != nil || len(mac) != 6 || addressErr != nil || portErr != nil || portNumber < 1 || portNumber > 65535 || ip == nil || ip.To4() == nil {
+					return errors.New("wake_on_lan requires a six-byte MAC and IPv4 broadcast host:port")
+				}
+			}
+		}
+		if o.MaxVMs == 0 {
+			o.MaxVMs = c.MaxVMs
+		}
+		if o.MaxVMs < 1 || o.MaxVMs > domain.MaxVMs {
+			return errors.New("orchard max_vms is out of range")
+		}
+		if o.WorkerOfflineAfterSeconds == 0 {
+			o.WorkerOfflineAfterSeconds = 30
+		}
+		if o.WorkerOfflineAfterSeconds < 5 || o.WorkerOfflineAfterSeconds > 3600 {
+			return errors.New("orchard worker_offline_after_seconds must be between 5 and 3600")
+		}
+	default:
+		return errors.New("runtime provider must be tart or orchard")
+	}
+	return nil
 }
 func Token(path string) (string, error) {
 	st, err := os.Stat(path)

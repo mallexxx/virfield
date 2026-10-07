@@ -30,8 +30,11 @@ import (
 	"github.com/mallexxx/virfield/internal/logging"
 	"github.com/mallexxx/virfield/internal/lume"
 	"github.com/mallexxx/virfield/internal/mcpadapter"
+	"github.com/mallexxx/virfield/internal/orchard"
+	"github.com/mallexxx/virfield/internal/provider"
 	"github.com/mallexxx/virfield/internal/registry"
 	"github.com/mallexxx/virfield/internal/store"
+	"github.com/mallexxx/virfield/internal/tart"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -107,7 +110,33 @@ func run() error {
 		return err
 	}
 	defer db.Close()
-	backend, err := lume.New(cfg.LumeURL)
+	var backend provider.Runtime
+	var lumeBackend *lume.Client
+	switch {
+	case cfg.Runtime == nil:
+		lumeBackend, err = lume.New(cfg.LumeURL)
+		backend = lumeBackend
+	case cfg.Runtime.Provider == "tart":
+		containers := make([]tart.ContainerConfig, 0, len(cfg.Runtime.Tart.Containers))
+		for _, container := range cfg.Runtime.Tart.Containers {
+			containers = append(containers, tart.ContainerConfig{ID: container.ID, Path: container.Path, Kind: container.Kind, VolumeUUID: container.VolumeUUID})
+		}
+		backend, err = tart.New(tart.Config{Binary: cfg.Runtime.Tart.Binary, HostID: cfg.Runtime.Tart.HostID, HostName: cfg.Runtime.Tart.HostName, MaxVMs: cfg.Runtime.Tart.MaxVMs, CPULimit: cfg.Runtime.Tart.CPULimit, MemoryReserveBytes: cfg.Runtime.Tart.MemoryReserveBytes, Containers: containers})
+	case cfg.Runtime.Provider == "orchard":
+		orchardToken, tokenErr := config.Token(cfg.Runtime.Orchard.TokenFile)
+		if tokenErr != nil {
+			return tokenErr
+		}
+		hostLimits := make(map[string]orchard.HostLimit, len(cfg.Runtime.Orchard.HostLimits))
+		for hostID, limit := range cfg.Runtime.Orchard.HostLimits {
+			converted := orchard.HostLimit{MaxVMs: limit.MaxVMs, MemoryReserveBytes: limit.MemoryReserveBytes}
+			if limit.WakeOnLAN != nil {
+				converted.WakeOnLAN = &orchard.WakeOnLAN{MACAddress: limit.WakeOnLAN.MACAddress, BroadcastAddress: limit.WakeOnLAN.BroadcastAddress}
+			}
+			hostLimits[hostID] = converted
+		}
+		backend, err = orchard.New(orchard.Config{URL: cfg.Runtime.Orchard.URL, ServiceAccount: cfg.Runtime.Orchard.ServiceAccount, Token: orchardToken, PoolID: cfg.Runtime.Orchard.PoolID, WorkerLabels: cfg.Runtime.Orchard.WorkerLabels, HostLimits: hostLimits, MaxVMs: cfg.Runtime.Orchard.MaxVMs, WorkerOfflineAfterSeconds: cfg.Runtime.Orchard.WorkerOfflineAfterSeconds})
+	}
 	if err != nil {
 		return err
 	}
@@ -115,26 +144,50 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	if cfg.ResourceLimits == nil {
+	remoteRuntime := cfg.Runtime != nil && cfg.Runtime.Provider == "orchard"
+	if cfg.ResourceLimits == nil && cfg.Runtime != nil && cfg.Runtime.Provider == "tart" {
+		memory, err := hostresources.Memory()
+		if err != nil {
+			return err
+		}
+		cpu := cfg.Runtime.Tart.CPULimit
+		if cpu == 0 {
+			cpu = runtime.NumCPU()
+		}
+		if memory <= cfg.Runtime.Tart.MemoryReserveBytes {
+			return errors.New("tart memory reserve leaves no allocatable RAM")
+		}
+		cfg.ResourceLimits = &domain.ResourceLimits{CPU: cpu, MemoryBytes: memory - cfg.Runtime.Tart.MemoryReserveBytes, DiskReserveBytes: cfg.Runtime.Tart.DiskReserveBytes}
+	} else if cfg.ResourceLimits == nil && !remoteRuntime {
 		memory, err := hostresources.Memory()
 		if err != nil {
 			return err
 		}
 		cfg.ResourceLimits = &domain.ResourceLimits{CPU: max(1, runtime.NumCPU()*3/4), MemoryBytes: memory * 3 / 4, DiskReserveBytes: 20 << 30}
 	}
-	if cfg.StoragePaths == nil {
+	if cfg.StoragePaths == nil && cfg.Runtime == nil {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return err
 		}
 		cfg.StoragePaths = map[string]string{"home": filepath.Join(home, ".lume")}
 	}
-	backend.StoragePaths = cfg.StoragePaths
-	if err := manager.SetCloneLocations(cfg.StoragePaths, cfg.DefaultCloneLocation, cfg.FallbackCloneLocations); err != nil {
+	if lumeBackend != nil {
+		lumeBackend.StoragePaths = cfg.StoragePaths
+	}
+	cloneLocations := cfg.StoragePaths
+	if remoteRuntime {
+		cloneLocations = map[string]string{cfg.Runtime.Orchard.PoolID: "remote"}
+	}
+	if err := manager.SetCloneLocations(cloneLocations, cfg.DefaultCloneLocation, cfg.FallbackCloneLocations); err != nil {
 		return err
 	}
-	manager.SetResources(*cfg.ResourceLimits, func() (map[string]int64, error) { return hostresources.Disk(cfg.StoragePaths) })
-	manager.SetLeasePreparer(&guestssh.Manager{Dir: cfg.StateDir})
+	if cfg.ResourceLimits != nil && !remoteRuntime {
+		manager.SetResources(*cfg.ResourceLimits, func() (map[string]int64, error) { return hostresources.Disk(cfg.StoragePaths) })
+	}
+	if lumeBackend != nil {
+		manager.SetLeasePreparer(&guestssh.Manager{Dir: cfg.StateDir})
+	}
 	registryClient, err := registry.New(cfg.Registries)
 	if err != nil {
 		return err
@@ -142,7 +195,10 @@ func run() error {
 	manager.SetRegistry(registryClient)
 	var appleService *appleauth.Service
 	if cfg.ImageTools != nil {
-		builder, err := images.New(cfg.StateDir, backend, *cfg.ImageTools)
+		if lumeBackend == nil {
+			return errors.New("legacy image_tools are only supported by the lume runtime; Tart uses digest-pinned OCI images")
+		}
+		builder, err := images.New(cfg.StateDir, lumeBackend, *cfg.ImageTools)
 		if err != nil {
 			return err
 		}

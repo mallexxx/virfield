@@ -85,9 +85,13 @@ func WriteVSCodeConfigs(workspace string, targets []VSCodeTarget) (VSCodeFiles, 
 			return VSCodeFiles{}, err
 		}
 		port := 43000 + int(crc32.ChecksumIEEE([]byte(target.Lease.ID))%1000)
+		guestHome := target.Lease.GuestHome
+		if guestHome == "" {
+			guestHome = "/Users/lume"
+		}
 		resolved = append(resolved, resolvedVSCodeTarget{
 			lease: target.Lease, sshConfig: sshConfig,
-			remote: "/Users/lume/workspace/" + project,
+			remote: guestHome + "/workspace/" + project,
 			port:   port, systemSymbols: deviceSupportForLease(home, target.Lease, port),
 		})
 	}

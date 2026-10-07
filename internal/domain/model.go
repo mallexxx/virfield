@@ -10,7 +10,9 @@ import (
 	"time"
 )
 
-const MaxVMs = 2
+// MaxVMs bounds configuration mistakes. Each provider reports the lower,
+// actually usable capacity for its current hosts.
+const MaxVMs = 1024
 
 // Error is a safe, machine-readable failure returned to API clients.
 type Error struct {
@@ -40,10 +42,17 @@ func NewID(prefix string) string {
 // Template is operator-configured or catalog-resolved into an approved storage
 // location. A caller never supplies a host filesystem path.
 type Template struct {
-	Image    *ImageProfile `json:"image,omitempty"`
-	ID       string        `json:"id"`
-	Name     string        `json:"name"`
-	Location string        `json:"location"`
+	Image     *ImageProfile `json:"image,omitempty"`
+	Resources Resources     `json:"resources,omitempty"`
+	ID        string        `json:"id"`
+	Name      string        `json:"name"`
+	Location  string        `json:"location"`
+	Provider  string        `json:"provider,omitempty"`
+	Source    string        `json:"source,omitempty"`
+	OS        string        `json:"os,omitempty"`
+	Arch      string        `json:"arch,omitempty"`
+	GuestUser string        `json:"guest_user,omitempty"`
+	GuestHome string        `json:"guest_home,omitempty"`
 	// LegacyUUID marks an identity-preserving legacy macOS template. Clones of
 	// the same VM UUID are mutually exclusive because the encrypted guest disk is
 	// bound to that preserved identity.
@@ -87,6 +96,9 @@ type Lease struct {
 	VMName                  string         `json:"vm_name"`
 	Location                string         `json:"location"`
 	Template                string         `json:"template"`
+	Provider                string         `json:"provider,omitempty"`
+	GuestUser               string         `json:"guest_user,omitempty"`
+	GuestHome               string         `json:"guest_home,omitempty"`
 	State                   string         `json:"state"`
 	CloneConfirmed          bool           `json:"clone_confirmed"`
 	StartPending            bool           `json:"start_pending"`
@@ -130,24 +142,32 @@ type Operation struct {
 
 // VM is an observation, never an instruction or an ownership claim.
 type VM struct {
-	Resources    Resources `json:"resources"`
-	Name         string    `json:"name"`
-	Location     string    `json:"location"`
-	OS           string    `json:"os"`
-	State        string    `json:"state"`
-	IP           string    `json:"ip,omitempty"`
-	SSHAvailable bool      `json:"ssh_available"`
+	Resources         Resources `json:"resources"`
+	Name              string    `json:"name"`
+	Location          string    `json:"location"`
+	Provider          string    `json:"provider,omitempty"`
+	HostID            string    `json:"host_id,omitempty"`
+	ContainerID       string    `json:"container_id,omitempty"`
+	OS                string    `json:"os"`
+	State             string    `json:"state"`
+	IP                string    `json:"ip,omitempty"`
+	UnavailableReason string    `json:"unavailable_reason,omitempty"`
+	LastSeenAt        time.Time `json:"last_seen_at,omitempty"`
+	SSHAvailable      bool      `json:"ssh_available"`
 }
 
 func (v VM) Key() string    { return v.Location + "/" + v.Name }
 func (l Lease) Key() string { return l.Location + "/" + l.VMName }
 
 type Observation struct {
-	VMs      []VM      `json:"vms"`
-	HostUsed int       `json:"host_used"`
-	HostMax  int       `json:"host_max"`
-	At       time.Time `json:"at"`
-	Error    *Error    `json:"error,omitempty"`
+	VMs               []VM               `json:"vms"`
+	Hosts             []Host             `json:"hosts,omitempty"`
+	StorageContainers []StorageContainer `json:"storage_containers,omitempty"`
+	Provider          string             `json:"provider,omitempty"`
+	HostUsed          int                `json:"host_used"`
+	HostMax           int                `json:"host_max"`
+	At                time.Time          `json:"at"`
+	Error             *Error             `json:"error,omitempty"`
 }
 type Capacity struct {
 	Limit     int      `json:"limit"`
@@ -157,17 +177,63 @@ type Capacity struct {
 }
 
 func (c Capacity) FullError() *Error {
-	return Err("capacity_exhausted", fmt.Sprintf("Cannot run more than %d macOS VMs: %d/%d slots occupied or reserved. Release a lease or stop an external VM; queued execution belongs to Broker.", c.Limit, c.Used, c.Limit))
+	return Err("capacity_exhausted", fmt.Sprintf("Cannot run more than %d targets: %d/%d slots occupied or reserved. Release a lease or stop an external target; queued execution belongs to Broker.", c.Limit, c.Used, c.Limit))
 }
 
 type Status struct {
-	Resources         *ResourceStatus    `json:"resources,omitempty"`
-	ImageReservations []ImageReservation `json:"image_reservations,omitempty"`
-	Capacity          Capacity           `json:"capacity"`
-	Observation       Observation        `json:"observation"`
-	Leases            []Lease            `json:"leases"`
-	Jobs              []Job              `json:"jobs"`
-	Templates         []Template         `json:"templates"`
+	Resources            *ResourceStatus        `json:"resources,omitempty"`
+	ImageReservations    []ImageReservation     `json:"image_reservations,omitempty"`
+	Capacity             Capacity               `json:"capacity"`
+	Observation          Observation            `json:"observation"`
+	Leases               []Lease                `json:"leases"`
+	Jobs                 []Job                  `json:"jobs"`
+	Templates            []Template             `json:"templates"`
+	TemplateAvailability []TemplateAvailability `json:"template_availability,omitempty"`
+}
+
+type Host struct {
+	ID                string       `json:"id"`
+	Name              string       `json:"name"`
+	Provider          string       `json:"provider"`
+	OS                string       `json:"os"`
+	Arch              string       `json:"arch"`
+	Availability      string       `json:"availability"`
+	UnavailableReason string       `json:"unavailable_reason,omitempty"`
+	LastSeenAt        time.Time    `json:"last_seen_at,omitempty"`
+	WakeOnLAN         bool         `json:"wake_on_lan,omitempty"`
+	Capacity          HostCapacity `json:"capacity"`
+}
+
+type HostCapacity struct {
+	Total              Resources `json:"total"`
+	Allocatable        Resources `json:"allocatable"`
+	Allocated          Resources `json:"allocated"`
+	Available          Resources `json:"available"`
+	MemoryReserveBytes int64     `json:"memory_reserve_bytes"`
+	MaxVMs             int       `json:"max_vms"`
+	UsedVMs            int       `json:"used_vms"`
+}
+
+type StorageContainer struct {
+	ID                string    `json:"id"`
+	PoolID            string    `json:"pool_id,omitempty"`
+	HostID            string    `json:"host_id"`
+	Provider          string    `json:"provider"`
+	Kind              string    `json:"kind"`
+	Path              string    `json:"path,omitempty"`
+	DeviceIdentity    string    `json:"device_identity,omitempty"`
+	Availability      string    `json:"availability"`
+	UnavailableReason string    `json:"unavailable_reason,omitempty"`
+	CapacityBytes     int64     `json:"capacity_bytes,omitempty"`
+	AvailableBytes    int64     `json:"available_bytes,omitempty"`
+	LastSeenAt        time.Time `json:"last_seen_at,omitempty"`
+}
+
+type TemplateAvailability struct {
+	TemplateID        string `json:"template_id"`
+	ContainerID       string `json:"container_id"`
+	Availability      string `json:"availability"`
+	UnavailableReason string `json:"unavailable_reason,omitempty"`
 }
 
 // Deadline is the job's failure limit, not a predicted completion time.

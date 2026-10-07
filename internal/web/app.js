@@ -14,6 +14,40 @@ async function api(path, method = 'GET', body, key) {
 }
 function text(tag, value) { const node = document.createElement(tag); node.textContent = value; return node; }
 function report(err) { pollError = ''; el('error').textContent = err.message; }
+function gib(bytes) { return (Number(bytes || 0) / 2**30).toFixed(1); }
+function availability(value, reason) { return reason ? `${value} · ${reason.replaceAll('_', ' ')}` : value; }
+function renderDevices(state) {
+  const hosts = state.observation.hosts || [];
+  const containers = state.observation.storage_containers || [];
+  const vms = state.observation.vms || [];
+  const templateStates = new Map((state.template_availability || []).map(item => [item.template_id, item]));
+  el('devices').replaceChildren(...hosts.map(host => {
+    const row = document.createElement('article');
+    row.className = 'device';
+    row.append(text('h3', host.name || host.id), text('p', `${host.os} ${host.arch || ''} · ${availability(host.availability, host.unavailable_reason)}`));
+    const capacity = host.capacity || {};
+    if (capacity.max_vms) row.append(text('p', `VMs ${capacity.used_vms}/${capacity.max_vms} · RAM ${gib(capacity.allocated?.memory_bytes)}/${gib(capacity.allocatable?.memory_bytes)} GiB · host reserve ${gib(capacity.memory_reserve_bytes)} GiB`));
+    if (host.wake_on_lan && host.availability !== 'available') {
+      const wake = text('button', 'Wake host');
+      wake.addEventListener('click', async () => { try { wake.disabled = true; await api('hosts/' + encodeURIComponent(host.id) + '/wake', 'POST'); } catch (err) { report(err); wake.disabled = false; } });
+      row.append(wake);
+    }
+    for (const container of containers.filter(item => item.host_id === host.id)) {
+      const group = document.createElement('div');
+      group.className = 'container';
+      group.append(text('h4', `${container.id} · ${container.kind}`), text('p', availability(container.availability, container.unavailable_reason)));
+      if (container.capacity_bytes) group.append(text('p', `${gib(container.available_bytes)} / ${gib(container.capacity_bytes)} GiB free`));
+      for (const vm of vms.filter(item => item.container_id === container.id)) group.append(text('code', `${vm.name} · ${vm.state}`));
+      for (const template of state.templates.filter(item => item.location === container.id || container.pool_id === item.location)) {
+        const current = templateStates.get(template.id);
+        group.append(text('code', `image ${template.id} · ${availability(current?.availability || 'unknown', current?.unavailable_reason)}`));
+      }
+      row.append(group);
+    }
+    return row;
+  }));
+  if (!hosts.length) el('devices').append(text('p', 'No hosts reported by the selected runtime.'));
+}
 function refresh() {
   // Polls and action callbacks share one refresh so event cursors cannot race.
   return refreshInFlight ||= refreshState().finally(() => {refreshInFlight = null;});
@@ -24,14 +58,16 @@ async function refreshState() {
     if (!state.leases.some(l => l.id === id && l.state === 'ready')) tunnelAddresses.delete(id);
   }
   el('capacity').textContent = `${state.capacity.used} / ${state.capacity.limit} slots occupied or reserved`;
-  el('connection').textContent = state.observation.error ? 'Lume unavailable' : 'Connected';
+  el('connection').textContent = state.observation.error ? 'Runtime unavailable' : `Connected · ${state.observation.provider || 'legacy'}`;
   el('blockers').textContent = state.capacity.blockers.join(' · ');
   el('resources').textContent = state.resources ? `CPU ${state.resources.reserved.cpu}/${state.resources.limits.cpu} · RAM ${(state.resources.reserved.memory_bytes / 2**30).toFixed(0)}/${(state.resources.limits.memory_bytes / 2**30).toFixed(0)} GiB reserved` + (state.resources.error ? ' · ' + state.resources.error : '') : '';
   el('backend').textContent = state.observation.error?.message || 'Inventory checked: ' + new Date(state.observation.at).toLocaleTimeString();
+  renderDevices(state);
   const imageBusy = state.leases.some(l => l.purpose === 'image' && l.state !== 'image_ready');
   el('prepare').disabled = !!state.observation.error || state.capacity.available === 0;
   const selected = el('template').value;
-  el('template').replaceChildren(...state.templates.map(t => {const option=text('option', t.id);option.value=t.id;return option;}));
+  const availabilityByTemplate = new Map((state.template_availability || []).map(item => [item.template_id, item]));
+  el('template').replaceChildren(...state.templates.map(t => {const status=availabilityByTemplate.get(t.id);const option=text('option', status?.availability === 'unavailable' ? `${t.id} · unavailable` : t.id);option.value=t.id;option.disabled=status?.availability === 'unavailable';return option;}));
   if (state.templates.some(t => t.id === selected)) el('template').value = selected;
   el('leases').replaceChildren(...state.leases.filter(l => l.purpose !== 'image').map(l => {
     const row = document.createElement('article');

@@ -8,7 +8,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-const instructions = "Start with virfield_help, then virfield_status. Read verification before claiming OS/Xcode support. Image and lease mutations are asynchronous: poll virfield_job and check vm_lease readiness. Reuse the same idempotency key on retries. Capacity is shared: at most two macOS VMs, no execution queue. Execute over pinned SSH, export artifacts, then release only with user authorization. For needs_attention or unknown outcomes, inspect the documented recovery procedure; never bypass the journal."
+const instructions = "Start with virfield_help, then virfield_status. Read verification before claiming OS/Xcode support. Image and lease mutations are asynchronous: poll virfield_job and check vm_lease readiness. Reuse the same idempotency key on retries. Capacity is reported per host and globally; unavailable hosts and storage remain visible with a reason. Virfield has no execution queue. Execute over pinned SSH, export artifacts, then release only with user authorization. For needs_attention or unknown outcomes, inspect the documented recovery procedure; never bypass the journal."
 
 type helpArgs struct {
 	Topic string `json:"topic,omitempty" jsonschema:"Documentation topic: workflows (default), images, operations, or verification"`

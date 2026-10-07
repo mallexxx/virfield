@@ -29,6 +29,11 @@ type fakeBackend struct {
 	hostExtra    int
 }
 
+type combinedBackend struct{ *fakeBackend }
+
+func (b *combinedBackend) ProviderName() string { return "orchard" }
+func (b *combinedBackend) CreateStartsVM() bool { return true }
+
 func newBackend() *fakeBackend {
 	return &fakeBackend{vms: map[string]domain.VM{"home/golden": {Name: "golden", Location: "home", OS: "macOS", State: "stopped"}}, counts: map[string]int{}}
 }
@@ -161,6 +166,43 @@ func TestLegacyUUIDAllowsOnlyOneActiveWorker(t *testing.T) {
 	tick(t, c)
 	if _, err := c.Acquire(context.Background(), "legacy-after-release", domain.AcquireRequest{Template: "legacy-copy", TTLSeconds: 3600}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestCombinedCreateProviderSkipsSeparateStart(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	backend := &combinedBackend{newBackend()}
+	template := domain.Template{
+		ID: "cirrus", Name: "ventura", Location: "orchard", Provider: "orchard",
+		Source: "ghcr.io/cirruslabs/macos-ventura-xcode@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		OS:     "macOS", Arch: "arm64", GuestUser: "admin", Resources: domain.Resources{CPU: 4, MemoryBytes: 8 << 30, DiskBytes: 80 << 30},
+	}
+	c, err := New(s, backend, []domain.Template{template}, 2, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tick(t, c)
+	op, err := c.Acquire(context.Background(), "orchard-create", domain.AcquireRequest{Template: "cirrus", TTLSeconds: 3600})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tick(t, c)
+	vm := backend.vms[op.Lease.Key()]
+	vm.State = "running"
+	vm.IP = "192.168.64.20"
+	vm.SSHAvailable = true
+	backend.vms[op.Lease.Key()] = vm
+	tick(t, c)
+	lease, err := c.Lease(context.Background(), op.Lease.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lease.State != "ready" || backend.count("clone") != 1 || backend.count("start") != 0 {
+		t.Fatalf("lease=%#v counts=%#v", lease, backend.counts)
 	}
 }
 

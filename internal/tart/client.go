@@ -1,0 +1,452 @@
+// Package tart adapts the Tart CLI to Virfield's narrow runtime contract.
+// Each configured storage container gets its own TART_HOME.
+package tart
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"encoding/xml"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/mallexxx/virfield/internal/domain"
+	"github.com/mallexxx/virfield/internal/hostresources"
+)
+
+const outputLimit = 4 << 20
+
+type Config struct {
+	Binary             string
+	HostID             string
+	HostName           string
+	MaxVMs             int
+	CPULimit           int
+	MemoryReserveBytes int64
+	Containers         []ContainerConfig
+}
+
+type ContainerConfig struct {
+	ID         string
+	Path       string
+	Kind       string
+	VolumeUUID string
+}
+
+type volume struct {
+	Identity string
+	Total    int64
+	Free     int64
+}
+
+type commandRunner interface {
+	Run(context.Context, string, []string) ([]byte, error)
+	StartDetached(string, []string) error
+}
+
+type Client struct {
+	config   Config
+	runner   commandRunner
+	probe    func(context.Context, string) (volume, error)
+	now      func() time.Time
+	capacity domain.HostCapacity
+}
+
+func New(config Config) (*Client, error) {
+	if !filepath.IsAbs(config.Binary) || !domain.ValidName(config.HostID) || config.MaxVMs < 1 || len(config.Containers) == 0 {
+		return nil, errors.New("invalid Tart runtime configuration")
+	}
+	if config.HostName == "" {
+		config.HostName = config.HostID
+	}
+	totalMemory, err := hostresources.Memory()
+	if err != nil {
+		return nil, err
+	}
+	if config.MemoryReserveBytes == 0 {
+		config.MemoryReserveBytes = 4 << 30
+	}
+	if config.MemoryReserveBytes >= totalMemory {
+		return nil, errors.New("Tart memory reserve leaves no allocatable RAM")
+	}
+	if config.CPULimit < 1 {
+		config.CPULimit = runtime.NumCPU()
+	}
+	if config.CPULimit > runtime.NumCPU() {
+		return nil, errors.New("Tart CPU limit exceeds host logical CPUs")
+	}
+	capacity := domain.HostCapacity{
+		Total:              domain.Resources{CPU: runtime.NumCPU(), MemoryBytes: totalMemory},
+		Allocatable:        domain.Resources{CPU: config.CPULimit, MemoryBytes: totalMemory - config.MemoryReserveBytes},
+		MemoryReserveBytes: config.MemoryReserveBytes, MaxVMs: config.MaxVMs,
+	}
+	seen := map[string]bool{}
+	for _, container := range config.Containers {
+		if !domain.ValidName(container.ID) || seen[container.ID] || !filepath.IsAbs(container.Path) || container.Kind != "local" && container.Kind != "external" {
+			return nil, errors.New("invalid Tart storage container")
+		}
+		seen[container.ID] = true
+	}
+	r := &execRunner{binary: config.Binary}
+	return &Client{config: config, runner: r, probe: r.probeVolume, now: func() time.Time { return time.Now().UTC() }, capacity: capacity}, nil
+}
+
+func (c *Client) ProviderName() string { return "tart" }
+
+func (c *Client) ConfiguredInventory() domain.Observation {
+	o := domain.Observation{
+		VMs: []domain.VM{}, Provider: c.ProviderName(), HostMax: c.config.MaxVMs,
+		Hosts: []domain.Host{{
+			ID: c.config.HostID, Name: c.config.HostName, Provider: c.ProviderName(), OS: "macOS", Arch: runtime.GOARCH,
+			Availability: "unavailable", UnavailableReason: "not_observed", Capacity: c.capacity,
+		}},
+	}
+	for _, configured := range c.config.Containers {
+		o.StorageContainers = append(o.StorageContainers, domain.StorageContainer{
+			ID: configured.ID, HostID: c.config.HostID, Provider: c.ProviderName(), Kind: configured.Kind, Path: configured.Path,
+			Availability: "unavailable", UnavailableReason: "not_observed",
+		})
+	}
+	return o
+}
+
+func (c *Client) Observe(ctx context.Context) (domain.Observation, error) {
+	now := c.now()
+	o := domain.Observation{
+		VMs:      []domain.VM{},
+		Provider: c.ProviderName(),
+		HostMax:  c.config.MaxVMs,
+		At:       now,
+		Hosts: []domain.Host{{
+			ID: c.config.HostID, Name: c.config.HostName, Provider: c.ProviderName(),
+			OS: "macOS", Arch: runtime.GOARCH, Availability: "available", LastSeenAt: now, Capacity: c.capacity,
+		}},
+	}
+	availableContainers := 0
+	seenVMs := map[string]bool{}
+	for _, configured := range c.config.Containers {
+		container := domain.StorageContainer{ID: configured.ID, HostID: c.config.HostID, Provider: c.ProviderName(), Kind: configured.Kind, Path: configured.Path}
+		info, err := c.probe(ctx, configured.Path)
+		if err != nil {
+			container.Availability = "unavailable"
+			container.UnavailableReason = volumeReason(err)
+			o.StorageContainers = append(o.StorageContainers, container)
+			continue
+		}
+		container.DeviceIdentity = info.Identity
+		container.CapacityBytes = info.Total
+		container.AvailableBytes = info.Free
+		container.LastSeenAt = now
+		if configured.VolumeUUID != "" && !strings.EqualFold(configured.VolumeUUID, info.Identity) {
+			container.Availability = "unavailable"
+			container.UnavailableReason = "volume_identity_mismatch"
+			o.StorageContainers = append(o.StorageContainers, container)
+			continue
+		}
+		container.Availability = "available"
+		availableContainers++
+		o.StorageContainers = append(o.StorageContainers, container)
+
+		rows, err := c.list(ctx, configured)
+		if err != nil {
+			return domain.Observation{}, fmt.Errorf("tart inventory for %s: %w", configured.ID, err)
+		}
+		for _, row := range rows {
+			vm, err := c.inspect(ctx, configured, row, now)
+			if err != nil {
+				return domain.Observation{}, fmt.Errorf("tart inspect %s/%s: %w", configured.ID, row.Name, err)
+			}
+			if seenVMs[vm.Key()] {
+				return domain.Observation{}, errors.New("duplicate Tart VM identity")
+			}
+			seenVMs[vm.Key()] = true
+			o.VMs = append(o.VMs, vm)
+			if vm.State != "stopped" {
+				o.HostUsed++
+			}
+		}
+	}
+	if availableContainers == 0 {
+		// Keep inventory visible, but close admission while no configured storage
+		// can safely prove its device identity.
+		o.HostUsed = o.HostMax
+	}
+	allocated := domain.Resources{}
+	for _, vm := range o.VMs {
+		if vm.State == "stopped" || vm.State == "failed" {
+			continue
+		}
+		allocated.CPU += vm.Resources.CPU
+		allocated.MemoryBytes += vm.Resources.MemoryBytes
+		allocated.DiskBytes += vm.Resources.DiskBytes
+	}
+	o.Hosts[0].Capacity.Allocated = allocated
+	o.Hosts[0].Capacity.UsedVMs = o.HostUsed
+	o.Hosts[0].Capacity.Available = subtractResources(o.Hosts[0].Capacity.Allocatable, allocated)
+	return o, nil
+}
+
+func subtractResources(total, used domain.Resources) domain.Resources {
+	return domain.Resources{CPU: max(0, total.CPU-used.CPU), MemoryBytes: max(0, total.MemoryBytes-used.MemoryBytes), DiskBytes: max(0, total.DiskBytes-used.DiskBytes)}
+}
+
+type listRow struct {
+	Name    string `json:"Name"`
+	Running bool   `json:"Running"`
+	State   string `json:"State"`
+}
+
+func (c *Client) list(ctx context.Context, container ContainerConfig) ([]listRow, error) {
+	b, err := c.runner.Run(ctx, container.Path, []string{"list", "--source", "local", "--format", "json"})
+	if err != nil {
+		return nil, err
+	}
+	var rows []listRow
+	if err := json.Unmarshal(b, &rows); err != nil || rows == nil {
+		return nil, errors.New("invalid Tart list response")
+	}
+	return rows, nil
+}
+
+func (c *Client) inspect(ctx context.Context, container ContainerConfig, row listRow, now time.Time) (domain.VM, error) {
+	if !domain.ValidName(row.Name) || row.State == "" {
+		return domain.VM{}, errors.New("invalid Tart VM record")
+	}
+	var raw struct {
+		OS      string   `json:"OS"`
+		CPU     int      `json:"CPU"`
+		Memory  int64    `json:"Memory"`
+		Disk    *float64 `json:"Disk"`
+		Running bool     `json:"Running"`
+		State   string   `json:"State"`
+	}
+	b, err := c.runner.Run(ctx, container.Path, []string{"get", row.Name, "--format", "json"})
+	if err != nil {
+		return domain.VM{}, err
+	}
+	if err := json.Unmarshal(b, &raw); err != nil || raw.CPU < 1 || raw.Memory < 1 || raw.OS == "" {
+		return domain.VM{}, errors.New("invalid Tart get response")
+	}
+	state := raw.State
+	if raw.Running || row.Running {
+		state = "running"
+	}
+	if state == "Stopped" || state == "stopped" {
+		state = "stopped"
+	}
+	disk := int64(0)
+	if raw.Disk != nil {
+		disk = int64(*raw.Disk * 1_000_000_000)
+	}
+	vm := domain.VM{
+		Resources: domain.Resources{CPU: raw.CPU, MemoryBytes: raw.Memory << 20, DiskBytes: disk},
+		Name:      row.Name, Location: container.ID, Provider: c.ProviderName(), HostID: c.config.HostID,
+		ContainerID: container.ID, OS: normalizeOS(raw.OS), State: state, LastSeenAt: now,
+	}
+	if state == "running" {
+		ip, ipErr := c.runner.Run(ctx, container.Path, []string{"ip", row.Name, "--wait", "0"})
+		if ipErr == nil {
+			candidate := strings.TrimSpace(string(ip))
+			if net.ParseIP(candidate) != nil {
+				vm.IP = candidate
+				vm.SSHAvailable = true
+			}
+		}
+	}
+	return vm, nil
+}
+
+func normalizeOS(value string) string {
+	switch strings.ToLower(value) {
+	case "darwin", "macos":
+		return "macOS"
+	case "linux":
+		return "linux"
+	default:
+		return value
+	}
+}
+
+func (c *Client) Clone(ctx context.Context, template domain.Template, lease domain.Lease) error {
+	container, err := c.container(lease.Location)
+	if err != nil {
+		return err
+	}
+	source := template.Source
+	if source == "" {
+		if template.Location != lease.Location {
+			return errors.New("Tart cannot clone a local VM across TART_HOME containers")
+		}
+		source = template.Name
+	}
+	_, err = c.runner.Run(ctx, container.Path, []string{"clone", source, lease.VMName})
+	return err
+}
+
+func (c *Client) Start(ctx context.Context, lease domain.Lease) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	container, err := c.container(lease.Location)
+	if err != nil {
+		return err
+	}
+	return c.runner.StartDetached(container.Path, []string{"run", "--no-graphics", lease.VMName})
+}
+
+func (c *Client) Stop(ctx context.Context, lease domain.Lease) error {
+	container, err := c.container(lease.Location)
+	if err != nil {
+		return err
+	}
+	_, err = c.runner.Run(ctx, container.Path, []string{"stop", lease.VMName})
+	return err
+}
+
+func (c *Client) Delete(ctx context.Context, lease domain.Lease) error {
+	container, err := c.container(lease.Location)
+	if err != nil {
+		return err
+	}
+	_, err = c.runner.Run(ctx, container.Path, []string{"delete", lease.VMName})
+	return err
+}
+
+func (c *Client) container(id string) (ContainerConfig, error) {
+	for _, container := range c.config.Containers {
+		if container.ID == id {
+			return container, nil
+		}
+	}
+	return ContainerConfig{}, fmt.Errorf("unknown Tart storage container %q", id)
+}
+
+type execRunner struct{ binary string }
+
+func (r *execRunner) Run(ctx context.Context, home string, args []string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, r.binary, args...)
+	cmd.Env = append(os.Environ(), "TART_HOME="+home)
+	var output limitedBuffer
+	cmd.Stdout = &output
+	cmd.Stderr = &output
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("tart command failed: %w", err)
+	}
+	return output.Bytes(), nil
+}
+
+func (r *execRunner) StartDetached(home string, args []string) error {
+	cmd := exec.Command(r.binary, args...)
+	cmd.Env = append(os.Environ(), "TART_HOME="+home)
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
+	cmd.Stdin = nil
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("tart command failed: %w", err)
+	}
+	go func() { _ = cmd.Wait() }()
+	return nil
+}
+
+var errOutputLimit = errors.New("command output exceeds 4 MiB")
+
+type limitedBuffer struct{ bytes.Buffer }
+
+func (b *limitedBuffer) Write(p []byte) (int, error) {
+	if b.Len()+len(p) > outputLimit {
+		return 0, errOutputLimit
+	}
+	return b.Buffer.Write(p)
+}
+
+var errVolumeUnmounted = errors.New("volume unmounted")
+
+func volumeReason(err error) string {
+	if errors.Is(err, os.ErrNotExist) || errors.Is(err, errVolumeUnmounted) {
+		return "volume_unmounted"
+	}
+	return "volume_probe_failed"
+}
+
+func (r *execRunner) probeVolume(ctx context.Context, path string) (volume, error) {
+	st, err := os.Stat(path)
+	if err != nil {
+		return volume{}, err
+	}
+	if !st.IsDir() {
+		return volume{}, errors.New("Tart storage path is not a directory")
+	}
+	cmd := exec.CommandContext(ctx, "/usr/sbin/diskutil", "info", "-plist", path)
+	var output limitedBuffer
+	cmd.Stdout = &output
+	cmd.Stderr = io.Discard
+	if err := cmd.Run(); err != nil {
+		return volume{}, fmt.Errorf("diskutil info: %w", err)
+	}
+	values, err := parsePlist(output.Bytes())
+	if err != nil {
+		return volume{}, err
+	}
+	identity := values["VolumeUUID"]
+	if identity == "" {
+		identity = values["DiskUUID"]
+	}
+	if identity == "" {
+		return volume{}, errors.New("volume has no stable UUID")
+	}
+	total, err := strconv.ParseInt(values["TotalSize"], 10, 64)
+	if err != nil {
+		return volume{}, errors.New("invalid volume total size")
+	}
+	free, err := strconv.ParseInt(values["FreeSpace"], 10, 64)
+	if err != nil {
+		return volume{}, errors.New("invalid volume free space")
+	}
+	return volume{Identity: strings.ToLower(identity), Total: total, Free: free}, nil
+}
+
+func parsePlist(data []byte) (map[string]string, error) {
+	decoder := xml.NewDecoder(bytes.NewReader(data))
+	values := map[string]string{}
+	var key string
+	for {
+		token, err := decoder.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, errors.New("invalid diskutil plist")
+		}
+		start, ok := token.(xml.StartElement)
+		if !ok {
+			continue
+		}
+		switch start.Name.Local {
+		case "key":
+			if err := decoder.DecodeElement(&key, &start); err != nil {
+				return nil, err
+			}
+		case "string", "integer":
+			var value string
+			if err := decoder.DecodeElement(&value, &start); err != nil {
+				return nil, err
+			}
+			if key != "" {
+				values[key] = value
+				key = ""
+			}
+		}
+	}
+	return values, nil
+}

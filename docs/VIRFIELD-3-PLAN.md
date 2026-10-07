@@ -182,6 +182,97 @@ the idle grace period passes and no image or maintenance job owns the host.
 Wake support, wired/Wi-Fi behavior, power-adapter requirements and measured wake
 time are host capabilities established by an acceptance test, not assumptions.
 
+## Hosts, storage containers and durable availability
+
+Physical hosts, attached storage and runnable artifacts are separate durable
+objects:
+
+```text
+Host
+  +-- StorageContainer: local
+  |     +-- ImageArtifact / VM
+  +-- StorageContainer: samsung
+        +-- ImageArtifact / VM
+```
+
+An inventory miss never deletes configuration. Every object has `availability`,
+`reason`, `last_seen_at` and the identity of the observation that established
+that state. Examples are `host_offline`, `host_sleeping`, `volume_unmounted`,
+`volume_identity_mismatch`, `provider_unreachable` and `artifact_missing`.
+Deletion is a separate explicit operation and requires observing the owning host
+and container online before absence can be confirmed.
+
+Storage containers use a stable operator ID and a probed device identity, not a
+mount path alone. On macOS the node agent records the volume UUID and mount
+point; on Linux it records the filesystem UUID/device identity and mount point.
+A mount appearing at the expected path with the wrong identity fails closed.
+
+Tart uses one configured `TART_HOME` per storage container. The local Mac disk,
+the current Samsung SSD and future external SSDs are therefore distinct groups
+with independent free-space, cache and availability state. Orchard-owned remote
+storage is grouped under its worker/host identity. Libvirt pools are exposed as
+containers in the same model.
+
+The Console hierarchy is `host -> storage container -> images/VMs`. An offline
+Mac or Linux host remains visible with its last inventory and a Wake button only
+when its Wake-on-LAN policy and a live same-L2 relay are available. An unavailable
+SSD leaves its image profiles visible but unschedulable with the exact reason.
+
+Capacity is also per physical host. Each host reports total, allocatable,
+allocated and available CPU/RAM plus its VM-slot limit. Local Tart subtracts
+`memory_reserve_bytes` (4 GiB by default) before Virfield admits leases. Orchard
+workers must advertise allocatable resources after the same reserve, so the
+Orchard scheduler selects another matching worker when one host is full.
+
+For an Orchard host with 16 GiB RAM and a 4 GiB user reserve, run the worker
+with `org.cirruslabs.memory-mib=12288` and additionally publish
+`ai.virfield.physical-memory-mib=16384`. Virfield fails closed with
+`capacity_policy_mismatch` if the controller config and worker advertisement
+would let Orchard consume the reserve. Linux/Vetu workers also advertise
+`ai.virfield.vm-slots`; Tart uses Orchard's standard
+`org.cirruslabs.tart-vms` resource.
+
+Local Tart configuration keeps disk identity and capacity policy together:
+
+```json
+{
+  "runtime": {"provider": "tart", "tart": {
+    "binary": "/opt/homebrew/bin/tart",
+    "host_id": "macbook-local",
+    "max_vms": 2,
+    "memory_reserve_bytes": 4294967296,
+    "disk_reserve_bytes": 21474836480,
+    "containers": [
+      {"id": "local", "kind": "local", "path": "/Users/admin/.tart"},
+      {"id": "samsung", "kind": "external", "path": "/Volumes/Samsung/tart", "volume_uuid": "..."}
+    ]
+  }}
+}
+```
+
+Orchard uses one policy per worker. The worker advertises the same allocatable
+budget; Orchard then selects the specific host:
+
+```json
+{
+  "runtime": {"provider": "orchard", "orchard": {
+    "url": "https://orchard.example",
+    "service_account": "virfield",
+    "token_file": "/absolute/orchard.token",
+    "pool_id": "personal",
+    "worker_labels": {"pool": "personal"},
+    "host_limits": {
+      "old-macbook": {
+        "max_vms": 2,
+        "memory_reserve_bytes": 4294967296,
+        "wake_on_lan": {"mac_address": "00:11:22:33:44:55", "broadcast_address": "192.168.1.255:9"}
+      },
+      "linux-i7": {"max_vms": 3, "memory_reserve_bytes": 4294967296}
+    }
+  }}
+}
+```
+
 ## VS Code and Execution Broker
 
 Interactive debugging does not pass through Execution Broker:
@@ -246,7 +337,7 @@ directories between formats.
 
 | Existing code | Virfield 3.0 treatment |
 |---|---|
-| `internal/store` | Keep SQLite, migrations, backups, events and idempotency; add hosts, targets, providers, grants and profile artifacts through additive migrations |
+| `internal/store` | Keep SQLite, migrations, backups, events and idempotency; add durable hosts, storage containers, targets, providers, grants and profile artifacts through additive migrations |
 | `internal/control` | Keep persist-before-effect phases, reconciliation, deadlines and quarantine; generalize the existing `Backend` seam into provider selection and per-host capacity |
 | `internal/domain` | Add `Host`, `Target`, `CapabilitySet`, `ProviderRef`, `EnvironmentProfile` and `ConnectionGrant`; retain `/api/v1` lease fields as a compatibility projection |
 | `internal/guestssh` | Keep re-keying, strict sshd policy, readiness and host-key pinning; parameterize guest user/home and transport connector |
@@ -281,12 +372,14 @@ second workflow engine, second artifact store or custom overlay network.
 | Work | Reuse-first implementation |
 |---|---|
 | Add v3 domain objects and schema | Add migrations to the current store; preserve v1 tables and API projection |
+| Add durable device inventory | Persist hosts, storage containers and artifacts separately; mark unavailable with reasons instead of deleting on an inventory miss |
 | Split runtime, connection and power responsibilities | Adapt current `Backend` and tunnel code behind `RuntimeProvider`, `Connector` and optional `PowerController` interfaces |
 | Remove Lume assumptions | Parameterize guest user/home, provider/host capacity and error text; keep a `lume-legacy` adapter |
 | Establish compatibility tests | Run every current v1 HTTP/MCP/Broker contract against the refactored controller before adding a new runtime |
 
 Exit gate: current Lume workflows and Broker smoke pass unchanged through the
-new interfaces; restart and uncertain-mutation tests retain their behavior.
+new interfaces; local and Samsung storage are separate durable groups; restart
+and uncertain-mutation tests retain their behavior.
 
 ### Phase 2 — hosts, access and Wake-on-LAN
 

@@ -118,6 +118,7 @@ environment.
 | Mixed hardware | Apple Silicon macOS, Intel macOS and Linux are separate capability pools; no request silently changes architecture or OS |
 | Host drain | New work stops, current leases finish or are explicitly migrated/canceled, and maintenance is observable |
 | Storage pressure | OCI/IPSW caches have quotas and eviction; goldens and active overlays cannot be evicted |
+| Device and storage inventory | Hosts, local disks and each external SSD are durable groups; loss of a host or mount marks children unavailable with a reason instead of deleting their configuration |
 | Network isolation | Guest egress, host access, exposed ports and shared directories are profile policy |
 | Service identity | Controller, worker, Broker, operator and human principals have separate credentials and scopes |
 | Availability | Controller state is backed up; workers can reconnect; runtime loss does not fabricate successful cleanup |

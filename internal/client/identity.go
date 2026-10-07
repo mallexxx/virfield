@@ -65,7 +65,7 @@ func sshConnectionFiles(dir string, l domain.Lease) (string, string, string, err
 	if strings.ContainsAny(dir, "\r\n\"\\%$") {
 		return "", "", "", fmt.Errorf("SSH identity path contains unsupported characters")
 	}
-	if l.State != "ready" || l.SSH == nil || net.ParseIP(l.IP) == nil || l.SSH.User != "lume" || l.SSH.Port != 22 || !domain.ValidName(l.ID) {
+	if l.State != "ready" || l.SSH == nil || net.ParseIP(l.IP) == nil || !domain.ValidName(l.SSH.User) || l.SSH.Port != 22 || !domain.ValidName(l.ID) {
 		return "", "", "", fmt.Errorf("lease has no verified SSH connection")
 	}
 	host, err := domain.CanonicalPublicKey(l.SSH.HostKey)
@@ -93,7 +93,7 @@ func sshConnectionFiles(dir string, l domain.Lease) (string, string, string, err
 	}
 	knownPath := filepath.Join(dir, "known_hosts")
 	knownContent := l.ID + " " + host + "\n"
-	configContent := fmt.Sprintf("Host virfield\n  HostName %s\n  User lume\n  Port 22\n  HostKeyAlias %s\n  IdentityFile \"%s\"\n  UserKnownHostsFile \"%s\"\n  GlobalKnownHostsFile /dev/null\n  StrictHostKeyChecking yes\n  IdentitiesOnly yes\n  IdentityAgent none\n  ForwardAgent no\n  PasswordAuthentication no\n  KbdInteractiveAuthentication no\n  ControlMaster no\n  ControlPath none\n  ConnectTimeout 10\n", l.IP, l.ID, keyPath, knownPath)
+	configContent := fmt.Sprintf("Host virfield\n  HostName %s\n  User %s\n  Port 22\n  HostKeyAlias %s\n  IdentityFile \"%s\"\n  UserKnownHostsFile \"%s\"\n  GlobalKnownHostsFile /dev/null\n  StrictHostKeyChecking yes\n  IdentitiesOnly yes\n  IdentityAgent none\n  ForwardAgent no\n  PasswordAuthentication no\n  KbdInteractiveAuthentication no\n  ControlMaster no\n  ControlPath none\n  ConnectTimeout 10\n", l.IP, l.SSH.User, l.ID, keyPath, knownPath)
 	return dir, knownContent, configContent, nil
 }
 

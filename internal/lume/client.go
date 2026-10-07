@@ -11,7 +11,9 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -29,6 +31,8 @@ type SharedDirectory string
 type StartOptions struct {
 	SharedDirectories []SharedDirectory
 }
+
+func (c *Client) ProviderName() string { return "lume-legacy" }
 
 // RejectedMutation means Lume returned a validation/not-found response, so
 // the requested mutation was not accepted. Transport failures remain ambiguous.
@@ -125,13 +129,26 @@ func (c *Client) Observe(ctx context.Context) (domain.Observation, error) {
 	if raw == nil {
 		return domain.Observation{}, fmt.Errorf("lume VM inventory must be an array")
 	}
-	o := domain.Observation{VMs: []domain.VM{}, HostUsed: max(*host.Used, *host.Max-*host.Available), HostMax: *host.Max, At: time.Now().UTC()}
+	now := time.Now().UTC()
+	o := domain.Observation{VMs: []domain.VM{}, Provider: c.ProviderName(), HostUsed: max(*host.Used, *host.Max-*host.Available), HostMax: *host.Max, At: now}
+	o.Hosts = []domain.Host{{ID: "local", Name: "Local Mac", Provider: c.ProviderName(), OS: "macOS", Arch: runtime.GOARCH, Availability: "available", LastSeenAt: now}}
+	for name, path := range c.StoragePaths {
+		container := domain.StorageContainer{ID: name, HostID: "local", Provider: c.ProviderName(), Kind: "local", Path: path}
+		if _, err := os.Stat(path); err != nil {
+			container.Availability = "unavailable"
+			container.UnavailableReason = "volume_unmounted"
+		} else {
+			container.Availability = "available"
+			container.LastSeenAt = now
+		}
+		o.StorageContainers = append(o.StorageContainers, container)
+	}
 	seen := map[string]bool{}
 	for _, v := range raw {
 		if !domain.ValidName(v.Name) || !domain.ValidName(v.Location) || v.Status == "" || v.OS == "" {
 			return o, fmt.Errorf("invalid Lume VM inventory")
 		}
-		vm := domain.VM{Resources: domain.Resources{CPU: v.CPU, MemoryBytes: v.Memory, DiskBytes: v.Disk.Total}, Name: v.Name, Location: v.Location, OS: v.OS, State: v.Status, IP: v.IP, SSHAvailable: v.SSH}
+		vm := domain.VM{Resources: domain.Resources{CPU: v.CPU, MemoryBytes: v.Memory, DiskBytes: v.Disk.Total}, Name: v.Name, Location: v.Location, Provider: c.ProviderName(), HostID: "local", ContainerID: v.Location, OS: v.OS, State: v.Status, IP: v.IP, LastSeenAt: now, SSHAvailable: v.SSH}
 		if seen[vm.Key()] {
 			return o, fmt.Errorf("duplicate Lume VM identity")
 		}

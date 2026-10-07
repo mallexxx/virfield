@@ -70,7 +70,7 @@ func (c *Controller) resources(ls []domain.Lease) (domain.Resources, map[string]
 		}
 		r := l.Resources
 		for _, v := range c.observation.VMs {
-			if v.Key() == l.Key() {
+			if v.Key() == l.Key() && v.Resources.CPU > 0 && v.Resources.MemoryBytes > 0 && v.Resources.DiskBytes > 0 {
 				r = v.Resources
 				break
 			}
@@ -89,7 +89,7 @@ func (c *Controller) resources(ls []domain.Lease) (domain.Resources, map[string]
 	return sum, disk, nil
 }
 func (c *Controller) admitResources(ls []domain.Lease, t domain.Template, requestedLocation string) (domain.Resources, string, error) {
-	var request domain.Resources
+	request := t.Resources
 	for _, v := range c.observation.VMs {
 		if v.Key() == t.Location+"/"+t.Name {
 			request = v.Resources

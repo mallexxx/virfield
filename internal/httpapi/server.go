@@ -63,6 +63,7 @@ func New(c *control.Controller, token string, log *slog.Logger, options ...Optio
 		api.Handle("POST /api/v1/maintenance/backup", extra.Backup)
 	}
 	api.HandleFunc("GET /api/v1/status", s.status)
+	api.HandleFunc("POST /api/v1/hosts/{id}/wake", s.wakeHost)
 	api.HandleFunc("GET /api/v1/images/catalog", s.catalog)
 	api.HandleFunc("POST /api/v1/jobs/{id}/apple-auth", s.appleAuthLink)
 	if s.apple != nil {
@@ -156,7 +157,7 @@ func statusForCode(code string) int {
 		return http.StatusNotFound
 	case "registry_tag_exists", "resource_exhausted", "resource_unknown", "resource_unavailable", "ssh_key_in_use", "legacy_uuid_in_use", "image_in_use", "image_exists", "capacity_exhausted", "idempotency_conflict", "operation_in_progress", "lease_expired", "lease_released", "lease_unavailable", "outcome_unknown", "template_unavailable", "apple_auth_required", "backup_failed", "vm_drift", "vm_missing", "start_rejected", "catalog_changed", "disk_encrypted", "disk_locked", "disk_policy_unknown", "download_integrity", "image_interrupted", "ownership_unconfirmed", "registry_digest_mismatch", "registry_source_changed", "registry_unsanitized", "security_policy_failed", "sip_verification_failed", "unexpected_state", "unsafe_cache", "xcode_signature_failed", "xcode_version_mismatch":
 		return http.StatusConflict
-	case "backend_unavailable", "catalog_unavailable", "registry_unavailable", "apple_auth_unavailable", "tunnel_unavailable", "recovery_unavailable", "image_dependency", "setup_unavailable", "unsupported_lume", "registry_push_disabled", "registry_unconfigured", "image_credentials_missing":
+	case "backend_unavailable", "catalog_unavailable", "registry_unavailable", "apple_auth_unavailable", "tunnel_unavailable", "recovery_unavailable", "image_dependency", "setup_unavailable", "unsupported_lume", "registry_push_disabled", "registry_unconfigured", "image_credentials_missing", "wake_unavailable", "wake_failed":
 		return http.StatusServiceUnavailable
 	case "disk_space":
 		return http.StatusInsufficientStorage
@@ -189,6 +190,13 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	write(w, 200, v)
+}
+func (s *Server) wakeHost(w http.ResponseWriter, r *http.Request) {
+	if err := s.c.WakeHost(r.Context(), r.PathValue("id")); err != nil {
+		s.fail(w, err)
+		return
+	}
+	write(w, http.StatusAccepted, map[string]string{"status": "wake_requested"})
 }
 func (s *Server) acquire(w http.ResponseWriter, r *http.Request) {
 	var req domain.AcquireRequest
