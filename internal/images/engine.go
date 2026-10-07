@@ -17,6 +17,7 @@ import (
 	"github.com/mallexxx/virfield/internal/domain"
 	"github.com/mallexxx/virfield/internal/guestssh"
 	"github.com/mallexxx/virfield/internal/lume"
+	"github.com/mallexxx/virfield/internal/qualify"
 	"github.com/mallexxx/virfield/internal/registry"
 )
 
@@ -522,37 +523,9 @@ func pause(ctx context.Context, d time.Duration) error {
 func (e *Engine) waitDesktopState(ctx context.Context, g *guest) (string, error) {
 	wait, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	return waitDesktop(wait, 2*time.Second, 5*time.Second, func(ctx context.Context) (string, error) {
-		return g.Run(ctx, "if /usr/bin/pgrep -x 'Setup Assistant' >/dev/null; then echo assistant; elif test -f /var/db/.AppleSetupDone && /usr/bin/pgrep -x Finder >/dev/null; then echo desktop; else echo waiting; fi", "")
+	return qualify.WaitDesktop(wait, 2*time.Second, 5*time.Second, func(ctx context.Context) (string, error) {
+		return g.Run(ctx, qualify.DesktopProbe, "")
 	})
-}
-
-func waitDesktop(ctx context.Context, poll, settle time.Duration, observe func(context.Context) (string, error)) (string, error) {
-	var desktopSince time.Time
-	for {
-		out, err := observe(ctx)
-		if err != nil {
-			return "", err
-		}
-		state := strings.TrimSpace(out)
-		if state == "assistant" {
-			return state, nil
-		}
-		// Finder can appear before the login-time Assistant. Require a settled
-		// desktop before rotating credentials or declaring the GUI ready.
-		if state == "desktop" {
-			if desktopSince.IsZero() {
-				desktopSince = time.Now()
-			} else if time.Since(desktopSince) >= settle {
-				return state, nil
-			}
-		} else {
-			desktopSince = time.Time{}
-		}
-		if err := pause(ctx, poll); err != nil {
-			return "", domain.Err("desktop_timeout", "Guest login did not reach Setup Assistant or Finder within two minutes")
-		}
-	}
 }
 
 // prepareDesktop handles the login-time Assistant that can return after Recovery,

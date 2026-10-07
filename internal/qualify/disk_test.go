@@ -1,4 +1,4 @@
-package images
+package qualify
 
 import (
 	"errors"
@@ -8,10 +8,10 @@ import (
 
 func TestGoldenDiskPolicy(t *testing.T) {
 	for _, tt := range []struct {
-		name       string
-		output     string
-		code       string
-		legacyUUID bool
+		name        string
+		output      string
+		code        string
+		allowAtRest bool
 	}{
 		{"unencrypted", "false\nfalse\nfalse\nfalse\nfalse\nfalse\n", "", false},
 		// Captured from a real Monterey guest after native Setup Assistant: FV off
@@ -28,9 +28,9 @@ func TestGoldenDiskPolicy(t *testing.T) {
 		{"extra output", "false false false false false false warning", "disk_policy_unknown", false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			disk, err := parseDiskEvidence(tt.output)
+			disk, err := ParseDiskEvidence(tt.output)
 			if err == nil {
-				err = disk.validate(tt.legacyUUID)
+				err = disk.Validate(tt.allowAtRest)
 			}
 			if tt.code == "" {
 				if err != nil {
