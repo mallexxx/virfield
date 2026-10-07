@@ -75,6 +75,9 @@ func (c *Controller) buildImageLocked(ctx context.Context, t domain.Template, ke
 	return domain.Operation{Lease: l, Job: j}, nil
 }
 
+// tartImageNext adopts a pinned Tart image: Packer builds, Virfield qualifies.
+var tartImageNext = map[string]string{"queued": "resolve", "resolve_done": "build", "build_done": "qualify", "qualify_done": "stop"}
+
 var imageNext = map[string]string{"queued": "download", "download_dispatched": "download", "download_done": "create", "create_done": "setup", "setup_done": "assistant", "assistant_done": "sip", "sip_done": "verify", "verify_done": "stop", "provision_done": "verify"}
 
 func (c *Controller) advanceImageBuild(ctx context.Context, l domain.Lease, j domain.Job) error {
@@ -100,21 +103,25 @@ func (c *Controller) advanceImageBuild(ctx context.Context, l domain.Lease, j do
 		j.Error = nil
 		return c.save(ctx, l, j, "image.ready", "Verified image is stopped and available for cloning")
 	}
-	step, ok := imageNext[j.Phase]
+	next := imageNext
+	if j.Image.Tart != nil {
+		next = tartImageNext
+	}
+	step, ok := next[j.Phase]
 	if !ok {
 		return nil
 	}
-	if j.Phase == "sip_done" && j.Image.Provision != "" {
+	if j.Image.Tart == nil && j.Phase == "sip_done" && j.Image.Provision != "" {
 		step = "provision"
 	}
-	if step == "create" {
+	if step == "create" || step == "build" {
 		if _, exists := c.vm(l); exists {
 			return c.attention(ctx, l, j, "name_collision", "Image destination appeared before create; refusing to overwrite it", true)
 		}
 	}
 	j.Phase = step + "_dispatched"
 	j.State = "running"
-	j.Progress = map[string]string{"download": "Downloading and verifying selected Apple installers", "create": "Installing macOS from the verified IPSW", "setup": "Preparing guest account, SSH and automatic login", "assistant": "Completing Setup Assistant and checking Finder", "sip": "Applying guest SIP policy through paired Recovery", "provision": "Installing selected guest developer tools", "verify": "Verifying build, SIP, SSH credentials and desktop after reboot", "stop": "Stopping the verified image before publication"}[step]
+	j.Progress = map[string]string{"download": "Downloading and verifying selected Apple installers", "create": "Installing macOS from the verified IPSW", "setup": "Preparing guest account, SSH and automatic login", "assistant": "Completing Setup Assistant and checking Finder", "sip": "Applying guest SIP policy through paired Recovery", "provision": "Installing selected guest developer tools", "verify": "Verifying build, SIP, SSH credentials and desktop after reboot", "stop": "Stopping the verified image before publication", "resolve": "Verifying the pinned Tart source, Xcode archive and build recipe", "build": "Building the image with Packer from the pinned Tart source", "qualify": "Securing credentials and verifying build, SIP, desktop, disk policy and Xcode after reboot"}[step]
 	if step == "provision" && j.Image.Provision == "security-v1" {
 		j.Progress = "Applying guest Gatekeeper, AMFI and TCC policy"
 	}
@@ -240,7 +247,7 @@ func (c *Controller) RecoverImage(ctx context.Context, id, key, name, action str
 		l.Error = nil
 		l.UpdatedAt = c.now()
 	case "retry", "reprovision":
-		previous := map[string]string{"download_dispatched": "queued", "assistant_dispatched": "setup_done", "sip_dispatched": "assistant_done", "verify_dispatched": "provision_done", "provision_dispatched": "sip_done"}
+		previous := map[string]string{"download_dispatched": "queued", "assistant_dispatched": "setup_done", "sip_dispatched": "assistant_done", "verify_dispatched": "provision_done", "provision_dispatched": "sip_done", "resolve_dispatched": "queued", "qualify_dispatched": "build_done"}
 		phase, ok := previous[j.Phase]
 		if !ok || j.Kind != "image_build" {
 			return domain.Operation{}, domain.Err("unsafe_retry", "this interrupted stage cannot be retried; inspect and delete the incomplete image")

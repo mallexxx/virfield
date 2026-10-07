@@ -139,7 +139,7 @@ func (b *fakeImageBuilder) Step(_ context.Context, l domain.Lease, _ domain.Imag
 		}
 		return domain.Err(code, "interrupted stage")
 	}
-	if step == "create" {
+	if step == "create" || step == "build" {
 		b.backend.mu.Lock()
 		b.backend.vms[l.Key()] = domain.VM{Name: l.VMName, Location: l.Location, OS: "macOS", State: "stopped"}
 		b.backend.mu.Unlock()
@@ -615,5 +615,58 @@ func TestImageRecordCarriesTemplateGuestUser(t *testing.T) {
 	}
 	if op.Lease.GuestUser != "admin" || op.Lease.GuestHome != "/Users/admin" {
 		t.Fatalf("image record guest = %q %q", op.Lease.GuestUser, op.Lease.GuestHome)
+	}
+}
+
+func tartImageController(t *testing.T) (*Controller, *fakeImageBuilder) {
+	c, b := imageController(t)
+	p := domain.ImageProfile{Tart: &domain.TartSource{Upstream: "ghcr.io/cirruslabs/macos-ventura-base@sha256:" + strings.Repeat("a", 64)}, MacOS: "13.7.4", Build: "22H420", Security: "sip-disabled", DisableSIP: true, Provision: "developer-v1", Xcode: &domain.XcodeRelease{Version: "15.2", Build: "15C500b", Requires: "13.5", SHA1: strings.Repeat("b", 40)}}
+	c.templates["test"] = domain.Template{ID: "test", Name: "golden", Location: "home", GuestUser: "admin", GuestHome: "/Users/admin", Image: &p}
+	return c, b
+}
+
+func TestTartImageRunsTartPhasesAndPromotes(t *testing.T) {
+	c, b := tartImageController(t)
+	op, err := c.BuildImage(context.Background(), "test", "tart-image-build")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 10 {
+		tick(t, c)
+	}
+	if strings.Join(b.steps, ",") != "resolve,build,qualify,stop" {
+		t.Fatal(b.steps)
+	}
+	l, err := c.Lease(context.Background(), op.Lease.ID)
+	if err != nil || l.State != "image_ready" || l.ImageManifest != imageFingerprint(c.templates["test"].Image) {
+		t.Fatal(l.State, err)
+	}
+}
+
+func TestTartQualifyFailureAllowsOnlyQualifyRetry(t *testing.T) {
+	c, b := tartImageController(t)
+	b.fail = "qualify"
+	op, err := c.BuildImage(context.Background(), "test", "tart-image-fail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 10 {
+		tick(t, c)
+	}
+	j, err := c.Job(context.Background(), op.Job.ID)
+	if err != nil || j.State != "needs_attention" || j.Phase != "qualify_dispatched" {
+		t.Fatal(j, err)
+	}
+	b.fail = ""
+	tick(t, c)
+	if _, err := c.RecoverImage(context.Background(), op.Lease.ID, "tart-retry-qualify", "golden", "retry", true); err != nil {
+		t.Fatal(err)
+	}
+	for range 10 {
+		tick(t, c)
+	}
+	l, err := c.Lease(context.Background(), op.Lease.ID)
+	if err != nil || l.State != "image_ready" {
+		t.Fatal(l.State, err)
 	}
 }
