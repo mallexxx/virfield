@@ -231,3 +231,39 @@ func TestPluginInitializationIsSerialized(t *testing.T) {
 		t.Fatal("packer init ran concurrently", len(runner.calls))
 	}
 }
+
+func uitestProfile() domain.ImageProfile {
+	return domain.ImageProfile{
+		Tart:       &domain.TartSource{Upstream: "ghcr.io/cirruslabs/macos-golden-gate-xcode@sha256:" + strings.Repeat("c", 64)},
+		MacOS:      "27.0",
+		Build:      "26A428",
+		DisableSIP: true,
+		Provision:  "uitest-27-v1",
+	}
+}
+
+func TestUITestBuildClonesDisablesSIPThenProvisionsInPlace(t *testing.T) {
+	b, runner, _, l, _ := testBuilder(t)
+	p := uitestProfile()
+	if err := b.Step(context.Background(), l, p, "resolve", noProgress); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Step(context.Background(), l, p, "build", noProgress); err != nil {
+		t.Fatal(err)
+	}
+	if len(runner.calls) != 4 {
+		t.Fatal(len(runner.calls), runner.calls)
+	}
+	clone := strings.Join(runner.calls[1].args, " ")
+	sip := strings.Join(runner.calls[2].args, " ")
+	provision := strings.Join(runner.calls[3].args, " ")
+	if clone != "clone "+p.Tart.Upstream+" ventura-golden" || !strings.Contains(strings.Join(runner.calls[1].env, " "), "TART_REGISTRY_HOSTNAME=ghcr.io") {
+		t.Fatal(clone)
+	}
+	if !strings.HasSuffix(sip, "disable-sip.pkr.hcl") || !strings.Contains(sip, "-var vm_name=ventura-golden") {
+		t.Fatal(sip)
+	}
+	if !strings.HasSuffix(provision, "uitest.pkr.hcl") || !strings.Contains(provision, "-var macos_build=26A428") {
+		t.Fatal(provision)
+	}
+}

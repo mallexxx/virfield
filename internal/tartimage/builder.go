@@ -58,8 +58,8 @@ func New(config Config) *Builder {
 }
 
 func (b *Builder) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile, step string, progress func(string) error) error {
-	if p.Tart == nil || p.Xcode == nil {
-		return domain.Err("invalid_profile", "Tart builder requires a Tart source and a pinned Xcode release")
+	if p.Tart == nil || (p.Xcode == nil && p.Provision != "uitest-27-v1") {
+		return domain.Err("invalid_profile", "Tart builder requires a Tart source and a pinned Xcode release or the UI-test recipe")
 	}
 	home, ok := b.config.Homes[l.Location]
 	if !ok {
@@ -90,8 +90,10 @@ func (b *Builder) archive(p domain.ImageProfile) string {
 }
 
 func (b *Builder) resolve(ctx context.Context, l domain.Lease, p domain.ImageProfile) error {
-	if err := verifyArchive(b.archive(p), p.Xcode.SHA1); err != nil {
-		return err
+	if p.Xcode != nil {
+		if err := verifyArchive(b.archive(p), p.Xcode.SHA1); err != nil {
+			return err
+		}
 	}
 	folder := b.folder(l)
 	if err := os.MkdirAll(folder, 0700); err != nil {
@@ -113,6 +115,9 @@ func (b *Builder) resolve(ctx context.Context, l domain.Lease, p domain.ImagePro
 }
 
 func (b *Builder) build(ctx context.Context, l domain.Lease, p domain.ImageProfile, home string) error {
+	if p.Provision == "uitest-27-v1" {
+		return b.buildUITest(ctx, l, p, home)
+	}
 	sip := "enabled"
 	if p.DisableSIP {
 		sip = "disabled"
@@ -134,6 +139,29 @@ func (b *Builder) build(ctx context.Context, l domain.Lease, p domain.ImageProfi
 	}
 	args = append(args, "developer.pkr.hcl")
 	env := append([]string{"TART_HOME=" + home}, b.registryEnv(p.Tart.Upstream)...)
+	if err := b.packer(ctx, l, env, "packer-build.log", args...); err != nil {
+		return domain.Err("image_command_failed", "Packer build failed; inspect the private packer-build log")
+	}
+	return nil
+}
+
+// buildUITest adopts an upstream Xcode image: clone it, disable SIP through
+// Recovery (TCC grants and AMFI need it), then provision the VM in place.
+func (b *Builder) buildUITest(ctx context.Context, l domain.Lease, p domain.ImageProfile, home string) error {
+	env := append([]string{"TART_HOME=" + home}, b.registryEnv(p.Tart.Upstream)...)
+	tart := b.config.TartBinary
+	if tart == "" {
+		tart = "tart"
+	}
+	recipe := filepath.Join(b.folder(l), "recipe")
+	if err := b.run.Run(ctx, recipe, env, filepath.Join(b.folder(l), "tart-clone.log"), tart, "clone", p.Tart.Upstream, l.VMName); err != nil {
+		return domain.Err("image_command_failed", "Tart clone of the pinned upstream failed; inspect the private tart-clone log")
+	}
+	vm := "vm_name=" + l.VMName
+	if err := b.packer(ctx, l, env, "packer-sip.log", "build", "-var", vm, "disable-sip.pkr.hcl"); err != nil {
+		return domain.Err("image_command_failed", "Recovery SIP stage failed; inspect the private packer-sip log")
+	}
+	args := []string{"build", "-var", vm, "-var", "macos_version=" + p.MacOS, "-var", "macos_build=" + p.Build, "uitest.pkr.hcl"}
 	if err := b.packer(ctx, l, env, "packer-build.log", args...); err != nil {
 		return domain.Err("image_command_failed", "Packer build failed; inspect the private packer-build log")
 	}

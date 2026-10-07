@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mallexxx/virfield/internal/guestscripts"
 )
 
 func TestRecipeDigestIsStableAndPinned(t *testing.T) {
@@ -40,5 +42,31 @@ func TestRecipeScriptsParseAndMaterializePrivately(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "developer.pkr.hcl")); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestUITestRecipeDisablesSIPInRecoveryAndProvisionsInPlace(t *testing.T) {
+	sip, err := recipe.ReadFile("recipe/disable-sip.pkr.hcl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	uitest, err := recipe.ReadFile("recipe/uitest.pkr.hcl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`version = "= 1.21.0"`, "recovery     = true", `"<wait10s>csrutil disable<enter>"`} {
+		if !strings.Contains(string(sip), want) {
+			t.Fatalf("disable-sip recipe lacks %s", want)
+		}
+	}
+	if strings.Contains(string(uitest), "vm_base_name") || !strings.Contains(string(uitest), `script           = "scripts/provision27.sh"`) {
+		t.Fatal("uitest recipe must provision the cloned VM in place with the shared recipe")
+	}
+	dir := filepath.Join(t.TempDir(), "recipe")
+	if err := writeRecipe(dir); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := os.ReadFile(filepath.Join(dir, "scripts", "provision27.sh")); err != nil || string(b) != guestscripts.Provision27 {
+		t.Fatal("shared UI-test recipe not materialized", err)
 	}
 }

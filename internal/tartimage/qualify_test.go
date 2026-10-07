@@ -40,6 +40,8 @@ func (s fakeSession) Run(_ context.Context, command, _ string) (string, error) {
 		return "15.2\n15C500b\n", nil
 	case strings.HasPrefix(command, "/usr/bin/xcodebuild -version"):
 		return "Xcode 15.2\nBuild version 15C500b\n", nil
+	case strings.Contains(command, "kern.bootargs"):
+		return "assessments disabled\n", nil
 	case strings.HasPrefix(command, "sudo -n /sbin/shutdown"):
 		if !s.noShutdown {
 			s.runtime.mu.Lock()
@@ -138,5 +140,23 @@ func TestQualifySecuresRebootsVerifiesAndRecordsEvidence(t *testing.T) {
 	}
 	if evidence["upstream"] != p.Tart.Upstream || evidence["recipe_sha256"] != RecipeDigest() || evidence["build"] != "22H420" {
 		t.Fatal(evidence)
+	}
+}
+
+func TestUITestQualifyRecordsInstalledXcodeAndVerifiesProvisioning(t *testing.T) {
+	b, _, g, l, _ := qualifyBuilder(t)
+	g.build = "26A428"
+	p := uitestProfile()
+	p.MacOS = "13.7.4" // the fake session reports 13.7.4
+	if err := b.Step(context.Background(), l, p, "qualify", noProgress); err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(g.commands, "\n")
+	if !strings.Contains(joined, "kern.bootargs") || !strings.Contains(joined, "id -Gn admin") {
+		t.Fatal("UI-test provisioning was not verified for the admin account")
+	}
+	raw, err := os.ReadFile(filepath.Join(b.folder(l), "verification.json"))
+	if err != nil || !strings.Contains(string(raw), `"version": "15.2"`) {
+		t.Fatal("installed Xcode not recorded", err)
 	}
 }

@@ -130,14 +130,31 @@ func (b *Builder) verify(ctx context.Context, l domain.Lease, p domain.ImageProf
 	logXcode := func(out string) error {
 		return os.WriteFile(filepath.Join(b.folder(l), "xcode-verify.log"), []byte(out), 0600)
 	}
-	if err := qualify.Xcode(ctx, g, user, *p.Xcode, logXcode); err != nil {
+	xcode := p.Xcode
+	if xcode == nil {
+		// UI-test images adopt the upstream Xcode; record what is installed.
+		installed, err := qualify.InstalledXcode(ctx, g)
+		if err != nil {
+			return nil, err
+		}
+		xcode = &installed
+	}
+	if err := qualify.Xcode(ctx, g, user, *xcode, logXcode); err != nil {
 		return nil, err
+	}
+	if p.Provision == "uitest-27-v1" {
+		logProvision := func(out string) error {
+			return os.WriteFile(filepath.Join(b.folder(l), "provision-verify.log"), []byte(out), 0600)
+		}
+		if err := qualify.Provision(ctx, g, user, logProvision); err != nil {
+			return nil, err
+		}
 	}
 	support, err := b.deviceSupport(ctx, b.config.StateDir, ip, version, p.Build, progress)
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"macos": version, "build": p.Build, "xcode": p.Xcode, "sip": sip, "desktop": true, "disk": disk, "scoped_image_ssh": true, "guest_user": user, "device_support": support, "provision": p.Provision, "security": p.Security, "verified_at": time.Now().UTC()}, nil
+	return map[string]any{"macos": version, "build": p.Build, "xcode": xcode, "sip": sip, "desktop": true, "disk": disk, "scoped_image_ssh": true, "guest_user": user, "device_support": support, "provision": p.Provision, "security": p.Security, "verified_at": time.Now().UTC()}, nil
 }
 
 func (b *Builder) boot(ctx context.Context, l domain.Lease) (string, error) {
