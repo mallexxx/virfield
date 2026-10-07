@@ -566,8 +566,8 @@ func TestFailedVerificationRequiresExplicitReprovision(t *testing.T) {
 func TestOnlineSetupRecoveryDoesNotRepeatCreate(t *testing.T) {
 	c, b := imageController(t)
 	p := c.templates["test"].Image
-	p.MacOS = "12.6"
-	p.Build = "21G115"
+	p.MacOS = "13.6"
+	p.Build = "22G120"
 	b.fail = "setup"
 	op, err := c.BuildImage(context.Background(), "test", "online-setup-build")
 	if err != nil {

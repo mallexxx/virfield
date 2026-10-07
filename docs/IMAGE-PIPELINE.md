@@ -292,7 +292,7 @@ cannot restore reliably. It checks version/build and Apple's deep signature
 before replacing the guest app.
 This keeps the signed XIP as the normal catalog transport while allowing
 existing 80 GB Monterey images to install Xcode without resizing encrypted APFS disks.
-Display is 1920×1440 for native macOS 11/12 and Sequoia setup (their
+Display is 1920×1440 for native macOS 11–13 and Sequoia setup (their
 Assistant controls can be clipped at 1080 pixels), and 1920×1080 otherwise.
 Changing the recipe requires a code change and live validation; this is not an
 arbitrary command runner.
@@ -375,7 +375,7 @@ credentials and Finder after another reboot. Credentials remain in private 0600 
 the private state directory; they are never returned by status/job/events.
 Each disposable clone receives a distinct password, management key and SSH host key before readiness. Caller keys are supplied per lease; image/cross-lease keys are tested for rejection. See the [SSH contract](OPERATIONS.md#leases-and-ssh).
 
-## Native setup for macOS 11/12
+## Native setup for macOS 11–13
 
 These guests use their native Setup Assistant because their encrypted APFS Data
 volume may be unlockable only by the running guest. The executor recognizes
@@ -385,7 +385,7 @@ next journaled stage rotates the bootstrap password and hardens SSH. Unknown
 screens or missing controls stop with private screenshots; they never publish
 an unverified image. The subsequent SIP stage applies the selected security policy.
 
-An inspected failed setup of macOS 11/12 can be resumed with `setup-online`:
+An inspected failed setup of macOS 11–13 can be resumed with `setup-online`:
 
 ```sh
 ./bin/virfield -token-file /absolute/state/token -key inspected-online-setup-001 \

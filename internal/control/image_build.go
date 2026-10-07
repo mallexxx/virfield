@@ -225,8 +225,8 @@ func (c *Controller) RecoverImage(ctx context.Context, id, key, name, action str
 	}
 	switch action {
 	case "setup-online":
-		if j.Kind != "image_build" || j.Phase != "setup_dispatched" || j.Image == nil || !domain.ValidVersion(j.Image.MacOS) || domain.CompareVersions(j.Image.MacOS, "13") >= 0 {
-			return domain.Operation{}, domain.Err("unsafe_retry", "Online setup recovery is only for an inspected failed setup of macOS 11/12; it never reruns offline disk patching")
+		if j.Kind != "image_build" || j.Phase != "setup_dispatched" || j.Image == nil || !domain.ValidVersion(j.Image.MacOS) || domain.CompareVersions(j.Image.MacOS, "14") >= 0 {
+			return domain.Operation{}, domain.Err("unsafe_retry", "Online setup recovery is only for an inspected failed setup of macOS 11–13; it never reruns offline disk patching")
 		}
 		if v, exists := c.vm(l); !exists || (v.State != "stopped" && v.State != "running") {
 			return domain.Operation{}, domain.Err("image_in_use", "Inspect the exact setup VM; it must be running or stopped with no setup process in flight")

@@ -128,6 +128,22 @@ func TestCatalogXcodeGetsExpansionSpaceAtCreation(t *testing.T) {
 	}
 }
 
+func TestOnlineSetupCoversLockedVenturaDataVolume(t *testing.T) {
+	for _, tc := range []struct {
+		macos string
+		want  bool
+	}{
+		{"12.6", true},
+		{"13.6", true},
+		{"14.0", false},
+		{"15.2", false},
+	} {
+		if got := onlineSetupRequired(domain.ImageProfile{MacOS: tc.macos}); got != tc.want {
+			t.Fatalf("onlineSetupRequired(%q) = %v, want %v", tc.macos, got, tc.want)
+		}
+	}
+}
+
 func TestMontereyXIPTransferChecksDigestAndSignatureBeforeReplacingApp(t *testing.T) {
 	receive := sshXcodeReceiveScript("0123456789abcdef0123456789abcdef01234567")
 	expand := sshXcodeExpandScript("13.4.1", "13F100")

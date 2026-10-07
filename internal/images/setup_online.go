@@ -20,10 +20,10 @@ import (
 //go:embed setup_online.py
 var onlineSetupScript string
 
-// Monterey's Data volume can only be unlocked by its running guest. Do not try
-// to modify that encrypted volume from the host: complete the native Assistant.
+// macOS 11–13 Data volumes can be encrypted and locked after first boot. Do not
+// try to modify them from the host: complete the native Assistant in the guest.
 func onlineSetupRequired(p domain.ImageProfile) bool {
-	return domain.ValidVersion(p.MacOS) && domain.CompareVersions(p.MacOS, "13") < 0
+	return domain.ValidVersion(p.MacOS) && domain.CompareVersions(p.MacOS, "14") < 0
 }
 func (e *Engine) setupOnline(ctx context.Context, l domain.Lease, progress func(string) error) error {
 	if err := progress("Completing Setup Assistant inside the running guest"); err != nil {
