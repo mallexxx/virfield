@@ -3,12 +3,14 @@ package domain
 import (
 	"encoding/hex"
 	"net/url"
+	"regexp"
 	"strings"
 )
 
 // ImageProfile is a resolved immutable manifest, never a free-form client command.
 // The digest and size identify one immutable Apple restore image.
 type ImageProfile struct {
+	Tart       *TartSource        `json:"tart,omitempty"`
 	Registry   *RegistryReference `json:"registry,omitempty"`
 	MacOS      string             `json:"macos,omitempty"`
 	Xcode      *XcodeRelease      `json:"xcode,omitempty"`
@@ -19,6 +21,21 @@ type ImageProfile struct {
 	Size       int64              `json:"size"`
 	Build      string             `json:"build"`
 	DisableSIP bool               `json:"disable_sip"`
+}
+
+// TartSource pins one upstream Tart OCI image. Only digest references on GHCR
+// are accepted; a tag can move under a qualified golden.
+type TartSource struct {
+	Upstream string `json:"upstream"`
+}
+
+var tartUpstreamPattern = regexp.MustCompile(`^ghcr\.io/[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*@sha256:[0-9a-f]{64}$`)
+
+func (s TartSource) Validate() error {
+	if !tartUpstreamPattern.MatchString(s.Upstream) {
+		return Err("invalid_profile", "Tart upstream must be a ghcr.io image pinned by sha256 digest")
+	}
+	return nil
 }
 
 func (p ImageProfile) Validate() error {
@@ -67,6 +84,12 @@ func (p ImageProfile) Validate() error {
 		if !ValidVersion(p.MacOS) || CompareVersions(p.MacOS, p.Xcode.Requires) < 0 {
 			return Err("incompatible_versions", "Selected Xcode requires macOS "+p.Xcode.Requires+" or newer")
 		}
+	}
+	if p.Tart != nil {
+		if p.Registry != nil || p.URL != "" || p.SHA256 != "" || p.Size != 0 || !ValidVersion(p.MacOS) || !ValidName(p.Build) || p.Provision != "developer-v1" {
+			return Err("invalid_profile", "Tart images need expected macOS/build, developer-v1 and no competing source")
+		}
+		return p.Tart.Validate()
 	}
 	if p.Registry != nil {
 		if p.URL != "" || p.SHA256 != "" || p.Size != 0 || !ValidVersion(p.MacOS) || !ValidName(p.Build) {

@@ -27,3 +27,43 @@ func TestRecoveryPoliciesAcrossAppleSiliconGenerations(t *testing.T) {
 		}
 	}
 }
+
+func tartProfile() ImageProfile {
+	return ImageProfile{
+		Tart:       &TartSource{Upstream: "ghcr.io/cirruslabs/macos-ventura-base@sha256:9fb387bb987cdda942fbc27118296ed8e16a3359a672c95c6d5ac960165ef1c5"},
+		MacOS:      "13.7.4",
+		Build:      "22H420",
+		Security:   "sip-disabled",
+		DisableSIP: true,
+		Provision:  "developer-v1",
+		Xcode:      &XcodeRelease{Version: "15.2", Build: "15C500b", Requires: "13.5", URL: "https://download.developer.apple.com/Developer_Tools/Xcode_15.2/Xcode_15.2.xip", SHA1: "3f1e6943264ba640f83e655768df439902acc406"},
+	}
+}
+
+func TestTartProfileValidates(t *testing.T) {
+	if err := tartProfile().Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTartProfileRejectsUnpinnedOrCompetingSources(t *testing.T) {
+	cases := map[string]func(*ImageProfile){
+		"tag": func(p *ImageProfile) { p.Tart.Upstream = "ghcr.io/cirruslabs/macos-ventura-base:latest" },
+		"host": func(p *ImageProfile) {
+			p.Tart.Upstream = "docker.io/cirruslabs/macos-ventura-base@sha256:" + strings.Repeat("a", 64)
+		},
+		"short":    func(p *ImageProfile) { p.Tart.Upstream = "ghcr.io/cirruslabs/x@sha256:abc" },
+		"ipsw":     func(p *ImageProfile) { p.URL = "https://updates.cdn-apple.com/x.ipsw" },
+		"no build": func(p *ImageProfile) { p.Build = "" },
+		"no xcode": func(p *ImageProfile) { p.Xcode = nil; p.Provision = "" },
+		"recipe":   func(p *ImageProfile) { p.Provision = "security-v1"; p.Security = "automation"; p.Xcode = nil },
+		"registry": func(p *ImageProfile) { p.Registry = &RegistryReference{} },
+	}
+	for name, mutate := range cases {
+		p := tartProfile()
+		mutate(&p)
+		if err := p.Validate(); err == nil {
+			t.Fatalf("%s: accepted invalid Tart profile", name)
+		}
+	}
+}

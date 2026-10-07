@@ -23,6 +23,9 @@ func imageFingerprint(p *domain.ImageProfile) string {
 		URL      string `json:"url"`
 		SHA1     string `json:"sha1"`
 	}
+	type tart struct {
+		Upstream string `json:"upstream"`
+	}
 	type identity struct {
 		Registry   *registry `json:"registry,omitempty"`
 		MacOS      string    `json:"macos,omitempty"`
@@ -34,6 +37,7 @@ func imageFingerprint(p *domain.ImageProfile) string {
 		Size       int64     `json:"size"`
 		Build      string    `json:"build"`
 		DisableSIP bool      `json:"disable_sip"`
+		Tart       *tart     `json:"tart,omitempty"`
 	}
 	v := identity{MacOS: p.MacOS, Security: p.Security, Provision: p.Provision, URL: p.URL, SHA256: p.SHA256, Size: p.Size, Build: p.Build, DisableSIP: p.DisableSIP}
 	if p.Registry != nil {
@@ -43,6 +47,9 @@ func imageFingerprint(p *domain.ImageProfile) string {
 	if p.Xcode != nil {
 		x := p.Xcode
 		v.Xcode = &xcode{x.Version, x.Build, x.Requires, x.URL, x.SHA1}
+	}
+	if p.Tart != nil {
+		v.Tart = &tart{p.Tart.Upstream}
 	}
 	return fingerprint(v)
 }
