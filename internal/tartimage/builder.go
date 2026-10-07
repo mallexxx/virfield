@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mallexxx/virfield/internal/domain"
@@ -46,6 +47,9 @@ type Builder struct {
 	deviceSupport func(ctx context.Context, dir, ip, version, build string, progress func(string) error) (string, error)
 	stateTimeout  time.Duration
 	statePoll     time.Duration
+	// pluginMu serializes packer init: concurrent installs into the shared
+	// plugin directory can leave a starting build without its plugin.
+	pluginMu sync.Mutex
 }
 
 func New(config Config) *Builder {
@@ -99,7 +103,10 @@ func (b *Builder) resolve(ctx context.Context, l domain.Lease, p domain.ImagePro
 	if err := os.WriteFile(filepath.Join(folder, "recipe.sha256"), []byte(RecipeDigest()), 0600); err != nil {
 		return err
 	}
-	if err := b.packer(ctx, l, nil, "packer-init.log", "init", "developer.pkr.hcl"); err != nil {
+	b.pluginMu.Lock()
+	err := b.packer(ctx, l, nil, "packer-init.log", "init", "developer.pkr.hcl")
+	b.pluginMu.Unlock()
+	if err != nil {
 		return domain.Err("image_command_failed", "Packer plugin initialization failed; inspect the private packer-init log")
 	}
 	return nil

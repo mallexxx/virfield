@@ -16,7 +16,7 @@ func TestRecipeDigestIsStableAndPinned(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`version = "= 1.21.0"`, `recovery_partition = "relocate"`, "disk_size_gb       = 120", `script = "scripts/reset-host-keys.sh"`} {
+	for _, want := range []string{`version = "= 1.21.0"`, `recovery_partition = "relocate"`, "disk_size_gb       = 120", `script = "scripts/reset-host-keys.sh"`, `script = "scripts/grow-disk.sh"`} {
 		if !strings.Contains(string(template), want) {
 			t.Fatalf("recipe lacks %s", want)
 		}
@@ -28,7 +28,7 @@ func TestRecipeScriptsParseAndMaterializePrivately(t *testing.T) {
 	if err := writeRecipe(dir); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"check-guest.sh", "install-xcode.sh", "xcode-post.sh", "reset-host-keys.sh"} {
+	for _, name := range []string{"check-guest.sh", "install-xcode.sh", "xcode-post.sh", "reset-host-keys.sh", "grow-disk.sh"} {
 		path := filepath.Join(dir, "scripts", name)
 		if out, err := exec.Command("/bin/bash", "-n", path).CombinedOutput(); err != nil {
 			t.Fatalf("%s: %s %v", name, out, err)

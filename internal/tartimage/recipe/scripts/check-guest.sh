@@ -8,6 +8,4 @@ build="$(sw_vers -buildVersion)"
 [[ "$build" == "$VF_BUILD" ]] || { echo "build $build, expected $VF_BUILD"; exit 65; }
 [[ "$(csrutil status)" == "System Integrity Protection status: $VF_SIP." ]] || { csrutil status; exit 65; }
 sudo -n true
-available_kib="$(df -k / | awk 'NR==2 {print $4}')"
-(( available_kib >= 40 * 1024 * 1024 )) || { echo "only ${available_kib} KiB free"; exit 66; }
 echo "guest matches profile: $version ($build), SIP $VF_SIP"

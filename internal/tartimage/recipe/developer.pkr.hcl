@@ -40,6 +40,9 @@ build {
     environment_vars = ["VF_MACOS=${var.macos_version}", "VF_BUILD=${var.macos_build}", "VF_SIP=${var.sip}"]
   }
   provisioner "shell" {
+    script = "scripts/grow-disk.sh"
+  }
+  provisioner "shell" {
     inline = ["umask 077", "mkdir -p \"$HOME/.virfield-xcode\""]
   }
   provisioner "file" {

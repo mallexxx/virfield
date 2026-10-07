@@ -23,12 +23,25 @@ type call struct {
 }
 
 type fakeRunner struct {
-	calls []call
-	err   error
+	mu      sync.Mutex
+	calls   []call
+	err     error
+	active  int
+	overlap bool
 }
 
 func (r *fakeRunner) Run(_ context.Context, dir string, env []string, _ string, _ string, args ...string) error {
+	r.mu.Lock()
 	r.calls = append(r.calls, call{dir, env, args})
+	r.active++
+	if r.active > 1 {
+		r.overlap = true
+	}
+	r.mu.Unlock()
+	time.Sleep(20 * time.Millisecond)
+	r.mu.Lock()
+	r.active--
+	r.mu.Unlock()
 	return r.err
 }
 
@@ -194,5 +207,27 @@ func TestStateWaitsSurviveTransientObserveErrors(t *testing.T) {
 	runtime.observeErrs = 1 << 30
 	if err := b.waitState(context.Background(), l, "running"); !hasCode(err, "guest_timeout") {
 		t.Fatal(err)
+	}
+}
+
+// Concurrent image jobs share one plugin directory; overlapping installs
+// left a starting build with "Missing plugins".
+func TestPluginInitializationIsSerialized(t *testing.T) {
+	b, runner, _, l, p := testBuilder(t)
+	other := l
+	other.ID = "image-other"
+	var wg sync.WaitGroup
+	for _, lease := range []domain.Lease{l, other} {
+		wg.Add(1)
+		go func(lease domain.Lease) {
+			defer wg.Done()
+			if err := b.Step(context.Background(), lease, p, "resolve", noProgress); err != nil {
+				t.Error(err)
+			}
+		}(lease)
+	}
+	wg.Wait()
+	if runner.overlap || len(runner.calls) != 2 {
+		t.Fatal("packer init ran concurrently", len(runner.calls))
 	}
 }
