@@ -47,6 +47,7 @@ type Builder struct {
 	deviceSupport func(ctx context.Context, dir, ip, version, build string, progress func(string) error) (string, error)
 	stateTimeout  time.Duration
 	statePoll     time.Duration
+	startRetry    time.Duration
 	// pluginMu serializes packer init: concurrent installs into the shared
 	// plugin directory can leave a starting build without its plugin.
 	pluginMu sync.Mutex
@@ -54,7 +55,7 @@ type Builder struct {
 
 func New(config Config) *Builder {
 	manager := &guestssh.Manager{Dir: config.StateDir}
-	return &Builder{config: config, run: execRunner{}, guests: sshGuests{manager}, deviceSupport: qualifyDeviceSupport, stateTimeout: 3 * time.Minute, statePoll: 2 * time.Second}
+	return &Builder{config: config, run: execRunner{}, guests: sshGuests{manager}, deviceSupport: qualifyDeviceSupport, stateTimeout: 3 * time.Minute, statePoll: 2 * time.Second, startRetry: 3 * time.Second}
 }
 
 func (b *Builder) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile, step string, progress func(string) error) error {

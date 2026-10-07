@@ -17,6 +17,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -382,15 +383,52 @@ func (r *execRunner) Run(ctx context.Context, home string, args []string) ([]byt
 func (r *execRunner) StartDetached(home string, args []string) error {
 	cmd := exec.Command(r.binary, args...)
 	cmd.Env = r.environment(home, args)
+	stderr := &cappedWriter{limit: 4096}
 	cmd.Stdout = io.Discard
-	cmd.Stderr = io.Discard
+	cmd.Stderr = stderr
 	cmd.Stdin = nil
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("tart command failed: %w", err)
 	}
-	go func() { _ = cmd.Wait() }()
+	exited := make(chan error, 1)
+	go func() { exited <- cmd.Wait() }()
+	// tart run exits at once when it cannot start, e.g. while the VM is
+	// still held by another tart process; report that instead of a start.
+	select {
+	case err := <-exited:
+		if err != nil {
+			return fmt.Errorf("tart %s exited: %w: %s", args[0], err, strings.TrimSpace(stderr.String()))
+		}
+	case <-time.After(startGrace):
+	}
 	return nil
+}
+
+// startGrace is how long a detached tart command must survive to count as started.
+var startGrace = 3 * time.Second
+
+// cappedWriter keeps the first bytes for diagnostics and discards the rest, so
+// a long-lived child never blocks on a full pipe.
+type cappedWriter struct {
+	mu    sync.Mutex
+	limit int
+	b     bytes.Buffer
+}
+
+func (w *cappedWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if room := w.limit - w.b.Len(); room > 0 {
+		w.b.Write(p[:min(len(p), room)])
+	}
+	return len(p), nil
+}
+
+func (w *cappedWriter) String() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.b.String()
 }
 
 var errOutputLimit = errors.New("command output exceeds 4 MiB")

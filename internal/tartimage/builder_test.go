@@ -264,3 +264,28 @@ func TestUITestBuildUsesTheUITestRecipeFromThePinnedBase(t *testing.T) {
 		t.Fatal("uitest build must not upload an Xcode archive")
 	}
 }
+
+type flakyStartRuntime struct {
+	*fakeRuntime
+	failures int
+}
+
+func (f *flakyStartRuntime) Start(ctx context.Context, l domain.Lease) error {
+	if f.failures > 0 {
+		f.failures--
+		return errors.New(`VM "x" is already running!`)
+	}
+	return f.fakeRuntime.Start(ctx, l)
+}
+
+func TestBootRetriesWhileTheVMIsStillHeld(t *testing.T) {
+	b, _, runtime, l, _ := testBuilder(t)
+	runtime.state = "stopped"
+	flaky := &flakyStartRuntime{fakeRuntime: runtime, failures: 2}
+	b.config.Runtime = flaky
+	b.startRetry = time.Millisecond
+	ip, err := b.boot(context.Background(), l)
+	if err != nil || ip == "" || flaky.failures != 0 {
+		t.Fatal(ip, err, flaky.failures)
+	}
+}

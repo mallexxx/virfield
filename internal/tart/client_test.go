@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -131,5 +132,27 @@ func TestMountPointResolvesTheVolumeOfANestedDirectory(t *testing.T) {
 	mount, err := mountPoint(nested)
 	if err != nil || mount == "" || mount[0] != '/' || mount == nested {
 		t.Fatalf("mount point of %s = %q, %v", nested, mount, err)
+	}
+}
+
+// tart run exits at once when the VM is still held (for example by a
+// just-finished Packer build); that must not be reported as a start.
+func TestStartDetachedReportsImmediateExit(t *testing.T) {
+	dir := t.TempDir()
+	failing := filepath.Join(dir, "tart-fails")
+	if err := os.WriteFile(failing, []byte("#!/bin/sh\necho 'VM \"x\" is already running!' >&2\nexit 2\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	r := &execRunner{binary: failing}
+	if err := r.StartDetached(dir, []string{"run", "x"}); err == nil || !strings.Contains(err.Error(), "already running") {
+		t.Fatal("immediate exit reported as a start", err)
+	}
+	running := filepath.Join(dir, "tart-runs")
+	if err := os.WriteFile(running, []byte("#!/bin/sh\nexec sleep 30\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	r = &execRunner{binary: running}
+	if err := r.StartDetached(dir, []string{"run", "x"}); err != nil {
+		t.Fatal(err)
 	}
 }

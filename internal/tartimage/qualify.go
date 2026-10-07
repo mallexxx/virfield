@@ -158,8 +158,21 @@ func (b *Builder) verify(ctx context.Context, l domain.Lease, p domain.ImageProf
 }
 
 func (b *Builder) boot(ctx context.Context, l domain.Lease) (string, error) {
-	if err := b.config.Runtime.Start(ctx, l); err != nil {
-		return "", err
+	// Right after a Packer build or shutdown, tart can still hold the VM and
+	// refuses to run it; retry briefly before giving up.
+	for attempt := 1; ; attempt++ {
+		err := b.config.Runtime.Start(ctx, l)
+		if err == nil {
+			break
+		}
+		if attempt == 10 {
+			return "", err
+		}
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(b.startRetry):
+		}
 	}
 	if err := b.waitState(ctx, l, "running"); err != nil {
 		return "", err
