@@ -6,131 +6,109 @@ in [compositional platform plan](../../COMPOSITIONAL-PLATFORM.md).
 
 ## Goal
 
-Produce one qualified, digest-pinned Tart golden — Ventura (whatever build the
-pinned Cirrus base ships, at least 13.5) with Xcode 15.2 (15C500b), SIP
-disabled, `developer-v1` — and pass two disposable Tart lease clones through the
-existing lease API with per-lease SSH isolation.
+Produce qualified, digest-pinned Tart goldens and pass two disposable Tart
+lease clones of each through the existing lease API with per-lease SSH
+isolation:
 
-Guiding rule: reuse Tart, Cirrus images and Packer's Tart plugin as far as
-possible; Virfield keeps only what upstream lacks. Lume is not extended or
-generalized; its removal is Phase 2.
+| Profile | Upstream (pinned) | Guest | Xcode | SIP |
+|---|---|---|---|---|
+| `ventura-xcode-15.2` | `ghcr.io/cirruslabs/macos-ventura-base@sha256:9fb387bb987cdda942fbc27118296ed8e16a3359a672c95c6d5ac960165ef1c5` | 13.7.4 (22H420) | 15.2 (15C500b) | disabled |
+| `monterey-xcode-13.4.1` | `ghcr.io/cirruslabs/macos-monterey-vanilla@sha256:4bc904cf8f2447dfa6e6fb9a5eb70eba14196dd0f4236d30fc92aff9c2391842` | 12.7.6 (build from first probe) | 13.4.1 (13F100) | as shipped (probe) |
 
-## Decisions
+Both use `developer-v1`. Guiding rule: reuse Tart, Cirrus images and Packer's
+Tart plugin as far as possible; Virfield keeps only what upstream lacks. Lume is
+not extended or generalized; its removal is Phase 2.
 
-| Topic | Decision |
+## Decisions and verified facts
+
+| Topic | Decision / fact (verified 2026-10-07 unless noted) |
 |---|---|
-| Coexistence with live Lume service | **Tart window**: the same launchd service is switched between a Lume config and a Tart config with **separate state dirs**; swap only when no Lume lease is active. Rollback is config swap + restart. No mixed routing, no second daemon. |
-| Upstream base | `ghcr.io/cirruslabs/macos-ventura-base@sha256:9fb387bb987cdda942fbc27118296ed8e16a3359a672c95c6d5ac960165ef1c5` (uploaded 2025-09-20, ~22.6 GB compressed, 50 GB raw disk). Cirrus publishes no Ventura Xcode 15.2 image. |
-| Profile | Base OS build, Xcode 15.2, SIP disabled, `developer-v1`. |
-| Golden storage | Local stopped Tart VM in a Tart container; leases clone it copy-on-write. GHCR push is a follow-up after acceptance. |
-| Image construction | Packer with the `github.com/cirruslabs/tart` plugin (pinned version, ≥ 1.12.0), recipes derived from Cirrus `macos-image-templates` (MIT). |
+| Coexistence with live Lume service | **Tart window**: the same launchd service switches between a Lume config and a Tart config with **separate state dirs**; swap only when no Lume lease is active. Rollback is config swap + restart. |
+| Storage | Tart container on `/Volumes/Samsung970EVO/virfield-tart` (323 GB free); `/` has too little room for two goldens. |
+| Ventura base | Ships 13.7.4 (22H420), SIP **disabled**, `admin`/`admin`, passwordless sudo, autologin `admin`, Finder desktop, Tart Guest Agent. 50 GB disk, 19 GB free. No Ventura Xcode 15.2 image exists upstream. |
+| Monterey base | `macos-monterey-xcode` and `macos-monterey-base` use the legacy `tart.disk.v1` layer format that Tart 2.40 refuses (`disk chunks must start with a disk.v2 base`); only `macos-monterey-vanilla` is usable. 12.7.6 is the final Monterey release. |
+| Clone identity | `tart clone` keeps the ECID (machine identity) for OCI→local and local→local clones; local clones get a new MAC. Cirrus guests report APFS `Encryption=true` with FileVault off, so Tart profiles allow encryption at rest (FileVault off and unlocked volumes are still required). Concurrent same-ECID clones are proven in live acceptance. |
+| Image construction | Packer 1.15.2 with `github.com/cirruslabs/tart` plugin pinned `= 1.21.0`. |
+| Xcode transport | Packer `file` provisioner uploads the cached, sha1-verified XIP over SSH; the guest checks sha1, Apple signature and version, then expands it. Same path for both profiles (Monterey has no VirtioFS). Disk grown to 120 GB by the plugin. |
+| SIP | No Recovery step: the profile states the expected SIP state and qualification verifies it. A profile whose upstream SIP state differs fails qualification. |
+| Golden storage | Local stopped Tart VM; leases clone it copy-on-write. GHCR push is a follow-up after acceptance. |
+| Registry auth | The host's `~/.docker/config.json` GHCR credential is rejected by GHCR, and Tart always reads it. Tart `registry_credentials` (`TART_REGISTRY_*`, higher precedence) with the existing `personal-ghcr` token are required for pulls. |
 
 ## Components
 
-1. **Recipes** — `internal/tartimage/recipes/*.pkr.hcl` plus provisioner
-   scripts, embedded with `go:embed`. The recipe digest is the sha256 over the
-   sorted embedded files. Two recipes:
-   - `developer-xcode.pkr.hcl`: `source "tart-cli"` with `vm_base_name` =
-     pinned upstream, `vm_name` = build VM, `ssh_username/password = admin`,
-     `headless = true`, `run_extra_args = ["--dir=xcode:<xip dir>:ro"]`.
-     Provisioners, in order: assert `sw_vers` equals the profile (fail fast);
-     extract the shared Xcode XIP and install it; Xcode post-install
-     (`xcode-select`, license, `-runFirstLaunch`, DevToolsSecurity,
-     `_developer`); Virfield security policy (`security.sh`, parameterized for
-     the guest user); clean shutdown.
-   - `disable-sip.pkr.hcl`: Cirrus's pattern — `vm_base_name` = the build VM,
-     `recovery = true`, `communicator = "none"`, VNC `boot_command` running
-     `csrutil disable` with the bootstrap password, then `halt`.
-2. **`internal/tartimage`** — runs `packer init` (into a plugin dir under the
-   state dir) and `packer build` as subprocesses with `TART_HOME` set to the
-   container path, private per-job logs and `outputLimit`-style capture; plus
-   `tart rename` / `tart delete` for build VMs. All commands go through a
-   runner interface so tests use fakes.
-3. **`internal/qualify`** — Virfield's existing guest checks extracted from
-   `internal/images` into runtime-agnostic functions over an SSH executor with
-   the guest user as a parameter: `sw_vers` version/build, `csrutil status`,
-   Xcode version/build, Apple code signature, `xcodebuild -version`,
-   `xcode-select`, first-launch status, swiftc compile probe, DevToolsSecurity,
-   `_developer` membership, disk policy, security-policy verify, desktop
-   (Finder + `.AppleSetupDone`). Writes `verification.json`; its sha256 is the
-   evidence digest.
-4. **Domain/config** — `ImageProfile` gains a `Tart` source
-   (`{"upstream": "<ref>@sha256:…", "recipe": "developer-xcode"}`) as a third
-   alternative to IPSW and GHCR; validation requires a digest-pinned upstream
-   on `ghcr.io` and a known recipe. `macos` and `build` stay required
-   (the first provisioner enforces them). Templates set `provider: "tart"` and
-   `guest_user: "admin"`.
-5. **Controller** — a Tart image job (`image_build` kind, Tart phase set)
-   registered only when the runtime is Tart. Image readiness keeps the existing
-   `image_ready` lease record; `ImageManifest` becomes
-   `sha256(upstream digest, recipe digest, evidence digest)` for Tart profiles.
-6. **Guest identity and leases** — `guestssh` and the shared scripts take the
-   guest user/home from the template instead of the hardcoded `lume`.
-   `LeasePreparer` is wired for Tart, so Tart leases become `ready` only after
-   per-lease key, password and host-key rotation and old-key rejection.
+1. **Recipe** — `internal/tartimage/recipe/developer.pkr.hcl` plus
+   `scripts/*.sh`, embedded with `go:embed`. Recipe digest = sha256 over the
+   sorted embedded files. `source "tart-cli"`: `vm_base_name` = pinned
+   upstream, `vm_name` = template VM name, `disk_size_gb = 120`, `admin`/
+   `admin` SSH, `headless = true`. Provisioners: assert OS version/build,
+   SIP state, sudo and free space (fail fast); upload XIP; verify and install
+   Xcode; Xcode post-install (`xcode-select`, license, `-runFirstLaunch`,
+   DevToolsSecurity, `_developer`, NFS dyld export for DeviceSupport).
+2. **`internal/tartimage`** — implements `control.ImageBuilder` for Tart
+   profiles. Runs `packer init`/`packer build` as subprocesses with
+   `TART_HOME`, a private plugin dir, `TART_REGISTRY_*` for the upstream host,
+   private per-job logs; boots and stops VMs through the existing Tart
+   runtime client.
+3. **`internal/qualify`** — guest checks moved out of `internal/images` and
+   made runtime-agnostic and user-parameterized: OS version/build, SIP state,
+   desktop wait, disk policy, password persistence, Xcode bundle/signature/
+   version/first-launch/compile probe, host DeviceSupport preparation.
+   `internal/images` calls the moved functions with user `lume`, so Lume
+   behavior is unchanged.
+4. **Domain/config** — `ImageProfile.Tart` (`{"upstream": "<ghcr ref>@sha256:…"}`)
+   as a third source alternative to IPSW and GHCR-Lume; `macos`, `build` and
+   `xcode` required. `runtime.tart.image` config: Packer binary and Xcode
+   archive directory.
+5. **Controller** — a Tart phase map selected by `profile.Tart != nil`:
+   `resolve → build → qualify → stop`, then the existing `image_ready`
+   promotion. The existing collision check guards `build`; restart during any
+   dispatched step yields `image_outcome_unknown` (never replayed); operator
+   `retry` is allowed for `resolve` and `qualify` only.
+6. **Guest identity and leases** — done in stage 1.
 
 ## Data flow
 
 ```text
-resolve  validate profile, upstream digest, recipe digest, Xcode XIP present
-         in the host cache (sha1 verified), reserve one VM slot
-build    packer build developer-xcode → VM vf-build-<job> (stopped)
-sip      packer build disable-sip on vf-build-<job> → stopped, SIP off
-qualify  tart run vf-build-<job>; SSH admin/admin bootstrap; SecureImage
-         (management key, rotated password, autologin, password SSH off);
-         reboot; reconnect with pinned host key; run internal/qualify;
-         write evidence; clean shutdown
-promote  tart rename vf-build-<job> → template name; record image_ready with
-         the derived ImageManifest; release the VM slot
+resolve  profile has a Tart source; container known; XIP present and sha1
+         verified; recipe written to the private job dir; packer init
+build    packer build → VM <template name> in the container (stopped)
+qualify  tart run; SSH admin/admin bootstrap; desktop; SecureImage; reboot;
+         reconnect with pinned host key; qualify checks; DeviceSupport;
+         verification.json; clean guest shutdown
+stop     confirm stopped → controller promotes image_ready
 ```
 
-The build VM never carries the golden name until qualification succeeds, so a
-VM with the golden name is always qualified.
-
-Lease flow is unchanged apart from preparation: clone the local golden (same
-container) → `tart run` → IP → `LeasePreparer` (template guest user) → `ready`
-→ release → `tart stop` + `tart delete`.
+Lease flow: clone local golden (same container) → `tart run` → IP →
+`LeasePreparer` as `admin` → `ready` → release → stop + delete.
 
 ## Failure handling
 
-- Any subprocess failure → job `needs_attention` with a stable code
-  (`image_command_failed`, `guest_build_mismatch`, `sip_verification_failed`,
-  …) and the private log path; no automatic retry of a non-idempotent phase.
-- Daemon restart while `build`/`sip`/`qualify` is in flight → the outcome is
-  unknown; the job moves to `needs_attention` (`outcome_unknown`). Recovery
-  stops and deletes `vf-build-<job>` (identified by journal + name prefix,
-  never a golden) and restarts from `build`.
-- A golden name collision at `promote` → `image_exists`; nothing is
-  overwritten.
-- Qualification never weakens a check to pass; a mismatch is a failed image.
+- Subprocess or check failure → job `needs_attention` with a stable code and
+  the private log path; no automatic retry.
+- Packer cleans up its VM on build failure; an interrupted build leaves the VM
+  for the existing operator `delete` recovery.
+- Qualification never weakens a check to pass.
 
 ## Testing
 
-- Unit: recipe embedding and digest stability; `tartimage` command lines and
-  environment (`TART_HOME`, plugin dir, `--dir` argument) via a fake runner;
-  `qualify` checks against a fake SSH executor (ported from existing verify
-  tests, including mismatch cases); profile/config validation; controller
-  phase transitions and restart reconciliation with fake builders; `guestssh`
-  user parameterization (no `lume` literal reachable for a Tart template).
-- `make check` stays green; Lume tests stay unchanged.
-- Live acceptance (Tart window, recorded in `docs/VERIFICATION.md`): run the
-  adoption job once; acquire two leases concurrently; for each verify distinct
-  pinned host keys, rejection of the golden's management key and of the other
-  lease's key, `xcodebuild -version` = 15.2/15C500b, `csrutil` disabled, a
-  Swift compile, SCP artifact export; release both and confirm deletion while
-  the golden stays stopped and unchanged.
+- Unit: profile validation; recipe embedding/digest; `tartimage` commands and
+  environment via a fake runner; step sequencing with fake runtime and
+  fake guest; `qualify` checks against canned outputs (moved tests keep
+  passing); controller Tart phases and recovery.
+- `make check` green; Lume tests unchanged.
+- Live (stage 3, Tart window): build both profiles; two concurrent leases per
+  profile with distinct host keys, rejection of the golden key and the other
+  lease's key, `xcodebuild -version`, SIP state, Swift compile, artifact
+  export; release and confirm deletion; record in `docs/VERIFICATION.md`.
 
 ## Delivery order
 
-1. **Guest identity + Tart lease SSH isolation** — parameterize the guest
-   user/home; wire `LeasePreparer` for Tart. No live risk.
-2. **Adoption pipeline** — profile/config, recipes, `tartimage`, `qualify`,
-   controller job.
-3. **Live acceptance** — Tart config with its own state dir, first adoption
-   run, two-clone acceptance, verification record.
+1. Guest identity + Tart lease SSH isolation — **done** (`cd1f18d`…`a50c261`).
+2. Adoption pipeline — profile/config, `qualify` extraction, recipe,
+   `tartimage`, controller phases, wiring.
+3. Live acceptance in a Tart window.
 
 ## Out of scope
 
-GHCR push of the derived golden and Tart media types in the registry client;
-deleting Lume code; Orchard; mixed-provider routing; node-agent and bare-metal
-hosts.
+GHCR push of derived goldens; deleting Lume code; Orchard; mixed-provider
+routing; node-agent and bare-metal hosts; a Recovery/SIP mutation step.
