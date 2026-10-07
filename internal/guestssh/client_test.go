@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/binary"
+	"errors"
 	"io"
 	"net"
 	"os"
@@ -18,6 +19,10 @@ import (
 )
 
 func sshServer(t *testing.T, model string) (string, ssh.Signer) {
+	return sshServerFor(t, model, "lume")
+}
+
+func sshServerFor(t *testing.T, model, user string) (string, ssh.Signer) {
 	t.Helper()
 	_, key, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -28,7 +33,7 @@ func sshServer(t *testing.T, model string) (string, ssh.Signer) {
 		t.Fatal(err)
 	}
 	cfg := &ssh.ServerConfig{PasswordCallback: func(c ssh.ConnMetadata, password []byte) (*ssh.Permissions, error) {
-		if c.User() != "lume" || string(password) != "lume" {
+		if c.User() != user || string(password) != user {
 			return nil, io.EOF
 		}
 		return nil, nil
@@ -187,5 +192,37 @@ func TestForgetImageScopesDeletionAndIsIdempotent(t *testing.T) {
 	}
 	if _, err := os.Stat(folder); !os.IsNotExist(err) {
 		t.Fatal("image data retained", err)
+	}
+}
+
+func TestBootstrapUsesTemplateGuestUser(t *testing.T) {
+	port, _ := sshServerFor(t, "VirtualMac2,1", "admin")
+	e, l := testImageGuest(t, port)
+	l.GuestUser = "admin"
+	g, err := e.Connect(context.Background(), l, "127.0.0.1", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g.Close()
+}
+
+func TestRecordsWithoutGuestUserRemainLume(t *testing.T) {
+	port, _ := sshServerFor(t, "VirtualMac2,1", "admin")
+	e, l := testImageGuest(t, port)
+	if _, err := e.Connect(context.Background(), l, "127.0.0.1", true); err == nil {
+		t.Fatal("record without guest user authenticated as admin")
+	}
+	if guestUser(domain.Lease{}) != "lume" || guestUser(domain.Lease{GuestUser: "admin"}) != "admin" {
+		t.Fatal("unexpected guest user default")
+	}
+}
+
+func TestInvalidGuestUserIsRefused(t *testing.T) {
+	e, l := testImageGuest(t, "22")
+	l.GuestUser = "admin'; rm -rf /"
+	_, err := e.Connect(context.Background(), l, "127.0.0.1", true)
+	var failure *domain.Error
+	if !errors.As(err, &failure) || failure.Code != "guest_identity_failed" {
+		t.Fatal("accepted invalid guest user", err)
 	}
 }

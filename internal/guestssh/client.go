@@ -145,7 +145,21 @@ func waitForConnection(ctx context.Context, delay time.Duration, connect func() 
 		}
 	}
 }
+
+// guestUser is the image account a lease or image record was created for.
+// Records written before guest users were configurable are Lume images.
+func guestUser(l domain.Lease) string {
+	if l.GuestUser == "" {
+		return "lume"
+	}
+	return l.GuestUser
+}
+
 func (e *Manager) connectCredentials(ctx context.Context, l domain.Lease, ip string, bootstrap bool, c Credentials) (*Client, error) {
+	user := guestUser(l)
+	if !domain.ValidName(user) {
+		return nil, domain.Err("guest_identity_failed", "Guest user name is invalid")
+	}
 	signer, err := ssh.ParsePrivateKey(c.Private)
 	if err != nil {
 		return nil, err
@@ -153,10 +167,12 @@ func (e *Manager) connectCredentials(ctx context.Context, l domain.Lease, ip str
 	auth := []ssh.AuthMethod{ssh.PublicKeys(signer)}
 	// Bootstrap is allowed only inside the new-image pipeline, never as a
 	// connection fallback for arbitrary templates or leased execution VMs.
+	// Supported images ship a bootstrap password equal to the account name:
+	// Lume lume/lume and Cirrus Tart admin/admin.
 	if bootstrap && !c.Secured {
-		auth = append(auth, ssh.Password("lume"))
+		auth = append(auth, ssh.Password(user))
 	}
-	cfg := &ssh.ClientConfig{User: "lume", Auth: auth, Timeout: 10 * time.Second, HostKeyCallback: func(_ string, _ net.Addr, key ssh.PublicKey) error {
+	cfg := &ssh.ClientConfig{User: user, Auth: auth, Timeout: 10 * time.Second, HostKeyCallback: func(_ string, _ net.Addr, key ssh.PublicKey) error {
 		actual := key.Marshal()
 		if len(c.HostKey) == 0 {
 			c.HostKey = append([]byte(nil), actual...)
