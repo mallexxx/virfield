@@ -1,6 +1,7 @@
 package qualify
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -29,5 +30,24 @@ func TestDeviceSupportPathRejectsUntrustedComponents(t *testing.T) {
 		if _, err := deviceSupportPath(test.home, test.version, test.build); err == nil {
 			t.Fatalf("accepted unsafe DeviceSupport components: %#v", test)
 		}
+	}
+}
+
+// Xcode ships dsc_extractor.bundle as a Mach-O bundle file, not a directory.
+func TestExtractorBundleIsARegularFile(t *testing.T) {
+	developer := t.TempDir()
+	lib := filepath.Join(developer, "Platforms", "iPhoneOS.platform", "usr", "lib")
+	if err := os.MkdirAll(lib, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := extractorBundle(developer); err == nil {
+		t.Fatal("accepted a missing extractor")
+	}
+	bundle := filepath.Join(lib, "dsc_extractor.bundle")
+	if err := os.WriteFile(bundle, []byte("mach-o"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := extractorBundle(developer); err != nil || got != bundle {
+		t.Fatal(got, err)
 	}
 }

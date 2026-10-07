@@ -64,9 +64,9 @@ func DeviceSupport(ctx context.Context, dir, guestIP, version, build string, pro
 		return "", domain.Err("device_support_failed", "Host Xcode developer directory is unavailable")
 	}
 	developer := strings.TrimSpace(string(developerOut))
-	bundle := filepath.Join(developer, "Platforms", "iPhoneOS.platform", "usr", "lib", "dsc_extractor.bundle")
-	if st, statErr := os.Lstat(bundle); statErr != nil || !st.IsDir() {
-		return "", domain.Err("device_support_failed", "Host Xcode has no dyld shared-cache extractor")
+	bundle, err := extractorBundle(developer)
+	if err != nil {
+		return "", err
 	}
 	cacheDir := filepath.Join(dir, "cache", "device-support")
 	if err := os.MkdirAll(cacheDir, 0700); err != nil {
@@ -163,4 +163,14 @@ func DeviceSupport(ctx context.Context, dir, guestIP, version, build string, pro
 	}
 	complete = true
 	return target, nil
+}
+
+// extractorBundle locates Xcode's dyld shared-cache extractor, a Mach-O
+// bundle file that the compiled helper loads with dlopen.
+func extractorBundle(developer string) (string, error) {
+	bundle := filepath.Join(developer, "Platforms", "iPhoneOS.platform", "usr", "lib", "dsc_extractor.bundle")
+	if st, err := os.Lstat(bundle); err != nil || !st.Mode().IsRegular() {
+		return "", domain.Err("device_support_failed", "Host Xcode has no dyld shared-cache extractor")
+	}
+	return bundle, nil
 }
