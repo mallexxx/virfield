@@ -6,6 +6,47 @@ workflow. Results were collected on Apple Silicon macOS through 2026-10-07 (time
 using Go 1.26.8 and patched Lume 0.5.3. The full UI-test suite is verified on
 macOS 27 build `26A428`; versioned image coverage is recorded separately below.
 
+## Tart image adoption (2026-10-07)
+
+The service ran with `runtime.provider = "tart"` (Tart 2.40.1, Packer 1.15.2,
+`cirruslabs/tart` plugin 1.21.0, `virfieldd` at `ae7b3df`) and its own
+`state_dir`, storage on the external SSD container `samsung-tart`. Both
+goldens were built and qualified by the durable image job
+(`resolve → build → qualify → stop`) without manual guest steps:
+
+| Golden | Upstream digest | Guest | Xcode | SIP | Build + qualify |
+|---|---|---|---|---|---|
+| `ventura-xcode-15.2` | `macos-ventura-base@sha256:9fb387bb…65ef1c5` | 13.7.4 (22H420) | 15.2 (15C500b) | disabled | 4 min + 5 min |
+| `monterey-xcode-13.4.1` | `macos-monterey-vanilla@sha256:4bc904cf…391842` | 12.7.6 (21H1320) | 13.4.1 (13F100) | enabled | 17 min + 5 min |
+
+Qualification evidence (`images/<id>/verification.json`) records the upstream
+and recipe digests, OS version/build, canonical SIP state, a settled Finder
+desktop, APFS encryption at rest with FileVault off and unlocked volumes, a
+rotated `admin` password that persists across reboot, the Xcode signature,
+version, first-launch and Swift probe, and host DeviceSupport extracted over
+the guest's read-only NFS dyld export. Each golden regenerates its SSH host
+keys in the build; qualification pins the new key.
+
+Two-clone acceptance per golden (two concurrent leases, same machine
+identity, distinct MACs): 23/23 checks passed for each. Each lease became
+`ready` only after per-lease SSH isolation, had a host key distinct from the
+other lease and from the golden, reported the expected build, SIP state and
+Xcode, compiled and ran Swift, exported an artifact over pinned `scp`, and
+rejected both the other lease's key and the golden's management key. Release
+deleted both lease VMs and left the golden stopped.
+
+Defects found and fixed during the live run: Tart storage probed a non-mount
+point (`f491ed4`); the guest APFS volume was not grown (`6391842`, `fef184b`);
+concurrent `packer init` raced (`6391842`); DeviceSupport rejected Xcode's
+extractor bundle file (`ea23137`); first dial after a daemon update hit macOS
+local-network session reset (`99951c7`); `nfsd restart` is refused with SIP
+enabled (`ae7b3df`). Host requirements: Full Disk Access for the signed
+`virfieldd` (identifier `ai.virfield.virfieldd`), and Tart
+`registry_credentials` for GHCR because the host Docker credential is rejected.
+
+Not yet covered: Broker smoke and VS Code remote-debug against Tart leases,
+GHCR publication of the goldens, Orchard, and restart during a Tart build.
+
 ## VS Code remote LLDB (2026-10-07)
 
 The DuckDuckGo SwiftPM worktree was built on the host with its existing

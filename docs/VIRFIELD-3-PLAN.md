@@ -17,12 +17,13 @@ follows [the Tart image adoption design](superpowers/specs/2026-10-07-tart-image
 | Guest identity from the template; per-lease SSH isolation for Tart ([plan](superpowers/plans/2026-10-07-tart-guest-identity.md)) | Done, unit-tested |
 | Adoption pipeline: Tart image source, `internal/qualify`, Packer recipe, `internal/tartimage`, controller Tart phases ([plan](superpowers/plans/2026-10-07-tart-adoption-pipeline.md)) | Done, unit-tested, reviewed; recipe validated with Packer plugin 1.21.0 |
 | Live service switched to Tart (separate `state_dir`; Lume config and binary kept for rollback) | Done; Lume lease released |
-| Live golden builds and two-clone acceptance (Ventura 13.7.4 + Xcode 15.2, Monterey 12.7.6 + Xcode 13.4.1) | **Blocked**: macOS withholds Removable Volumes access from `virfieldd`, so Tart cannot open its home on the external SSD |
+| Live golden builds and two-clone acceptance (Ventura 13.7.4 + Xcode 15.2, Monterey 12.7.6 + Xcode 13.4.1) | **Passed** 2026-10-07: both goldens qualified by the service; 23/23 two-clone checks each ([record](VERIFICATION.md#tart-image-adoption-2026-10-07)) |
+| Broker v1 smoke and VS Code remote-debug on Tart leases; GHCR publication | Not started |
 | Orchard live pool acceptance | Not started |
 
-This is still code-level progress, not live acceptance: no Tart golden has been
-built or cloned by the service yet. Live runs exposed one fixed defect (Tart
-storage probe on a non-mount-point path, `f491ed4`). One `virfieldd` still
+The local Tart golden and two-clone part of the Phase 1 exit gate is met; the
+Broker smoke and Orchard parts are not. Live runs exposed six defects, all
+fixed with tests (see the verification record). One `virfieldd` still
 selects one runtime at a time; see the Obsidian Virfield handoff for live
 deployment paths.
 
