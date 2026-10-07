@@ -260,33 +260,37 @@ for boot frames, reconnects for full VNC framebuffers, recognizes the final
 button separately from the wallpaper and delegates the final desktop
 postcondition to SSH. Each attempt retains its own screenshot directory.
 
-The supported recipe fixes resources at 4 CPUs, 8 GiB RAM and NAT. New macOS
-11/12 images with a selected Xcode use a 120 GB sparse disk so guest XIP
-expansion has room; other new images use 80 GB. This is a virtual maximum,
+The supported recipe fixes resources at 4 CPUs, 8 GiB RAM and NAT. New images
+with a selected catalog Xcode use a 120 GB sparse disk so guest XIP expansion
+has room; other new images use 80 GB. This is a virtual maximum,
 not an immediate host allocation. The existing Monterey/Xcode VM remains 80 GB
 and used about 49 GiB on the host after installation. Its XIP was 10 GB, its
 cached `Xcode.app` used 17 GB on the host, and the uncompressed file stream was
 about 32 GiB. Guest `xip` refused expansion with about 42 GiB free on that VM.
 The setting applies at VM creation and does not resize existing images.
 Base image, setup, SIP, verify and worker boots use no host shared folders.
-On macOS 13+ guests, developer provisioning starts the image VM through
-native `lume run --shared-dir`, sharing the verified Xcode cache parent directly
-over VirtioFS and copying from `/Volumes/My Shared Files` inside the guest with
-`ditto`. Before each retry Virfield detaches and cleans any stale
-`virtiofs-transfer` directory left by older builds. Apple Virtualization only
-automounts VirtioFS in macOS 13 or newer guests. On macOS 11/12 guests, the
-separate transport streams the checksum-verified XIP over pinned SSH, verifies
-its checksum in the guest, expands it with `xip` (which verifies Apple's
-signature), checks bundle version/build and signature, then installs it as
-`/Applications/Xcode.app`. Transfer progress is reported, and retry removes
-stale partial archives and expansion directories. This older-guest path requires
+For operator-provided Xcode app bundles on macOS 13+ guests, developer
+provisioning starts the image VM through native `lume run --shared-dir`, sharing
+the source parent directly over VirtioFS and copying from `/Volumes/My Shared
+Files` inside the guest with `ditto`. Before each retry Virfield detaches and
+cleans any stale `virtiofs-transfer` directory left by older builds. Apple
+Virtualization only automounts VirtioFS in macOS 13 or newer guests.
+
+Catalog XIPs use a separate transport on every supported macOS version. The
+host checksum-verifies the archive, streams it over pinned SSH, verifies its
+checksum in the guest, and expands it with `xip` there (which verifies Apple's
+signature). Host-side `xip` requires a login audit session that the launchd
+daemon cannot reliably enter. The guest checks bundle version/build and
+signature, then installs it as `/Applications/Xcode.app`. Transfer progress is
+reported, and retry removes
+stale partial archives and expansion directories. This archive path requires
 the guest disk to hold the XIP and expanded app during installation. If `xip`
 reports insufficient guest space, Virfield streams the already verified host
 `Xcode.app` cache over the same pinned SSH connection, preserving file contents,
 permissions and links while omitting extended attributes that Monterey's tar
 cannot restore reliably. It checks version/build and Apple's deep signature
 before replacing the guest app.
-This keeps the signed XIP as the normal older-guest transport while allowing
+This keeps the signed XIP as the normal catalog transport while allowing
 existing 80 GB Monterey images to install Xcode without resizing encrypted APFS disks.
 Display is 1920×1440 for native macOS 11/12 and Sequoia setup (their
 Assistant controls can be clipped at 1080 pixels), and 1920×1080 otherwise.

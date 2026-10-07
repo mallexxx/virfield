@@ -88,7 +88,26 @@ func TestGuestSupportsVirtioFSRequiresVenturaOrNewer(t *testing.T) {
 	}
 }
 
-func TestOlderGuestWithXcodeGetsExpansionSpaceAtCreation(t *testing.T) {
+func TestCatalogXcodeUsesGuestArchive(t *testing.T) {
+	catalog := domain.XcodeRelease{Version: "15.2", Build: "15C500b", URL: "https://download.developer.apple.com/Developer_Tools/Xcode_15.2/Xcode_15.2.xip", SHA1: "3f1e6943264ba640f83e655768df439902acc406"}
+	for _, tc := range []struct {
+		name string
+		p    domain.ImageProfile
+		want bool
+	}{
+		{name: "operator bundle on supported guest", p: domain.ImageProfile{MacOS: "13.6"}, want: true},
+		{name: "catalog XIP on supported guest", p: domain.ImageProfile{MacOS: "13.6", Xcode: &catalog}, want: false},
+		{name: "operator bundle on older guest", p: domain.ImageProfile{MacOS: "12.6"}, want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := usesSharedXcodeBundle(tc.p); got != tc.want {
+				t.Fatalf("usesSharedXcodeBundle() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCatalogXcodeGetsExpansionSpaceAtCreation(t *testing.T) {
 	for _, tc := range []struct {
 		macos string
 		xcode bool
@@ -96,7 +115,7 @@ func TestOlderGuestWithXcodeGetsExpansionSpaceAtCreation(t *testing.T) {
 	}{
 		{"12.6", true, "120GB"},
 		{"11.7", true, "120GB"},
-		{"13.0", true, "80GB"},
+		{"13.0", true, "120GB"},
 		{"12.6", false, "80GB"},
 	} {
 		p := domain.ImageProfile{MacOS: tc.macos}

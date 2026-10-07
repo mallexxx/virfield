@@ -34,7 +34,7 @@ type Engine struct {
 }
 
 func imageDiskSize(p domain.ImageProfile) string {
-	if p.Xcode != nil && domain.ValidVersion(p.MacOS) && domain.CompareVersions(p.MacOS, "13") < 0 {
+	if p.Xcode != nil {
 		return "120GB"
 	}
 	return "80GB"
@@ -95,7 +95,11 @@ func (e *Engine) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile
 			return err
 		}
 		if p.Xcode != nil {
-			if _, err := e.xcodeSource(ctx, *p.Xcode, progress); err != nil {
+			// Catalog XIPs are checksum-verified here and signature-verified by
+			// xip inside the guest during provisioning. Host-side xip cannot run
+			// reliably from a launchd service because it requires a login audit
+			// session.
+			if _, err := e.xcodeArchive(ctx, *p.Xcode, progress); err != nil {
 				return err
 			}
 		}

@@ -50,6 +50,10 @@ func guestSupportsVirtioFS(macos string) bool {
 	return domain.ValidVersion(macos) && domain.CompareVersions(macos, "13") >= 0
 }
 
+func usesSharedXcodeBundle(p domain.ImageProfile) bool {
+	return p.Xcode == nil && guestSupportsVirtioFS(p.MacOS)
+}
+
 func (e *Engine) provision(ctx context.Context, l domain.Lease, p domain.ImageProfile, progress func(string) error) error {
 	if p.Provision == "security-v1" {
 		return e.provisionSecurity(ctx, l)
@@ -57,17 +61,15 @@ func (e *Engine) provision(ctx context.Context, l domain.Lease, p domain.ImagePr
 	if p.Provision != "uitest-27-v1" && p.Provision != "developer-v1" {
 		return domain.Err("invalid_profile", "Unknown guest provisioning recipe")
 	}
-	sharedTransfer := guestSupportsVirtioFS(p.MacOS)
+	// Operator-provided app bundles use VirtioFS. Catalog XIPs stay compact and
+	// are expanded in the guest, where xip has the required login audit session.
+	sharedTransfer := usesSharedXcodeBundle(p)
 	source := e.Tools.Xcode
 	archive := ""
 	var sourceVersion string
 	var err error
 	if p.Xcode != nil {
-		if sharedTransfer {
-			source, err = e.xcodeSource(ctx, *p.Xcode, progress)
-		} else {
-			archive, err = e.xcodeArchive(ctx, *p.Xcode, progress)
-		}
+		archive, err = e.xcodeArchive(ctx, *p.Xcode, progress)
 		sourceVersion = "Xcode " + p.Xcode.Version + "\nBuild version " + p.Xcode.Build
 	} else {
 		sourceVersion, err = e.checkXcode(ctx)
