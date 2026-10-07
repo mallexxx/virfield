@@ -12,25 +12,25 @@ not another VM runtime or general workflow engine.
 
 | Keep in Virfield | Delegate | Extract |
 |---|---|---|
-| Product-facing lease/profile API, guest qualification, per-lease identity, policy attestation and compatibility with Execution Broker | Tart for local VM lifecycle and OCI transport; Orchard for fleet scheduling and routing; Cirrus/Packer for upstream image construction; Vetu or containers for Linux | VS Code integration, interactive console/VNC gateway and image adoption worker can ship separately while sharing one versioned API |
-| Versioned image policy and promotion from upstream digest to a verified Virfield digest | Execution Broker for queues, runs, agents, Human approval, test commands and artifacts | Runtime providers behind capability-based adapters: Orchard/Tart first, Lume migration-only, Anka or Orka only if commercially selected |
+| Product-facing host/lease/profile API, guest qualification, per-lease identity, policy attestation and compatibility with Execution Broker | Tart for local VM lifecycle and OCI transport; Orchard for fleet scheduling and routing; Cirrus/Packer for upstream image construction; Vetu or containers for Linux | Node agent, VS Code integration, authenticated access/VNC gateway and image adoption worker can ship separately while sharing one versioned API |
+| Versioned image policy and promotion from upstream digest to a verified Virfield digest | Execution Broker for queues, runs, agents, Human approval, test commands and artifacts | Runtime providers behind capability-based adapters: bare metal, Orchard/Tart, personal libvirt/QEMU lab, Lume migration-only and Anka/Parallels when selected |
 
-The first production target is:
+The target composition is:
 
 ```text
-Balda / Web UI / VS Code
-          |
-          v
-Execution Broker (runs) ---- Virfield Control (leases, policy, image qualification)
-                                      |
-                                      v
-                         Orchard Controller (fleet lifecycle)
-                            /                    \
-                           v                      v
-                 Tart workers on Macs      Vetu workers on Linux
-                           |
-                           v
-          pinned Cirrus base -> Virfield-derived golden -> disposable clone
+VS Code / Web UI / CLI -------- Virfield Control (hosts, leases, policy, images)
+                                          |
+Balda / CI -> Execution Broker -----------+
+                                          v
+                                Virfield Access Gateway
+                                          |
+                +-------------------------+----------------------+
+                v                         v                      v
+        Orchard/Tart workers       bare-metal hosts     node-agent/libvirt
+        on Apple Silicon Macs      macOS or Linux       Linux/Hackintosh lab
+                |
+                v
+ pinned Cirrus base -> Virfield-derived golden -> disposable clone
 ```
 
 Lume remains readable and releasable during migration, but no VM may be owned by
@@ -124,6 +124,7 @@ environment.
 | Observability | Structured metrics, bounded logs, audit events and correlation IDs connect run -> lease -> VM -> host -> image digest |
 | Upgrade | Controller, adapter and runtime versions have compatibility ranges and a drain/rollback procedure |
 | Cost/capacity | Queue time, boot time, active time, cache hit rate, host utilization and failed qualification are measurable |
+| Optional host wake | A lease may reserve a sleeping physical host, ask an allowlisted same-L2 relay to send Wake-on-LAN and schedule only after the node agent returns with fresh inventory |
 
 ## Current Virfield implementation inventory
 
@@ -267,7 +268,7 @@ the compatibility source is [Apple's Xcode system requirements](https://develope
 | Anka Build Cloud | Runtime, Intel and Apple Silicon nodes, controller, registry, REST/UI, quotas and CI integrations | Mature and the strongest option for an Intel+ARM commercial fleet, but licensed/proprietary and uses its own controller/registry model |
 | MacStadium Orka | Apple Silicon fleet, OCI images, CLI/API, web UI and VNC-oriented connections | Commercial platform; a valid buy-versus-build choice when managed/on-prem Mac infrastructure matters more than ownership of the control plane |
 | Managed CI | Noninteractive build/test runners with maintained images | Does not satisfy direct user VM management, custom VNC, long interactive debugging or exact retired Xcode availability; Xcode Cloud has removed Xcode 15.2 from current support |
-| QEMU/UTM/Quickemu on Linux | Experimental/emulated machines and non-macOS guests | Not a production macOS pool: slow/unsupported combinations and Apple licensing require Apple-branded hardware for macOS/SDK use |
+| QEMU/libvirt/OpenCore on Linux | Personal Hackintosh lab plus ordinary Linux guests, qcow2 overlays and hypervisor VNC | Keep it in an explicit `lab` trust tier: it is not substituted for a production Apple-hardware profile and has separate image artifacts and qualification |
 
 References: [Anka overview](https://docs.veertu.com/anka/),
 [Anka Build Cloud](https://docs.veertu.com/anka/anka-build-cloud/),
@@ -281,17 +282,17 @@ References: [Anka overview](https://docs.veertu.com/anka/),
 | Host | Production role |
 |---|---|
 | Apple Silicon Mac | Primary macOS VM worker using Tart/Orchard; capability labels include chip generation, RAM, storage, host OS and supported guest range |
-| Old Intel MacBook | Separate `darwin-amd64` bare-metal runner for compatible unit/build tests, or an Anka 2 node if its exact hardware/host OS is supported and licensed; never pretend it is a Tart worker |
-| Linux x86_64/i7 | Control plane, registry, Broker, containers and Vetu Linux VMs; no production macOS guest |
+| Old Intel MacBook | `darwin-amd64` bare-metal debug/test host; on supported host versions an Anka node, or a standalone Parallels provider for Monterey; optional Wake-on-LAN when the hardware/network passes acceptance |
+| Linux x86_64/i7 | Control plane, registry, Broker, containers, Vetu/libvirt Linux VMs and an explicitly non-production libvirt/QEMU/OpenCore Hackintosh lab pool |
 | Linux arm64 | Same plus native arm64 Linux Vetu workloads |
 | Cloud Mac | Additional Tart/Orchard worker when host lifecycle, networking and Apple license terms are satisfied |
 
 Apple's Ventura license allows up to two additional macOS VM instances on each
 Apple-branded Mac for development/testing under the stated terms. Apple SDKs and
 macOS must not be run on non-Apple-branded computers under the Developer Program
-agreement. Linux-hosted macOS emulation is therefore excluded from the
-production design. QEMU remains useful for Linux guests and laboratory research,
-not as schedulable macOS capacity.
+agreement. Linux-hosted macOS emulation is therefore excluded from production
+profiles. A personal deployment may expose it as explicitly opt-in, schedulable
+`lab` capacity; it never satisfies an Apple-hardware or production requirement.
 
 ## Target components
 
@@ -302,32 +303,48 @@ profiles, qualification records, leases, audit events and compatibility APIs for
 Broker/MCP/Web. It calls Orchard or a local provider; it does not know Tart disk
 paths.
 
-### 2. `virfield-image-worker`
+### 2. `virfield-node-agent`
+
+The small host-local process publishes signed inventory and heartbeats, invokes
+only its configured local providers, discovers endpoints and forwards approved
+connections. It can act as an allowlisted same-L2 Wake-on-LAN relay. It does not
+accept arbitrary shell commands or decide global scheduling.
+
+### 3. `virfield-access`
+
+The authenticated SSH/desktop/debug gateway issues short-lived connection
+grants and normalizes direct, Orchard and node-forwarded paths. Targets remain
+private. The first remote deployment should reuse Tailscale/WireGuard rather
+than implementing another overlay network.
+
+### 4. `virfield-image-worker`
 
 A restricted worker for adoption jobs. Input is an upstream digest plus a
 versioned recipe; output is evidence and a derived digest. It performs SSH and
 Recovery policy, Xcode/UI tools, sanitization and clone acceptance. It can start
 inside the control repository, but its privileges and deployment are separate.
 
-### 3. `virfield-console`
+### 5. `virfield-console`
 
-Stateless web UI and authenticated SSH/VNC gateway. It obtains short-lived
-connection grants from control and routes to the owning host. It never receives
-golden/bootstrap credentials or registry write credentials.
+Stateless web UI over Control and Access for hosts, power, images, leases,
+connections and linked Broker runs. It never receives golden/bootstrap
+credentials or registry write credentials.
 
-### 4. `vscode-virfield`
+### 6. `vscode-virfield`
 
-A real VS Code extension instead of generated project-specific files. It lists
-leases, selects a target, launches build/sync/debug tasks and obtains tunnel
-metadata. Project adapters such as DuckDuckGo are declarative profiles, not code
-inside the VM manager.
+A thin VS Code extension over the Virfield CLI/SDK instead of generated
+project-specific files. It lists leases, selects a target, launches
+build/sync/debug tasks and obtains connection grants directly from Virfield;
+interactive debugging does not pass through Execution Broker. Project adapters
+such as DuckDuckGo are declarative profiles, not code inside the VM manager.
 
-### 5. Runtime providers
+### 7. Runtime providers
 
-`orchard` is the production provider. `tart-local` is the one-host development
-provider. `lume-legacy` supports observe/release/export during migration and then
-is removed. A future `anka` or `orka` provider is added only after a commercial
-selection, not as speculative abstraction.
+`bare-metal` reserves physical macOS/Linux hosts. `orchard` is the production VM
+provider and `tart-local` the one-host development provider. `libvirt-qemu`
+supports Linux guests and the personal Hackintosh lab. `lume-legacy` supports
+observe/release/export during migration and is then removed. Anka or Parallels
+is added only for installed commercial Intel/macOS capacity.
 
 ## Required API model
 
@@ -364,6 +381,9 @@ identity, host, owner and expiry. Provider-native names are implementation data,
 not user-selected global identifiers.
 
 ## Migration plan and gates
+
+The detailed reuse map, transparent connection design, Wake-on-LAN contract and
+delivery order are in [Virfield 3.0 implementation plan](VIRFIELD-3-PLAN.md).
 
 ### Phase 1 — prove Tart adoption on one Mac
 

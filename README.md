@@ -19,11 +19,13 @@ or deployments.
 | [VS Code remote debugging](docs/REMOTE-DEBUG.md) | Host SwiftPM build/test, artifact sync and remote `debugserver` |
 | [Architecture](docs/ARCHITECTURE.md) | Modules, API boundary, lifecycle invariants and development rules |
 | [Compositional platform plan](docs/COMPOSITIONAL-PLATFORM.md) | Use cases, implemented inventory, upstream coverage and target product boundaries |
+| [Virfield 3.0 implementation plan](docs/VIRFIELD-3-PLAN.md) | Reuse-first components, providers, transparent access, Wake-on-LAN and phased delivery |
 | [Verification](docs/VERIFICATION.md) | Acceptance evidence, reproducible checks and unverified/deferred scope |
 
-These documents describe the current implementation. Installation instructions
-belong in Operations; acceptance claims belong in Verification. Do not maintain
-separate version-specific README copies or a second set of setup instructions.
+These documents distinguish the current implementation from the approved 3.0
+target. Installation instructions belong in Operations; acceptance claims
+belong in Verification. Do not maintain separate version-specific README copies
+or a second set of setup instructions.
 
 ## Install
 
