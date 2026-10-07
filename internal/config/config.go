@@ -44,14 +44,21 @@ type Runtime struct {
 }
 
 type Tart struct {
-	Binary             string          `json:"binary"`
-	HostID             string          `json:"host_id"`
-	HostName           string          `json:"host_name,omitempty"`
-	MaxVMs             int             `json:"max_vms,omitempty"`
-	CPULimit           int             `json:"cpu_limit,omitempty"`
-	MemoryReserveBytes int64           `json:"memory_reserve_bytes,omitempty"`
-	DiskReserveBytes   int64           `json:"disk_reserve_bytes,omitempty"`
-	Containers         []TartContainer `json:"containers"`
+	Binary              string                   `json:"binary"`
+	HostID              string                   `json:"host_id"`
+	HostName            string                   `json:"host_name,omitempty"`
+	MaxVMs              int                      `json:"max_vms,omitempty"`
+	CPULimit            int                      `json:"cpu_limit,omitempty"`
+	MemoryReserveBytes  int64                    `json:"memory_reserve_bytes,omitempty"`
+	DiskReserveBytes    int64                    `json:"disk_reserve_bytes,omitempty"`
+	Containers          []TartContainer          `json:"containers"`
+	RegistryCredentials []TartRegistryCredential `json:"registry_credentials,omitempty"`
+}
+
+type TartRegistryCredential struct {
+	Host      string `json:"host"`
+	Username  string `json:"username"`
+	TokenFile string `json:"token_file"`
 }
 
 type TartContainer struct {
@@ -234,6 +241,13 @@ func validateRuntime(c *Config) error {
 			}
 			seen[container.ID] = true
 			paths[container.ID] = container.Path
+		}
+		credentialHosts := map[string]bool{}
+		for _, credential := range t.RegistryCredentials {
+			if credential.Host == "" || strings.ContainsAny(credential.Host, "/:@ \\") || credentialHosts[credential.Host] || credential.Username == "" || !filepath.IsAbs(credential.TokenFile) {
+				return errors.New("tart registry credentials require a unique host, username and absolute token_file")
+			}
+			credentialHosts[credential.Host] = true
 		}
 		if c.StoragePaths != nil {
 			return errors.New("tart containers replace legacy storage_paths")

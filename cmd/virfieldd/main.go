@@ -121,7 +121,15 @@ func run() error {
 		for _, container := range cfg.Runtime.Tart.Containers {
 			containers = append(containers, tart.ContainerConfig{ID: container.ID, Path: container.Path, Kind: container.Kind, VolumeUUID: container.VolumeUUID})
 		}
-		backend, err = tart.New(tart.Config{Binary: cfg.Runtime.Tart.Binary, HostID: cfg.Runtime.Tart.HostID, HostName: cfg.Runtime.Tart.HostName, MaxVMs: cfg.Runtime.Tart.MaxVMs, CPULimit: cfg.Runtime.Tart.CPULimit, MemoryReserveBytes: cfg.Runtime.Tart.MemoryReserveBytes, Containers: containers})
+		credentials := make([]tart.RegistryCredential, 0, len(cfg.Runtime.Tart.RegistryCredentials))
+		for _, credential := range cfg.Runtime.Tart.RegistryCredentials {
+			registryToken, tokenErr := config.Token(credential.TokenFile)
+			if tokenErr != nil {
+				return tokenErr
+			}
+			credentials = append(credentials, tart.RegistryCredential{Host: credential.Host, Username: credential.Username, Token: registryToken})
+		}
+		backend, err = tart.New(tart.Config{Binary: cfg.Runtime.Tart.Binary, HostID: cfg.Runtime.Tart.HostID, HostName: cfg.Runtime.Tart.HostName, MaxVMs: cfg.Runtime.Tart.MaxVMs, CPULimit: cfg.Runtime.Tart.CPULimit, MemoryReserveBytes: cfg.Runtime.Tart.MemoryReserveBytes, Containers: containers, RegistryCredentials: credentials})
 	case cfg.Runtime.Provider == "orchard":
 		orchardToken, tokenErr := config.Token(cfg.Runtime.Orchard.TokenFile)
 		if tokenErr != nil {

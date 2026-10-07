@@ -27,13 +27,20 @@ import (
 const outputLimit = 4 << 20
 
 type Config struct {
-	Binary             string
-	HostID             string
-	HostName           string
-	MaxVMs             int
-	CPULimit           int
-	MemoryReserveBytes int64
-	Containers         []ContainerConfig
+	Binary              string
+	HostID              string
+	HostName            string
+	MaxVMs              int
+	CPULimit            int
+	MemoryReserveBytes  int64
+	Containers          []ContainerConfig
+	RegistryCredentials []RegistryCredential
+}
+
+type RegistryCredential struct {
+	Host     string
+	Username string
+	Token    string
 }
 
 type ContainerConfig struct {
@@ -97,7 +104,14 @@ func New(config Config) (*Client, error) {
 		}
 		seen[container.ID] = true
 	}
-	r := &execRunner{binary: config.Binary}
+	credentials := make(map[string]RegistryCredential, len(config.RegistryCredentials))
+	for _, credential := range config.RegistryCredentials {
+		if credential.Host == "" || credential.Username == "" || credential.Token == "" || credentials[credential.Host].Host != "" {
+			return nil, errors.New("invalid Tart registry credential")
+		}
+		credentials[credential.Host] = credential
+	}
+	r := &execRunner{binary: config.Binary, credentials: credentials}
 	return &Client{config: config, runner: r, probe: r.probeVolume, now: func() time.Time { return time.Now().UTC() }, capacity: capacity}, nil
 }
 
@@ -331,11 +345,31 @@ func (c *Client) container(id string) (ContainerConfig, error) {
 	return ContainerConfig{}, fmt.Errorf("unknown Tart storage container %q", id)
 }
 
-type execRunner struct{ binary string }
+type execRunner struct {
+	binary      string
+	credentials map[string]RegistryCredential
+}
+
+func (r *execRunner) environment(home string, args []string) []string {
+	environment := append(os.Environ(), "TART_HOME="+home)
+	for host, credential := range r.credentials {
+		prefix := host + "/"
+		for _, argument := range args {
+			if strings.HasPrefix(argument, prefix) {
+				return append(environment,
+					"TART_REGISTRY_HOSTNAME="+host,
+					"TART_REGISTRY_USERNAME="+credential.Username,
+					"TART_REGISTRY_PASSWORD="+credential.Token,
+				)
+			}
+		}
+	}
+	return environment
+}
 
 func (r *execRunner) Run(ctx context.Context, home string, args []string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, r.binary, args...)
-	cmd.Env = append(os.Environ(), "TART_HOME="+home)
+	cmd.Env = r.environment(home, args)
 	var output limitedBuffer
 	cmd.Stdout = &output
 	cmd.Stderr = &output
@@ -347,7 +381,7 @@ func (r *execRunner) Run(ctx context.Context, home string, args []string) ([]byt
 
 func (r *execRunner) StartDetached(home string, args []string) error {
 	cmd := exec.Command(r.binary, args...)
-	cmd.Env = append(os.Environ(), "TART_HOME="+home)
+	cmd.Env = r.environment(home, args)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	cmd.Stdin = nil
@@ -405,15 +439,30 @@ func (r *execRunner) probeVolume(ctx context.Context, path string) (volume, erro
 	if identity == "" {
 		return volume{}, errors.New("volume has no stable UUID")
 	}
-	total, err := strconv.ParseInt(values["TotalSize"], 10, 64)
+	total, err := diskSize(values, "TotalSize", "APFSContainerSize")
 	if err != nil {
 		return volume{}, errors.New("invalid volume total size")
 	}
-	free, err := strconv.ParseInt(values["FreeSpace"], 10, 64)
+	free, err := diskSize(values, "FreeSpace", "APFSContainerFree")
 	if err != nil {
 		return volume{}, errors.New("invalid volume free space")
 	}
 	return volume{Identity: strings.ToLower(identity), Total: total, Free: free}, nil
+}
+
+func diskSize(values map[string]string, primary, apfsFallback string) (int64, error) {
+	value, err := strconv.ParseInt(values[primary], 10, 64)
+	if err == nil && value > 0 {
+		return value, nil
+	}
+	fallback, fallbackErr := strconv.ParseInt(values[apfsFallback], 10, 64)
+	if fallbackErr == nil && fallback >= 0 {
+		return fallback, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return value, nil
 }
 
 func parsePlist(data []byte) (map[string]string, error) {

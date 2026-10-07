@@ -87,3 +87,37 @@ func TestCommandsUseSelectedTartHome(t *testing.T) {
 		t.Fatalf("calls = %#v", runner.calls)
 	}
 }
+
+func TestDiskSizeUsesAPFSContainerValuesWhenVolumeValuesAreZero(t *testing.T) {
+	values := map[string]string{
+		"TotalSize":         "499898105856",
+		"FreeSpace":         "0",
+		"APFSContainerSize": "499898105856",
+		"APFSContainerFree": "390241533952",
+	}
+	total, err := diskSize(values, "TotalSize", "APFSContainerSize")
+	if err != nil || total != 499898105856 {
+		t.Fatalf("total = %d, err = %v", total, err)
+	}
+	free, err := diskSize(values, "FreeSpace", "APFSContainerFree")
+	if err != nil || free != 390241533952 {
+		t.Fatalf("free = %d, err = %v", free, err)
+	}
+}
+
+func TestRegistryCredentialOnlyAppliesToMatchingRemote(t *testing.T) {
+	runner := &execRunner{credentials: map[string]RegistryCredential{
+		"ghcr.io": {Host: "ghcr.io", Username: "operator", Token: "secret-token"},
+	}}
+	remote := runner.environment("/storage", []string{"clone", "ghcr.io/cirruslabs/image@sha256:abc", "vm"})
+	joined := strings.Join(remote, "\n")
+	for _, expected := range []string{"TART_HOME=/storage", "TART_REGISTRY_HOSTNAME=ghcr.io", "TART_REGISTRY_USERNAME=operator", "TART_REGISTRY_PASSWORD=secret-token"} {
+		if !strings.Contains(joined, expected) {
+			t.Fatalf("environment missing %q", expected)
+		}
+	}
+	local := strings.Join(runner.environment("/storage", []string{"list", "--source", "local"}), "\n")
+	if strings.Contains(local, "TART_REGISTRY_PASSWORD") {
+		t.Fatal("registry secret leaked into a local-only Tart command")
+	}
+}
