@@ -87,6 +87,11 @@ class OnlineSetupTests(unittest.TestCase):
         for color in [(0, 0, 0), (255, 255, 255), (215, 72, 8)]:
             self.assertIsNone(setup_online.hello_button(Frame([color] * (80 * 80))))
 
+    def test_sleeping_display_requires_a_fully_dark_frame(self):
+        self.assertTrue(setup_online.sleeping_display(Image.new('RGB', (8, 8), (0, 0, 0))))
+        self.assertFalse(setup_online.sleeping_display(Image.new('RGB', (8, 8), (0, 0, 3))))
+        self.assertFalse(setup_online.sleeping_display(Image.new('RGB', (8, 8), (20, 20, 20))))
+
     def test_monterey_login_password_field_without_ocr(self):
         frame = Image.new('RGB', (1920, 1440), (70, 20, 140))
         draw = ImageDraw.Draw(frame)

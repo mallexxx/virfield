@@ -191,6 +191,12 @@ def hello_button(frame):
     return (960, 1205)
 
 
+def sleeping_display(frame):
+    """Recognize only a fully dark framebuffer so a harmless key can wake it."""
+    extrema = frame.getextrema()
+    return all(high <= 2 for _low, high in extrema)
+
+
 _LANGUAGE_ARROW = int('00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000700000000000000f80000000000000fc0000000000000fe0000000000000ff00000000000007f80000000000003fc0000000000001fe0000000000000ff00000000000007f80000000000003fc0000000000001fe0000000000000ff00000000000007f80000000000003fc0000000000001fe00007ffffffffff0000fffffffffff8000fffffffffff8000fffffffffff80007ffffffffff00001ffffffe1fe0000000000003fc0000000000007f8000000000000ff0000000000001fe0000000000003fc0000000000007f8000000000000ff0000000000001fe0000000000003fc0000000000007f8000000000000ff0000000000000fe0000000000000fc0000000000000f800000000000007000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000', 16)
 
 
@@ -330,6 +336,14 @@ def run():
             print(f'Observation {step}: {action}', flush=True)
             if action in ('boot', 'busy', 'unknown'):
                 unknown += 1
+                if action == 'boot' and sleeping_display(frame) and unknown % 6 == 1:
+                    # Setup Assistant can turn off the virtual display while a
+                    # recovery is waiting. Shift wakes it without activating a
+                    # control or changing any setup choice.
+                    client = api.connect(f'{endpoint.hostname}::{endpoint.port}', password=unquote(endpoint.password or ''), timeout=30, factory_class=SetupVNCFactory)
+                    client.keyPress('shift')
+                    client.disconnect()
+                    client = None
                 if unknown >= (30 if action in ('boot', 'busy') else 3):
                     raise RuntimeError(f'Unrecognized setup state; inspect setup-{step:03}.png')
                 time.sleep(5)
