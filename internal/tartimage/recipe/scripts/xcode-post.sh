@@ -20,5 +20,9 @@ dyld_export="\"$dyld_cache\" -ro -mapall=$(id -u):$(id -g) -network 192.168.64.0
 sudo -n touch /etc/exports
 sudo -n grep -Fqx "$dyld_export" /etc/exports || printf '%s\n' "$dyld_export" | sudo -n tee -a /etc/exports >/dev/null
 sudo -n /sbin/nfsd enable
-sudo -n /sbin/nfsd restart
+# update reloads exports and starts nfsd if needed; with SIP enabled
+# (Monterey) launchd refuses the kickstart that "nfsd restart" uses.
+sudo -n /sbin/nfsd update
+sleep 2
+sudo -n /sbin/nfsd status | grep -q 'is running'
 /usr/bin/xcodebuild -version
