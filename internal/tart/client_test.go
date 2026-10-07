@@ -121,3 +121,15 @@ func TestRegistryCredentialOnlyAppliesToMatchingRemote(t *testing.T) {
 		t.Fatal("registry secret leaked into a local-only Tart command")
 	}
 }
+
+func TestMountPointResolvesTheVolumeOfANestedDirectory(t *testing.T) {
+	root, err := mountPoint("/")
+	if err != nil || root != "/" {
+		t.Fatal(root, err)
+	}
+	nested := t.TempDir()
+	mount, err := mountPoint(nested)
+	if err != nil || mount == "" || mount[0] != '/' || mount == nested {
+		t.Fatalf("mount point of %s = %q, %v", nested, mount, err)
+	}
+}

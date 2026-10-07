@@ -421,7 +421,12 @@ func (r *execRunner) probeVolume(ctx context.Context, path string) (volume, erro
 	if !st.IsDir() {
 		return volume{}, errors.New("Tart storage path is not a directory")
 	}
-	cmd := exec.CommandContext(ctx, "/usr/sbin/diskutil", "info", "-plist", path)
+	// diskutil accepts only a mount point or device, not a nested directory.
+	mount, err := mountPoint(path)
+	if err != nil {
+		return volume{}, err
+	}
+	cmd := exec.CommandContext(ctx, "/usr/sbin/diskutil", "info", "-plist", mount)
 	var output limitedBuffer
 	cmd.Stdout = &output
 	cmd.Stderr = io.Discard
@@ -448,6 +453,25 @@ func (r *execRunner) probeVolume(ctx context.Context, path string) (volume, erro
 		return volume{}, errors.New("invalid volume free space")
 	}
 	return volume{Identity: strings.ToLower(identity), Total: total, Free: free}, nil
+}
+
+// mountPoint returns the mount point of the volume that contains path.
+func mountPoint(path string) (string, error) {
+	var fs syscall.Statfs_t
+	if err := syscall.Statfs(path, &fs); err != nil {
+		return "", err
+	}
+	name := make([]byte, 0, len(fs.Mntonname))
+	for _, c := range fs.Mntonname {
+		if c == 0 {
+			break
+		}
+		name = append(name, byte(c))
+	}
+	if len(name) == 0 || name[0] != '/' {
+		return "", errors.New("volume has no mount point")
+	}
+	return string(name), nil
 }
 
 func diskSize(values map[string]string, primary, apfsFallback string) (int64, error) {
