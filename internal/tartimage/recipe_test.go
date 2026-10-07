@@ -10,6 +10,9 @@ import (
 	"github.com/mallexxx/virfield/internal/guestscripts"
 )
 
+// compact folds whitespace so assertions do not depend on HCL alignment.
+func compact(s string) string { return strings.Join(strings.Fields(s), " ") }
+
 func TestRecipeDigestIsStableAndPinned(t *testing.T) {
 	if RecipeDigest() != RecipeDigest() || len(RecipeDigest()) != 64 {
 		t.Fatal("unstable recipe digest")
@@ -19,7 +22,7 @@ func TestRecipeDigestIsStableAndPinned(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{`version = "= 1.21.0"`, `recovery_partition = "relocate"`, "disk_size_gb       = 120", `script = "scripts/reset-host-keys.sh"`, `script = "scripts/grow-disk.sh"`} {
-		if !strings.Contains(string(template), want) {
+		if !strings.Contains(compact(string(template)), compact(want)) {
 			t.Fatalf("recipe lacks %s", want)
 		}
 	}
@@ -51,7 +54,7 @@ func TestUITestRecipeAdoptsUpstreamXcodeAndRunsSharedRecipe(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{"vm_base_name       = var.base", `script = "scripts/adopt-xcode.sh"`, `script           = "scripts/provision27.sh"`, `"VF_SIP=disabled"`} {
-		if !strings.Contains(string(uitest), want) {
+		if !strings.Contains(compact(string(uitest)), compact(want)) {
 			t.Fatalf("uitest recipe lacks %s", want)
 		}
 	}
