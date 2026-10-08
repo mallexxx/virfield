@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/mallexxx/virfield/internal/domain"
+	"golang.org/x/crypto/ssh"
 )
 
 type Config struct {
@@ -41,6 +42,26 @@ type Runtime struct {
 	Provider string   `json:"provider"`
 	Tart     *Tart    `json:"tart,omitempty"`
 	Orchard  *Orchard `json:"orchard,omitempty"`
+	// Nodes are physical hosts leased over SSH beside the primary runtime.
+	Nodes []Node `json:"nodes,omitempty"`
+}
+
+// Node is a physical host controlled over pinned SSH as one unprivileged
+// account. HostKey is the node's SSH host key in authorized-keys format.
+type Node struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name,omitempty"`
+	Address   string    `json:"address"`
+	User      string    `json:"user"`
+	HostKey   string    `json:"host_key"`
+	OS        string    `json:"os"`
+	Arch      string    `json:"arch"`
+	WakeOnLAN *NodeWake `json:"wake_on_lan,omitempty"`
+}
+
+type NodeWake struct {
+	MAC       string `json:"mac"`
+	Broadcast string `json:"broadcast"`
 }
 
 type Tart struct {
@@ -198,6 +219,9 @@ func validateRuntime(c *Config) error {
 	if c.Runtime == nil {
 		return nil
 	}
+	if err := validateNodes(c.Runtime); err != nil {
+		return err
+	}
 	switch c.Runtime.Provider {
 	case "tart":
 		if c.Runtime.Tart == nil || c.Runtime.Orchard != nil {
@@ -340,4 +364,39 @@ func Token(path string) (string, error) {
 		return "", errors.New("token must contain 32–256 characters without whitespace")
 	}
 	return s, nil
+}
+
+func validateNodes(r *Runtime) error {
+	if len(r.Nodes) == 0 {
+		return nil
+	}
+	if r.Provider != "tart" || r.Tart == nil {
+		return errors.New("runtime nodes are supported beside the tart runtime")
+	}
+	ids := map[string]bool{}
+	for _, container := range r.Tart.Containers {
+		ids[container.ID] = true
+	}
+	for _, n := range r.Nodes {
+		if !domain.ValidName(n.ID) || ids[n.ID] {
+			return errors.New("runtime nodes need unique IDs distinct from storage containers")
+		}
+		ids[n.ID] = true
+		if n.Address == "" || strings.ContainsAny(n.Address, "@/ \\") || !domain.ValidName(n.User) {
+			return errors.New("runtime node " + n.ID + " needs an address and a user")
+		}
+		if _, _, _, _, err := ssh.ParseAuthorizedKey([]byte(n.HostKey)); err != nil {
+			return errors.New("runtime node " + n.ID + " host_key must be an SSH public key")
+		}
+		if (n.OS != "macOS" && n.OS != "linux") || (n.Arch != "amd64" && n.Arch != "arm64") {
+			return errors.New("runtime node " + n.ID + " needs os macOS|linux and arch amd64|arm64")
+		}
+		if w := n.WakeOnLAN; w != nil {
+			mac, err := net.ParseMAC(w.MAC)
+			if _, _, splitErr := net.SplitHostPort(w.Broadcast); err != nil || len(mac) != 6 || splitErr != nil {
+				return errors.New("runtime node " + n.ID + " wake_on_lan needs a MAC and broadcast host:port")
+			}
+		}
+	}
+	return nil
 }

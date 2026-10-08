@@ -132,3 +132,34 @@ func TestTartImageToolsRequireAbsolutePaths(t *testing.T) {
 		}
 	}
 }
+
+func TestRuntimeNodesValidate(t *testing.T) {
+	dir := t.TempDir()
+	base := `{"listen":"127.0.0.1:7780","state_dir":"/tmp/a","token_file":"/tmp/t","max_vms":2,"runtime":{"provider":"tart","tart":{"binary":"/opt/homebrew/bin/tart","host_id":"macbook","containers":[{"id":"samsung","path":"/Volumes/S/tart","kind":"external"}]},"nodes":[%s]},"templates":[]}`
+	key := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOjnNwacnnaogoL+pe0tgXiGBNpMpHmcc7WSGhoYjssV"
+	valid := `{"id":"htpc","name":"HTPC","address":"192.168.1.86","user":"bazzite","host_key":"` + key + `","os":"linux","arch":"amd64","wake_on_lan":{"mac":"B0:6E:BF:60:6D:64","broadcast":"192.168.1.255:9"}}`
+	for name, node := range map[string]string{
+		"valid":         valid,
+		"bad host key":  strings.Replace(valid, key, "ssh-ed25519 nope", 1),
+		"bad os":        strings.Replace(valid, `"os":"linux"`, `"os":"windows"`, 1),
+		"bad mac":       strings.Replace(valid, "B0:6E:BF:60:6D:64", "zz", 1),
+		"container id":  strings.Replace(valid, `"id":"htpc"`, `"id":"samsung"`, 1),
+		"user@address":  strings.Replace(valid, `"address":"192.168.1.86"`, `"address":"x@192.168.1.86"`, 1),
+		"duplicate ids": valid + "," + valid,
+	} {
+		path := filepath.Join(dir, strings.ReplaceAll(name, " ", "-")+".json")
+		if err := os.WriteFile(path, []byte(fmt.Sprintf(base, node)), 0600); err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := Load(path)
+		if name == "valid" {
+			if err != nil || len(cfg.Runtime.Nodes) != 1 || cfg.Runtime.Nodes[0].WakeOnLAN.MAC != "B0:6E:BF:60:6D:64" {
+				t.Fatal(cfg.Runtime, err)
+			}
+			continue
+		}
+		if err == nil {
+			t.Fatalf("%s accepted", name)
+		}
+	}
+}
