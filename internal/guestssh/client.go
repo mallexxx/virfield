@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/mallexxx/virfield/internal/domain"
@@ -259,6 +260,12 @@ func (e *Manager) connectCredentials(ctx context.Context, l domain.Lease, ip str
 		raw.Close()
 		if strings.Contains(err.Error(), "unable to authenticate") {
 			return nil, domain.Err("guest_authentication_failed", "Guest rejected the SSH credential")
+		}
+		// A forwarded port accepts TCP before the guest's sshd listens: a
+		// handshake dropped before the server spoke is not ready yet.
+		if errors.Is(err, io.EOF) || errors.Is(err, syscall.ECONNRESET) {
+			_ = os.WriteFile(filepath.Join(e.Directory(l), "ssh-connect.log"), []byte(err.Error()+"\n"), 0600)
+			return nil, domain.Err("guest_connect_failed", "Guest SSH is not accepting connections yet; inspect private ssh-connect.log")
 		}
 		return nil, domain.Err("guest_ssh_failed", "Guest authentication or pinned host key verification failed")
 	}

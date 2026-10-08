@@ -32,6 +32,16 @@ exit 0
 	if err := os.WriteFile(filepath.Join(bin, "podman"), []byte(script), 0755); err != nil {
 		t.Fatal(err)
 	}
+	// The guest SSH banner check reads the forwarded port; guests listed in
+	// $HOME/sshd answer with a banner.
+	banner := `#!/bin/sh
+a="$*"
+case "$a" in *"/dev/tcp/127.0.0.1/"*) p=${a##*/dev/tcp/127.0.0.1/}; p=${p%% *}; grep -qx "$p" "$HOME/sshd" 2>/dev/null && echo SSH-2.0-OpenSSH_9.8 ;; esac
+exit 0
+`
+	if err := os.WriteFile(filepath.Join(bin, "timeout"), []byte(banner), 0755); err != nil {
+		t.Fatal(err)
+	}
 	return bin, log
 }
 
@@ -155,7 +165,14 @@ func TestVMProbeReportsGoldensAndVMs(t *testing.T) {
 	if err != nil {
 		t.Fatal(out, err)
 	}
-	for _, want := range []string{"golden=sonoma-secure\n", "golden=sequoia-secure\n", "vm=leases vf-aaaaaaaaaaaaaaaa running 22100 sonoma-secure\n", "vm=leases vf-bbbbbbbbbbbbbbbb stopped 22101 sonoma-secure\n", "vm=images htpc-sonoma stopped 22102 sonoma-secure\n"} {
+	if !strings.Contains(out, "vm=leases vf-aaaaaaaaaaaaaaaa running 22100 sonoma-secure 0\n") {
+		t.Fatal("guest SSH reported before its banner:", out)
+	}
+	if err := os.WriteFile(filepath.Join(home, "sshd"), []byte("22100\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	out, _ = runVMScript(t, home, bin, vmProbeLines, goldens)
+	for _, want := range []string{"golden=sonoma-secure\n", "golden=sequoia-secure\n", "vm=leases vf-aaaaaaaaaaaaaaaa running 22100 sonoma-secure 1\n", "vm=leases vf-bbbbbbbbbbbbbbbb stopped 22101 sonoma-secure 0\n", "vm=images htpc-sonoma stopped 22102 sonoma-secure 0\n"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("missing %q in\n%s", want, out)
 		}

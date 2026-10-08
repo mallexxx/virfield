@@ -23,6 +23,8 @@ type vmRecord struct {
 	State  string `json:"state"`
 	Golden string `json:"golden"`
 	Port   int    `json:"port"`
+	// SSH is true once the guest's SSH banner answers on Port.
+	SSH bool `json:"ssh"`
 }
 
 // vmGolden reports whether name is a VM golden on the node's last probe.
@@ -76,7 +78,7 @@ func vmObservations(n Node, p probe, reachable bool, used *int) []domain.VM {
 			*used++
 			if reachable {
 				vm.IP = p.ip
-				vm.SSHAvailable = true
+				vm.SSHAvailable = rec.SSH
 			}
 		}
 		vms = append(vms, vm)
@@ -84,17 +86,17 @@ func vmObservations(n Node, p probe, reachable bool, used *int) []domain.VM {
 	return vms
 }
 
-// parseVMLine reads "vm=<scope> <name> <state> <port> <golden>".
+// parseVMLine reads "vm=<scope> <name> <state> <port> <golden> <ssh 0|1>".
 func parseVMLine(value string) (string, vmRecord, bool) {
 	f := strings.Fields(value)
-	if len(f) != 5 || (f[0] != "leases" && f[0] != "images") || !domain.ValidName(f[1]) || (f[2] != "running" && f[2] != "stopped") || !domain.ValidName(f[4]) {
+	if len(f) != 6 || (f[5] != "0" && f[5] != "1") || (f[0] != "leases" && f[0] != "images") || !domain.ValidName(f[1]) || (f[2] != "running" && f[2] != "stopped") || !domain.ValidName(f[4]) {
 		return "", vmRecord{}, false
 	}
 	port, err := strconv.Atoi(f[3])
 	if err != nil || port < 1024 || port > 65535 {
 		return "", vmRecord{}, false
 	}
-	return f[1], vmRecord{Scope: f[0], State: f[2], Port: port, Golden: f[4]}, true
+	return f[1], vmRecord{Scope: f[0], State: f[2], Port: port, Golden: f[4], SSH: f[5] == "1"}, true
 }
 
 // Guests prepares node VM leases with the image pipeline's credentials.

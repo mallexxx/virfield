@@ -40,7 +40,7 @@ func TestNodeVMGoldensAreObserved(t *testing.T) {
 }
 
 func TestNodeVMLeaseLifecycle(t *testing.T) {
-	r, _, _ := vmRuntime(t, "htpc-sonoma-14")
+	r, local, _ := vmRuntime(t, "htpc-sonoma-14")
 	ctx := context.Background()
 	if _, err := r.Observe(ctx); err != nil {
 		t.Fatal(err)
@@ -56,6 +56,14 @@ func TestNodeVMLeaseLifecycle(t *testing.T) {
 	if err := r.Start(ctx, l); err != nil {
 		t.Fatal(err)
 	}
+	o, _ = r.Observe(ctx)
+	if vm, _ := vmNamed(o, l.VMName); vm.State != "running" || vm.SSHAvailable {
+		t.Fatalf("booting guest reported SSH = %#v", vm)
+	}
+	if err := os.WriteFile(filepath.Join(local.homes["htpc"], "sshd"), []byte("22100\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	r.reached(r.nodes[0])
 	o, _ = r.Observe(ctx)
 	vm, _ := vmNamed(o, l.VMName)
 	if vm.State != "running" || vm.IP != "127.0.0.1" || vm.SSHPort != 22100 || !vm.SSHAvailable || vm.OS != "macOS" || o.Hosts[0].Capacity.UsedVMs != 1 {

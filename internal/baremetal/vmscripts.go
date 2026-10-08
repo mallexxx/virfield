@@ -92,6 +92,8 @@ rm -rf "$d"
 `
 
 // vmProbeLines lists goldens and VM folders with $1 the goldens directory.
+// The port forward accepts TCP before the guest boots, so a running VM's SSH
+// counts only once the guest's banner is read through the node loopback.
 const vmProbeLines = `for f in "$1"/*.qcow2; do
   [ -f "$f" ] && echo "golden=$(basename "$f" .qcow2)"
 done
@@ -101,7 +103,12 @@ for s in leases images; do
     n=$(basename "$d")
     st=stopped
     podman inspect -f '{{.State.Running}}' "virfield-$n" 2>/dev/null | grep -qx true && st=running
-    echo "vm=$s $n $st $(cat "$d/port") $(cat "$d/golden")"
+    p=$(cat "$d/port")
+    ssh=0
+    if [ "$st" = running ] && timeout 3 bash -c "exec 3<>/dev/tcp/127.0.0.1/$p && head -c 4 <&3" 2>/dev/null | grep -q '^SSH-'; then
+      ssh=1
+    fi
+    echo "vm=$s $n $st $p $(cat "$d/golden") $ssh"
   done
 done
 true

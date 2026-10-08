@@ -259,3 +259,30 @@ func TestConnectRejectsUnlistedGuestModel(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A port forward accepts TCP before the guest's sshd listens; the dropped
+// handshake means "not ready yet", not an authentication failure.
+func TestDroppedHandshakeIsRetryable(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			c.Close()
+		}
+	}()
+	_, port, _ := net.SplitHostPort(ln.Addr().String())
+	e, l := testImageGuest(t, port)
+	l.GuestUser = "admin"
+	_, err = e.Connect(context.Background(), l, "127.0.0.1", true)
+	var failure *domain.Error
+	if !errors.As(err, &failure) || failure.Code != "guest_connect_failed" {
+		t.Fatal(err)
+	}
+}

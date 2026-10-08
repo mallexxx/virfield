@@ -185,14 +185,14 @@ func (b *Builder) shutdown(ctx context.Context, l domain.Lease, g Session) error
 }
 
 // wait polls the node until the image VM reaches state; a running VM must
-// also report its guest SSH address.
+// also answer guest SSH, which takes minutes for a clone booting off the HDD.
 func (b *Builder) wait(ctx context.Context, l domain.Lease, state string) (domain.VM, error) {
 	deadline := time.Now().Add(b.bootTimeout)
 	for {
 		o, err := b.config.Runtime.Observe(ctx)
 		if err == nil {
 			for _, vm := range o.VMs {
-				if vm.Key() == l.Key() && vm.State == state && (state != "running" || (vm.IP != "" && vm.SSHPort > 0)) {
+				if vm.Key() == l.Key() && vm.State == state && (state != "running" || (vm.IP != "" && vm.SSHPort > 0 && vm.SSHAvailable)) {
 					return vm, nil
 				}
 			}
