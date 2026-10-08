@@ -27,6 +27,7 @@ type fakeBackend struct {
 	delayedStart bool
 	blockClone   chan struct{}
 	hostExtra    int
+	sshPort      int
 }
 
 type combinedBackend struct{ *fakeBackend }
@@ -77,6 +78,7 @@ func (b *fakeBackend) Start(_ context.Context, l domain.Lease) error {
 		v := b.vms[l.Key()]
 		v.State = "running"
 		v.IP = "192.168.64.10"
+		v.SSHPort = b.sshPort
 		v.SSHAvailable = true
 		b.vms[l.Key()] = v
 	}

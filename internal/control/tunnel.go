@@ -45,7 +45,7 @@ func (c *Controller) OpenTunnel(ctx context.Context, id string) (domain.Tunnel, 
 		return domain.Tunnel{}, domain.Err("lease_unavailable", "SSH tunnel requires a ready unexpired lease")
 	}
 	vm, exists := c.vm(l)
-	if !exists || vm.State != "running" || vm.IP != l.IP {
+	if !exists || vm.State != "running" || vm.IP != l.IP || vm.SSHPort != l.SSHPort {
 		return domain.Tunnel{}, domain.Err("lease_unavailable", "SSH tunnel requires a running VM at the lease address")
 	}
 	if c.tunnels == nil {
@@ -80,7 +80,7 @@ func (c *Controller) reconcileTunnels(ls []domain.Lease) {
 		keep := false
 		for _, l := range ls {
 			vm, exists := c.vm(l)
-			if l.ID == id && l.State == "ready" && l.IP == t.lease.IP && l.ExpiresAt.After(c.now()) && exists && vm.State == "running" && vm.IP == l.IP {
+			if l.ID == id && l.State == "ready" && l.IP == t.lease.IP && l.ExpiresAt.After(c.now()) && exists && vm.State == "running" && vm.IP == l.IP && vm.SSHPort == l.SSHPort && l.SSHPort == t.lease.SSHPort {
 				keep = true
 				break
 			}

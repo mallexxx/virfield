@@ -43,7 +43,14 @@ func testPublicKey(t *testing.T) string {
 }
 func sshController(t *testing.T) (*Controller, *blockingPreparer, domain.Operation) {
 	t.Helper()
-	c, _ := imageController(t)
+	return sshControllerOn(t, 0)
+}
+
+// sshControllerOn serves guest SSH on port (0 means 22) at the VM IP.
+func sshControllerOn(t *testing.T, port int) (*Controller, *blockingPreparer, domain.Operation) {
+	t.Helper()
+	c, builder := imageController(t)
+	builder.backend.sshPort = port
 	ctx := context.Background()
 	if _, err := c.BuildImage(ctx, "test", "ssh-image-build"); err != nil {
 		t.Fatal(err)
@@ -181,4 +188,34 @@ func TestPreparedLeaseCarriesTemplateGuestUser(t *testing.T) {
 		t.Fatal("SSH worker not started")
 	}
 	close(p.finish)
+}
+
+func TestReadyLeaseTakesSSHPortFromRuntime(t *testing.T) {
+	c, p, op := sshControllerOn(t, 22101)
+	close(p.finish)
+	c.wg.Wait()
+	tick(t, c)
+	l, err := c.Lease(context.Background(), op.Lease.ID)
+	if err != nil || l.State != "ready" || l.IP != "192.168.64.10" || l.SSHPort != 22101 {
+		t.Fatal(l.State, l.IP, l.SSHPort, err)
+	}
+}
+
+func TestReadyLeaseDriftsWhenSSHPortChanges(t *testing.T) {
+	c, p, op := sshControllerOn(t, 22101)
+	close(p.finish)
+	c.wg.Wait()
+	tick(t, c)
+	b := c.backend.(*fakeBackend)
+	b.mu.Lock()
+	v := b.vms[op.Lease.Key()]
+	v.SSHPort = 22102
+	b.vms[op.Lease.Key()] = v
+	b.mu.Unlock()
+	tick(t, c)
+	tick(t, c)
+	l, _ := c.Lease(context.Background(), op.Lease.ID)
+	if l.State != "needs_attention" || l.Error.Code != "vm_drift" || l.SSHPort != 0 {
+		t.Fatal(l.State, l.Error, l.SSHPort)
+	}
 }

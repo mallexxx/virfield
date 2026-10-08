@@ -744,11 +744,12 @@ func (c *Controller) Tick(ctx context.Context) error {
 	for i, l := range ls {
 		if l.State == "ready" && !l.UpdatedAt.After(snapshotStarted) {
 			vm, exists := c.vm(l)
-			if !exists || vm.State != "running" || (c.leasePreparer != nil && (l.SSH == nil || vm.IP != l.IP)) {
+			if !exists || vm.State != "running" || (c.leasePreparer != nil && (l.SSH == nil || vm.IP != l.IP || vm.SSHPort != l.SSHPort)) {
 				c.readyDrift[l.ID]++
 				if c.readyDrift[l.ID] >= 2 {
 					l.State = "needs_attention"
 					l.IP = ""
+					l.SSHPort = 0
 					l.Error = domain.Err("vm_drift", "Ready VM identity, address or running state changed; release the lease")
 					l.UpdatedAt = c.now()
 					if err := c.store.Save(ctx, l, nil, "", "", "lease.drift", l.Error.Message); err != nil {
@@ -905,14 +906,16 @@ func (c *Controller) advance(ctx context.Context, l domain.Lease, j domain.Job) 
 			if c.leasePreparer != nil && j.Phase != "ssh_configured" {
 				l.StartPending = false
 				l.IP = v.IP
+				l.SSHPort = v.SSHPort
 				return c.prepareSSH(ctx, l, j)
 			}
-			if j.Phase == "ssh_configured" && (l.IP != v.IP || l.SSH == nil) {
+			if j.Phase == "ssh_configured" && (l.IP != v.IP || l.SSHPort != v.SSHPort || l.SSH == nil) {
 				return c.attention(ctx, l, j, "guest_identity_failed", "Guest address changed after SSH verification; release this lease", false)
 			}
 			l.State = "ready"
 			l.StartPending = false
 			l.IP = v.IP
+			l.SSHPort = v.SSHPort
 			l.Error = nil
 			j.Phase = "ready"
 			j.State = "succeeded"
@@ -959,6 +962,7 @@ func (c *Controller) cleanup(ctx context.Context, l domain.Lease, j domain.Job, 
 		}
 		l.State = "released"
 		l.IP = ""
+		l.SSHPort = 0
 		l.Error = nil
 		j.State = "succeeded"
 		j.Phase = "done"
