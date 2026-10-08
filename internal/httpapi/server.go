@@ -433,7 +433,7 @@ func (s *Server) openTunnel(w http.ResponseWriter, r *http.Request) {
 	if !s.ensureLeaseOwned(w, r) {
 		return
 	}
-	t, err := s.c.OpenTunnel(r.Context(), r.PathValue("id"))
+	t, err := s.c.OpenTunnel(r.Context(), r.PathValue("id"), "ssh")
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -444,7 +444,7 @@ func (s *Server) closeTunnel(w http.ResponseWriter, r *http.Request) {
 	if !s.ensureLeaseOwned(w, r) {
 		return
 	}
-	if err := s.c.CloseTunnel(r.Context(), r.PathValue("id")); err != nil {
+	if err := s.c.CloseTunnel(r.Context(), r.PathValue("id"), "ssh"); err != nil {
 		s.fail(w, err)
 		return
 	}

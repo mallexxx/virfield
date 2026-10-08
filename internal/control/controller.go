@@ -25,8 +25,10 @@ import (
 
 type Backend = provider.Runtime
 type Controller struct {
-	registry               ImageRegistry
-	tunnels                map[string]*tunnel
+	registry ImageRegistry
+	tunnels  map[string]*tunnel
+	// dialDesktop replaces desktop dialing in tests.
+	dialDesktop            func(context.Context, domain.Lease) (net.Conn, error)
 	resourceLimits         *domain.ResourceLimits
 	resourceProbe          ResourceProbe
 	diskAvailable          map[string]int64
@@ -511,9 +513,11 @@ func (c *Controller) Release(ctx context.Context, id, key string) (domain.Operat
 	return c.queueCleanup(ctx, l, key, fp)
 }
 func (c *Controller) queueCleanup(ctx context.Context, l domain.Lease, key, fp string) (domain.Operation, error) {
-	if t := c.tunnels[l.ID]; t != nil {
-		t.close()
-		delete(c.tunnels, l.ID)
+	for _, service := range []string{"ssh", "desktop"} {
+		if t := c.tunnels[tunnelKey(l.ID, service)]; t != nil {
+			t.close()
+			delete(c.tunnels, tunnelKey(l.ID, service))
+		}
 	}
 	now := c.now()
 	l.State = "releasing"

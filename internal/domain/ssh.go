@@ -29,4 +29,7 @@ type SSHConnection struct {
 type Tunnel struct {
 	LeaseID string `json:"lease_id"`
 	Address string `json:"address"`
+	// Service is ssh or desktop; URL opens a desktop tunnel in Screen Sharing.
+	Service string `json:"service"`
+	URL     string `json:"url,omitempty"`
 }
