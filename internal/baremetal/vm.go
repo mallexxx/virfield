@@ -213,3 +213,13 @@ func (r *Runtime) CommitImage(ctx context.Context, l domain.Lease) error {
 	_, err = r.runOn(ctx, n, command(vmCommitScript, "images", l.VMName, n.VMs.GoldensDir, n.VMs.Image))
 	return err
 }
+
+// HasVMs reports whether any node runs macOS VMs.
+func (r *Runtime) HasVMs() bool {
+	for _, n := range r.nodes {
+		if n.VMs != nil {
+			return true
+		}
+	}
+	return false
+}

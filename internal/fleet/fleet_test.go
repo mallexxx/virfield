@@ -155,3 +155,27 @@ func TestForgetRoutesByLeaseProvider(t *testing.T) {
 		t.Fatal(forgotten)
 	}
 }
+
+type recordingBuilder struct {
+	name  string
+	steps *[]string
+}
+
+func (b recordingBuilder) Step(_ context.Context, l domain.Lease, _ domain.ImageProfile, step string, _ func(string) error) error {
+	*b.steps = append(*b.steps, b.name+":"+step)
+	return nil
+}
+
+func TestImageStepsRouteByLeaseProvider(t *testing.T) {
+	var steps []string
+	b := NewImageBuilder(recordingBuilder{"tart", &steps}, map[string]ImageBuilder{"baremetal": recordingBuilder{"node", &steps}})
+	_ = b.Step(context.Background(), domain.Lease{}, domain.ImageProfile{}, "resolve", nil)
+	_ = b.Step(context.Background(), domain.Lease{Provider: "baremetal"}, domain.ImageProfile{}, "commit", nil)
+	if strings.Join(steps, ",") != "tart:resolve,node:commit" {
+		t.Fatal(steps)
+	}
+	none := NewImageBuilder(nil, map[string]ImageBuilder{"baremetal": recordingBuilder{"node", &steps}})
+	if err := none.Step(context.Background(), domain.Lease{}, domain.ImageProfile{}, "resolve", nil); err == nil {
+		t.Fatal("routed a primary step without a primary builder")
+	}
+}

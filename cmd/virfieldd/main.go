@@ -32,6 +32,7 @@ import (
 	"github.com/mallexxx/virfield/internal/logging"
 	"github.com/mallexxx/virfield/internal/lume"
 	"github.com/mallexxx/virfield/internal/mcpadapter"
+	"github.com/mallexxx/virfield/internal/nodeimage"
 	"github.com/mallexxx/virfield/internal/orchard"
 	"github.com/mallexxx/virfield/internal/provider"
 	"github.com/mallexxx/virfield/internal/registry"
@@ -240,6 +241,7 @@ func run() error {
 	}
 	manager.SetRegistry(registryClient)
 	var appleService *appleauth.Service
+	var imageBuilder control.ImageBuilder
 	if cfg.ImageTools != nil {
 		if lumeBackend == nil {
 			return errors.New("legacy image_tools are only supported by the lume runtime; Tart uses digest-pinned OCI images")
@@ -267,7 +269,7 @@ func run() error {
 				log.Warn("Apple browser sign-in unavailable; install VirfieldAppleBrowser.app beside virfieldd")
 			}
 		}
-		manager.SetImageBuilder(builder)
+		imageBuilder = builder
 		locations := []string{}
 		for name := range cfg.StoragePaths {
 			locations = append(locations, name)
@@ -279,7 +281,7 @@ func run() error {
 		for _, container := range cfg.Runtime.Tart.Containers {
 			homes[container.ID] = container.Path
 		}
-		manager.SetImageBuilder(tartimage.New(tartimage.Config{
+		imageBuilder = tartimage.New(tartimage.Config{
 			StateDir:      cfg.StateDir,
 			Packer:        cfg.Runtime.Tart.Image.Packer,
 			TartBinary:    cfg.Runtime.Tart.Binary,
@@ -287,7 +289,18 @@ func run() error {
 			Homes:         homes,
 			Credentials:   tartCredentials,
 			Runtime:       tartBackend,
-		}))
+		})
+	}
+	// Node VM goldens are secured on their node. Guest SSH to node VMs
+	// tunnels through the pinned node connection; their guests are QEMU Macs.
+	if nodes != nil && nodes.HasVMs() {
+		guests := &guestssh.Manager{Dir: cfg.StateDir, Dial: nodes.DialGuest, Models: []string{"iMacPro1,1"}}
+		nodes.SetGuests(guests)
+		nodeImages := nodeimage.New(nodeimage.Config{StateDir: cfg.StateDir, Runtime: nodes, Guests: nodeimage.SSHGuests(guests)})
+		imageBuilder = fleet.NewImageBuilder(imageBuilder, map[string]fleet.ImageBuilder{nodes.ProviderName(): nodeImages})
+	}
+	if imageBuilder != nil {
+		manager.SetImageBuilder(imageBuilder)
 	}
 	// Bind before starting background effects: a conflicting port must not leave
 	// an invisible controller running beside the real service.

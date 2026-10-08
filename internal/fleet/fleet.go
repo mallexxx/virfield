@@ -188,3 +188,29 @@ func (p *routedPreparer) ForgetImage(l domain.Lease) error {
 	}
 	return nil
 }
+
+// ImageBuilder runs one image build phase; each runtime builds its own images.
+type ImageBuilder interface {
+	Step(ctx context.Context, l domain.Lease, p domain.ImageProfile, step string, progress func(string) error) error
+}
+
+type routedImageBuilder struct {
+	primary    ImageBuilder
+	byProvider map[string]ImageBuilder
+}
+
+// NewImageBuilder routes image steps by the image lease's provider; primary
+// may be nil when only secondary runtimes build images.
+func NewImageBuilder(primary ImageBuilder, byProvider map[string]ImageBuilder) ImageBuilder {
+	return &routedImageBuilder{primary: primary, byProvider: byProvider}
+}
+
+func (b *routedImageBuilder) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile, step string, progress func(string) error) error {
+	if routed, ok := b.byProvider[l.Provider]; ok {
+		return routed.Step(ctx, l, p, step, progress)
+	}
+	if b.primary == nil {
+		return domain.Err("invalid_profile", "No image builder for this runtime")
+	}
+	return b.primary.Step(ctx, l, p, step, progress)
+}
