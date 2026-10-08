@@ -58,7 +58,27 @@ host key, per-lease client key, TTL, release destroys the clone.
   board, MAC, NVRAM) when the lease folder has none. SSH answered 107 s
   after container start; the overlay was 57 MB after boot; SIP, passwordless
   sudo and macOS version verified in the clone.
-- Implementation notes: create lease folders with `chattr +C` (dockur warns
-  about btrfs copy-on-write under qcow2); the container's SIGTERM does not
-  stop macOS within 60 s, so stop the guest over SSH first; per-lease host
-  keys come from Virfield's lease preparation as for Tart.
+
+## Second build: Sequoia 15.8.1 (2026-10-08)
+
+- The first install phase finished staging but its window froze for over an
+  hour (CPU busy, no disk or network I/O). A power cycle booted the staged
+  installer and the second phase completed in about 20 minutes. A watcher on
+  QEMU's write rate (no writes for 10 minutes) now flags both a finished
+  phase and a hang.
+- Sequoia's Setup Assistant asks for the transfer choice first ("Set up as
+  new") and adds an automatic-update screen ("Only Download Automatically").
+- Golden `goldens/sequoia-15.8.1-24H32-20261008.qcow2` (18 GB). A clone in a
+  `chattr +C` lease folder booted to SSH in 112 s with a new serial; SIP
+  disabled, passwordless sudo and the version verified.
+
+## Implementation notes
+
+- Create lease folders with `chattr +C`: dockur warns about btrfs
+  copy-on-write under qcow2, and the warning disappears with it.
+- Clones can hang at the very end of a guest shutdown (SSH gone, QEMU busy),
+  and the container's SIGTERM does not stop macOS. Stop is therefore: `sync`
+  and `shutdown -h now` over SSH, wait for SSH to drop plus a short grace,
+  then `podman kill`. Release deletes the clone anyway.
+- Per-lease host keys come from Virfield's lease preparation as for Tart; the
+  goldens ship freshly generated keys from their final shutdown.
