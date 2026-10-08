@@ -16,8 +16,11 @@ type remembered struct {
 	Golden domain.VM         `json:"golden"`
 	Host   domain.Host       `json:"host"`
 	Leases map[string]string `json:"leases"`
-	IP     string            `json:"ip"`
-	At     time.Time         `json:"at"`
+	// Goldens and VMs are a node's macOS VM goldens and clones.
+	Goldens map[string]bool     `json:"goldens,omitempty"`
+	VMs     map[string]vmRecord `json:"vms,omitempty"`
+	IP      string              `json:"ip"`
+	At      time.Time           `json:"at"`
 }
 
 // Persist remembers each node's last probe in dir, so a restart while a node
@@ -42,7 +45,7 @@ func (r *Runtime) Persist(dir string) error {
 		if err := json.Unmarshal(b, &m); err != nil {
 			return errors.New("node " + n.ID + " probe record is corrupt")
 		}
-		r.last[n.ID] = probe{golden: m.Golden, host: m.Host, leases: m.Leases, ip: m.IP, at: m.At}
+		r.last[n.ID] = probe{golden: m.Golden, host: m.Host, leases: m.Leases, goldens: m.Goldens, vms: m.VMs, ip: m.IP, at: m.At}
 		r.changed[n.ID] = true
 	}
 	return nil
@@ -57,7 +60,7 @@ func (r *Runtime) remember(id string, p probe) error {
 	if r.persistDir == "" {
 		return nil
 	}
-	m := remembered{Golden: p.golden, Host: p.host, Leases: p.leases, IP: p.ip, At: p.at}
+	m := remembered{Golden: p.golden, Host: p.host, Leases: p.leases, Goldens: p.goldens, VMs: p.vms, IP: p.ip, At: p.at}
 	b, err := json.Marshal(m)
 	if err != nil {
 		return err

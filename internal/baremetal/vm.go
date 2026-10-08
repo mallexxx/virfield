@@ -1,8 +1,97 @@
 package baremetal
 
+import (
+	"context"
+	"strconv"
+	"strings"
+
+	"github.com/mallexxx/virfield/internal/domain"
+)
+
 // VMConfig runs disposable macOS VMs as rootless Podman containers on a Linux
 // node; it mirrors config.NodeVMs.
 type VMConfig struct {
 	Image, GoldensDir, DiskSize  string
 	PortBase, Max, CPU, MemoryGB int
+}
+
+// vmRecord is one VM folder on a node: a lease clone (scope leases) or an
+// image-securing clone (scope images).
+type vmRecord struct {
+	Scope  string `json:"scope"`
+	State  string `json:"state"`
+	Golden string `json:"golden"`
+	Port   int    `json:"port"`
+}
+
+// vmGolden reports whether name is a VM golden on the node's last probe.
+func (r *Runtime) vmGolden(n Node, name string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return n.VMs != nil && r.last[n.ID].goldens[name]
+}
+
+// vmLease reports whether the node's last probe saw name as a VM folder.
+func (r *Runtime) vmLease(n Node, name string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	rec, ok := r.last[n.ID].vms[name]
+	return n.VMs != nil && ok && rec.Scope == "leases"
+}
+
+func (r *Runtime) cloneVM(ctx context.Context, n Node, t domain.Template, l domain.Lease) error {
+	// Bootstrap goldens keep a public password; only a secured image is leased.
+	if l.ImageID == "" {
+		return domain.Err("invalid_request", "Node VM leases require a verified image")
+	}
+	v := n.VMs
+	_, err := r.runOn(ctx, n, command(vmCloneScript, "leases", l.VMName, t.Name, v.GoldensDir, v.Image, strconv.Itoa(v.PortBase), strconv.Itoa(v.Max)))
+	return err
+}
+
+func (r *Runtime) startVM(ctx context.Context, n Node, scope, name, publish string) error {
+	v := n.VMs
+	_, err := r.runOn(ctx, n, command(vmStartScript, scope, name, v.GoldensDir, v.Image, publish, strconv.Itoa(v.CPU), strconv.Itoa(v.MemoryGB), v.DiskSize, n.KeepAwakeFile))
+	return err
+}
+
+func (r *Runtime) stopVM(ctx context.Context, n Node, scope, name string, remove bool) error {
+	script := vmStopScript
+	if remove {
+		script = vmDeleteScript
+	}
+	_, err := r.runOn(ctx, n, command(script, scope, name, n.KeepAwakeFile))
+	return err
+}
+
+func vmObservations(n Node, p probe, reachable bool, used *int) []domain.VM {
+	vms := []domain.VM{}
+	for name := range p.goldens {
+		vms = append(vms, domain.VM{Name: name, Location: n.ID, Provider: providerName, HostID: n.ID, ContainerID: n.ID, OS: "macOS", State: "stopped", LastSeenAt: p.at})
+	}
+	for name, rec := range p.vms {
+		vm := domain.VM{Name: name, Location: n.ID, Provider: providerName, HostID: n.ID, ContainerID: n.ID, OS: "macOS", State: rec.State, SSHPort: rec.Port, LastSeenAt: p.at}
+		if rec.State == "running" {
+			*used++
+			if reachable {
+				vm.IP = p.ip
+				vm.SSHAvailable = true
+			}
+		}
+		vms = append(vms, vm)
+	}
+	return vms
+}
+
+// parseVMLine reads "vm=<scope> <name> <state> <port> <golden>".
+func parseVMLine(value string) (string, vmRecord, bool) {
+	f := strings.Fields(value)
+	if len(f) != 5 || (f[0] != "leases" && f[0] != "images") || !domain.ValidName(f[1]) || (f[2] != "running" && f[2] != "stopped") || !domain.ValidName(f[4]) {
+		return "", vmRecord{}, false
+	}
+	port, err := strconv.Atoi(f[3])
+	if err != nil || port < 1024 || port > 65535 {
+		return "", vmRecord{}, false
+	}
+	return f[1], vmRecord{Scope: f[0], State: f[2], Port: port, Golden: f[4]}, true
 }

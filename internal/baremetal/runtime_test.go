@@ -23,9 +23,11 @@ type localNodes struct {
 	homes   map[string]string
 	offline map[string]bool
 	dials   int
+	// path is prepended to PATH, for a fake podman.
+	path string
 }
 
-type localSession struct{ home, host string }
+type localSession struct{ home, host, path string }
 
 func (s localSession) Close() {}
 
@@ -33,7 +35,11 @@ func (s localSession) HostKey() string { return s.host }
 
 func (s localSession) Run(ctx context.Context, command, input string) (string, error) {
 	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command)
-	cmd.Env = []string{"HOME=" + s.home, "PATH=/usr/bin:/bin:/usr/sbin:/sbin"}
+	path := "/usr/bin:/bin:/usr/sbin:/sbin"
+	if s.path != "" {
+		path = s.path + ":" + path
+	}
+	cmd.Env = []string{"HOME=" + s.home, "PATH=" + path}
 	cmd.Stdin = strings.NewReader(input)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
@@ -46,7 +52,7 @@ func (l *localNodes) dial(_ context.Context, n Node) (session, error) {
 	if l.offline[n.ID] {
 		return nil, errors.New("connect: no route to host")
 	}
-	return localSession{home: l.homes[n.ID], host: n.HostKeys[0]}, nil
+	return localSession{home: l.homes[n.ID], host: n.HostKeys[0], path: l.path}, nil
 }
 
 func (l *localNodes) setOffline(id string, offline bool) {

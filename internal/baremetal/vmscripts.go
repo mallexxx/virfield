@@ -104,4 +104,5 @@ for s in leases images; do
     echo "vm=$s $n $st $(cat "$d/port") $(cat "$d/golden")"
   done
 done
+true
 `

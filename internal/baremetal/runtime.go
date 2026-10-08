@@ -42,11 +42,13 @@ type dialer func(ctx context.Context, n Node) (session, error)
 
 // probe is the last successful observation of one node.
 type probe struct {
-	golden domain.VM
-	host   domain.Host
-	leases map[string]string
-	ip     string
-	at     time.Time
+	golden  domain.VM
+	host    domain.Host
+	leases  map[string]string
+	goldens map[string]bool
+	vms     map[string]vmRecord
+	ip      string
+	at      time.Time
 }
 
 type Runtime struct {
@@ -132,6 +134,7 @@ func (r *Runtime) Observe(ctx context.Context) (domain.Observation, error) {
 			o.StorageContainers = append(o.StorageContainers, container(n, "available", "", now))
 			o.VMs = append(o.VMs, results[i].golden)
 			o.VMs = append(o.VMs, leaseVMs(n, results[i], true, &h.Capacity.UsedVMs)...)
+			o.VMs = append(o.VMs, vmObservations(n, results[i], true, &h.Capacity.UsedVMs)...)
 			o.HostUsed += h.Capacity.UsedVMs
 			o.Hosts = append(o.Hosts, h)
 			continue
@@ -150,11 +153,17 @@ func (r *Runtime) Observe(ctx context.Context) (domain.Observation, error) {
 		if known && n.WakeMAC != "" {
 			o.StorageContainers = append(o.StorageContainers, container(n, "available", "", cached.at))
 			o.VMs = append(o.VMs, cached.golden)
+			for name := range cached.goldens {
+				o.VMs = append(o.VMs, domain.VM{Name: name, Location: n.ID, Provider: providerName, HostID: n.ID, ContainerID: n.ID, OS: "macOS", State: "stopped", LastSeenAt: cached.at})
+			}
 		} else {
 			o.StorageContainers = append(o.StorageContainers, container(n, "unavailable", reason, cached.at))
 		}
 		if known {
 			o.VMs = append(o.VMs, leaseVMs(n, cached, false, &h.Capacity.UsedVMs)...)
+			leased := cached
+			leased.goldens = nil
+			o.VMs = append(o.VMs, vmObservations(n, leased, false, &h.Capacity.UsedVMs)...)
 		}
 		o.HostUsed += h.Capacity.UsedVMs
 		o.Hosts = append(o.Hosts, h)
@@ -170,7 +179,11 @@ func (r *Runtime) probe(ctx context.Context, n Node, now time.Time) (probe, erro
 		return probe{}, err
 	}
 	defer s.Close()
-	out, err := s.Run(ctx, command(probeScript), "")
+	script := command(probeScript)
+	if n.VMs != nil {
+		script = command(probeScript+vmProbeLines, n.VMs.GoldensDir)
+	}
+	out, err := s.Run(ctx, script, "")
 	if err != nil {
 		return probe{}, err
 	}
@@ -186,7 +199,7 @@ func (r *Runtime) probe(ctx context.Context, n Node, now time.Time) (probe, erro
 	h := r.host(n, "available", "", resources)
 	h.LastSeenAt = now
 	golden := domain.VM{Name: p.volume, Location: n.ID, Provider: providerName, HostID: n.ID, ContainerID: n.ID, OS: n.OS, State: "stopped", Resources: resources, LastSeenAt: now}
-	return probe{golden: golden, host: h, leases: p.leases, ip: ip, at: now}, nil
+	return probe{golden: golden, host: h, leases: p.leases, goldens: p.goldens, vms: p.vms, ip: ip, at: now}, nil
 }
 
 func (r *Runtime) host(n Node, availability, reason string, total domain.Resources) domain.Host {
@@ -194,7 +207,11 @@ func (r *Runtime) host(n Node, availability, reason string, total domain.Resourc
 	if name == "" {
 		name = n.ID
 	}
-	return domain.Host{ID: n.ID, Name: name, Provider: providerName, OS: n.OS, Arch: n.Arch, Availability: availability, UnavailableReason: reason, WakeOnLAN: n.WakeMAC != "", Capacity: domain.HostCapacity{Total: total, Allocatable: total, MaxVMs: 1}}
+	maxVMs := 1
+	if n.VMs != nil {
+		maxVMs += n.VMs.Max
+	}
+	return domain.Host{ID: n.ID, Name: name, Provider: providerName, OS: n.OS, Arch: n.Arch, Availability: availability, UnavailableReason: reason, WakeOnLAN: n.WakeMAC != "", Capacity: domain.HostCapacity{Total: total, Allocatable: total, MaxVMs: maxVMs}}
 }
 
 func container(n Node, availability, reason string, seen time.Time) domain.StorageContainer {
@@ -219,13 +236,16 @@ func leaseVMs(n Node, p probe, reachable bool, used *int) []domain.VM {
 
 // Clone reserves the lease on the node. The controller clones before it
 // starts, and a failed clone is quarantined, so a sleeping node is woken here.
-func (r *Runtime) Clone(ctx context.Context, _ domain.Template, l domain.Lease) error {
+func (r *Runtime) Clone(ctx context.Context, t domain.Template, l domain.Lease) error {
 	n, err := r.node(l.Location)
 	if err != nil {
 		return err
 	}
 	if err := r.ensureAwake(ctx, n); err != nil {
 		return err
+	}
+	if r.vmGolden(n, t.Name) {
+		return r.cloneVM(ctx, n, t, l)
 	}
 	return r.runLease(ctx, l, cloneScript)
 }
@@ -239,15 +259,42 @@ func (r *Runtime) Start(ctx context.Context, l domain.Lease) error {
 	if err := r.ensureAwake(ctx, n); err != nil {
 		return err
 	}
+	if r.vmLease(n, l.VMName) {
+		return r.startVM(ctx, n, "leases", l.VMName, "0.0.0.0")
+	}
 	return r.runLease(ctx, l, startScript)
 }
 
 func (r *Runtime) Stop(ctx context.Context, l domain.Lease) error {
-	return r.runLease(ctx, l, stopScript)
+	return r.stopLease(ctx, l, false)
 }
 
 func (r *Runtime) Delete(ctx context.Context, l domain.Lease) error {
-	return r.runLease(ctx, l, deleteScript)
+	return r.stopLease(ctx, l, true)
+}
+
+// stopLease runs the VM or host script. A clone not yet seen by a probe is
+// recognised by the host script's refusal of a VM folder.
+func (r *Runtime) stopLease(ctx context.Context, l domain.Lease, remove bool) error {
+	n, err := r.node(l.Location)
+	if err != nil {
+		return err
+	}
+	vm := n.VMs != nil && r.vmLease(n, l.VMName)
+	if !vm {
+		script := stopScript
+		if remove {
+			script = deleteScript
+		}
+		out, err := r.runLeaseOut(ctx, l, script)
+		if err == nil || n.VMs == nil || !strings.Contains(out, "node VM folder") {
+			return err
+		}
+	}
+	if !strings.HasPrefix(l.VMName, "vf-") || !domain.ValidName(l.VMName) {
+		return domain.Err("invalid_request", "Not a disposable lease name")
+	}
+	return r.stopVM(ctx, n, "leases", l.VMName, remove)
 }
 
 // WakeHost sends the node's configured magic packet.
@@ -301,21 +348,30 @@ func (r *Runtime) ensureAwake(ctx context.Context, n Node) error {
 }
 
 func (r *Runtime) runLease(ctx context.Context, l domain.Lease, script string) error {
+	_, err := r.runLeaseOut(ctx, l, script)
+	return err
+}
+
+func (r *Runtime) runLeaseOut(ctx context.Context, l domain.Lease, script string) (string, error) {
 	if !strings.HasPrefix(l.VMName, "vf-") || !domain.ValidName(l.VMName) {
-		return domain.Err("invalid_request", "Not a disposable lease name")
+		return "", domain.Err("invalid_request", "Not a disposable lease name")
 	}
 	n, err := r.node(l.Location)
 	if err != nil {
-		return err
+		return "", err
 	}
+	return r.runOn(ctx, n, command(script, l.VMName, n.KeepAwakeFile))
+}
+
+// runOn runs one fixed command on a node and marks the node for a re-probe.
+func (r *Runtime) runOn(ctx context.Context, n Node, cmd string) (string, error) {
 	s, err := r.dial(ctx, n)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer s.Close()
 	r.reached(n)
-	_, err = s.Run(ctx, command(script, l.VMName, n.KeepAwakeFile), "")
-	return err
+	return s.Run(ctx, cmd, "")
 }
 
 func (r *Runtime) node(id string) (Node, error) {
@@ -339,10 +395,12 @@ func command(script string, args ...string) string {
 func quote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'"'"'`) + "'" }
 
 type probeResult struct {
-	volume string
-	cpu    int
-	memory int64
-	leases map[string]string
+	volume  string
+	cpu     int
+	memory  int64
+	leases  map[string]string
+	goldens map[string]bool
+	vms     map[string]vmRecord
 }
 
 var invalidName = regexp.MustCompile(`[^a-zA-Z0-9_.]+`)
@@ -354,7 +412,7 @@ func normalizeVolume(v string) string {
 }
 
 func parseProbe(out string) (probeResult, error) {
-	p := probeResult{leases: map[string]string{}}
+	p := probeResult{leases: map[string]string{}, goldens: map[string]bool{}, vms: map[string]vmRecord{}}
 	for _, line := range strings.Split(out, "\n") {
 		key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
 		if !ok {
@@ -367,6 +425,14 @@ func parseProbe(out string) (probeResult, error) {
 			p.cpu, _ = strconv.Atoi(value)
 		case "memory":
 			p.memory, _ = strconv.ParseInt(value, 10, 64)
+		case "golden":
+			if domain.ValidName(value) {
+				p.goldens[value] = true
+			}
+		case "vm":
+			if name, rec, ok := parseVMLine(value); ok {
+				p.vms[name] = rec
+			}
 		case "lease":
 			name, state, _ := strings.Cut(value, " ")
 			if strings.HasPrefix(name, "vf-") && domain.ValidName(name) && (state == "running" || state == "stopped") {
