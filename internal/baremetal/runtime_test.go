@@ -23,11 +23,12 @@ type localNodes struct {
 	homes   map[string]string
 	offline map[string]bool
 	dials   int
-	// path is prepended to PATH, for a fake podman.
-	path string
+	// path is prepended to PATH, for a fake podman; stubs holds a fake
+	// caffeinate so host-lease tests never hold this Mac awake.
+	path, stubs string
 }
 
-type localSession struct{ home, host, path string }
+type localSession struct{ home, host, path, stubs string }
 
 func (s localSession) Close() {}
 
@@ -39,7 +40,7 @@ func (s localSession) Dial(network, address string) (net.Conn, error) {
 
 func (s localSession) Run(ctx context.Context, command, input string) (string, error) {
 	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command)
-	path := "/usr/bin:/bin:/usr/sbin:/sbin"
+	path := s.stubs + ":/usr/bin:/bin:/usr/sbin:/sbin"
 	if s.path != "" {
 		path = s.path + ":" + path
 	}
@@ -56,7 +57,7 @@ func (l *localNodes) dial(_ context.Context, n Node) (session, error) {
 	if l.offline[n.ID] {
 		return nil, errors.New("connect: no route to host")
 	}
-	return localSession{home: l.homes[n.ID], host: n.HostKeys[0], path: l.path}, nil
+	return localSession{home: l.homes[n.ID], host: n.HostKeys[0], path: l.path, stubs: l.stubs}, nil
 }
 
 func (l *localNodes) setOffline(id string, offline bool) {
@@ -67,7 +68,11 @@ func (l *localNodes) setOffline(id string, offline bool) {
 
 func testRuntime(t *testing.T, nodes ...Node) (*Runtime, *localNodes) {
 	t.Helper()
-	local := &localNodes{homes: map[string]string{}, offline: map[string]bool{}}
+	local := &localNodes{homes: map[string]string{}, offline: map[string]bool{}, stubs: t.TempDir()}
+	// A real caffeinate would outlive a test that never stops its lease.
+	if err := os.WriteFile(filepath.Join(local.stubs, "caffeinate"), []byte("#!/bin/sh\nexec sleep 300\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
 	for _, n := range nodes {
 		local.homes[n.ID] = t.TempDir()
 	}
