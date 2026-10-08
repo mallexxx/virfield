@@ -147,6 +147,8 @@ func TestRuntimeNodesValidate(t *testing.T) {
 		"user@address":  strings.Replace(valid, `"address":"192.168.1.86"`, `"address":"x@192.168.1.86"`, 1),
 		"duplicate ids": valid + "," + valid,
 		"relative hold": strings.Replace(valid, `"/tmp/rsync-active"`, `"tmp/x"`, 1),
+		"bad extra key": strings.Replace(valid, `"os":"linux"`, `"host_keys":["ssh-ed25519 nope"],"os":"linux"`, 1),
+		"extra keys":    strings.Replace(valid, `"os":"linux"`, `"host_keys":["`+key+`"],"os":"linux"`, 1),
 	} {
 		path := filepath.Join(dir, strings.ReplaceAll(name, " ", "-")+".json")
 		if err := os.WriteFile(path, []byte(fmt.Sprintf(base, node)), 0600); err != nil {
@@ -155,6 +157,12 @@ func TestRuntimeNodesValidate(t *testing.T) {
 		cfg, err := Load(path)
 		if name == "valid" {
 			if err != nil || len(cfg.Runtime.Nodes) != 1 || cfg.Runtime.Nodes[0].WakeOnLAN.MAC != "B0:6E:BF:60:6D:64" {
+				t.Fatal(cfg.Runtime, err)
+			}
+			continue
+		}
+		if name == "extra keys" {
+			if err != nil || len(cfg.Runtime.Nodes[0].HostKeys) != 1 {
 				t.Fatal(cfg.Runtime, err)
 			}
 			continue

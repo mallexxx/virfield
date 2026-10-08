@@ -95,7 +95,15 @@ minute). Under heavy host load (Finder at 356% CPU crawling the VM SSD),
 Tart's disk-sizing commands took 12–18 s and admission paused briefly; this is
 fail-safe but noisy.
 
-Not yet covered: other MacBook volumes (enroll each when booted), the wake
+Big Sur (2026-10-08): with the MacBook booted from its Big Sur volume
+(11.7.9), the node presented a second host key and the `Big-Sur`
+pseudo-golden. After enrolling the management key on that volume and adding
+the key to `host_keys`, a `mbp2014-big-sur` lease passed 5/5: the Monterey
+template was refused as `template_unavailable`, the lease reported the Big Sur
+host key, lease SSH and `caffeinate` worked, and release revoked the key and
+the keep-awake.
+
+Not yet covered: the Catalina and Ventura volumes (enroll each when booted), the wake
 path by a real lease (pending at time of writing), the Hackintosh provider on
 the HTPC (needs VT-x enabled in UEFI), and the desktop gateway.
 

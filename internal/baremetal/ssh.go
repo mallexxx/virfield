@@ -14,8 +14,8 @@ import (
 )
 
 // Prepare authorizes the lease's client key on the node and returns the node
-// account with its pinned host key. The host key is not rotated per lease: a
-// physical host keeps its identity.
+// account with the host key it presented. The host key is not rotated per
+// lease: a physical host keeps the identity of the system it booted.
 func (r *Runtime) Prepare(ctx context.Context, l domain.Lease) (domain.SSHConnection, error) {
 	var none domain.SSHConnection
 	public, err := domain.CanonicalPublicKey(l.SSHPublicKey)
@@ -28,10 +28,6 @@ func (r *Runtime) Prepare(ctx context.Context, l domain.Lease) (domain.SSHConnec
 	n, err := r.node(l.Location)
 	if err != nil {
 		return none, err
-	}
-	host, _, _, _, err := ssh.ParseAuthorizedKey([]byte(n.HostKey))
-	if err != nil {
-		return none, domain.Err("guest_identity_failed", "Node host key is not configured")
 	}
 	client, _, _, _, err := ssh.ParseAuthorizedKey([]byte(public))
 	if err != nil {
@@ -46,21 +42,31 @@ func (r *Runtime) Prepare(ctx context.Context, l domain.Lease) (domain.SSHConnec
 	if err != nil || strings.TrimSpace(out) != "1" {
 		return none, domain.Err("lease_ssh_failed", "Node did not authorize exactly one lease key")
 	}
-	return domain.SSHConnection{User: n.User, Port: 22, HostKey: strings.TrimSpace(string(ssh.MarshalAuthorizedKey(host))), ClientKeyFingerprint: ssh.FingerprintSHA256(client)}, nil
+	return domain.SSHConnection{User: n.User, Port: 22, HostKey: s.HostKey(), ClientKeyFingerprint: ssh.FingerprintSHA256(client)}, nil
 }
 
 // SSHDialer authenticates with Virfield's node management key and accepts
-// only the node's configured host key.
-func SSHDialer(signer ssh.Signer) dialer {
+// only the node's configured host keys.
+func SSHDialer(signer ssh.Signer) dialer { return sshDialer(signer, "22") }
+
+func sshDialer(signer ssh.Signer, port string) dialer {
 	return func(ctx context.Context, n Node) (session, error) {
-		want, _, _, _, err := ssh.ParseAuthorizedKey([]byte(n.HostKey))
+		accepted, algorithms, err := hostKeys(n)
 		if err != nil {
-			return nil, errors.New("node host key is invalid")
+			return nil, err
 		}
-		cfg := &ssh.ClientConfig{User: n.User, Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)}, HostKeyCallback: ssh.FixedHostKey(want), HostKeyAlgorithms: []string{want.Type()}, Timeout: 4 * time.Second}
+		var presented string
+		check := func(_ string, _ net.Addr, key ssh.PublicKey) error {
+			presented = string(key.Marshal())
+			if !accepted[presented] {
+				return errors.New("node presented an unconfigured host key")
+			}
+			return nil
+		}
+		cfg := &ssh.ClientConfig{User: n.User, Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)}, HostKeyCallback: check, HostKeyAlgorithms: algorithms, Timeout: 4 * time.Second}
 		// Nodes share this LAN; a short dial keeps sleeping nodes cheap.
 		dialer := net.Dialer{Timeout: 4 * time.Second}
-		raw, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(n.Address, "22"))
+		raw, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(n.Address, port))
 		if err != nil {
 			return nil, err
 		}
@@ -75,13 +81,42 @@ func SSHDialer(signer ssh.Signer) dialer {
 			return nil, err
 		}
 		_ = raw.SetDeadline(time.Time{})
-		return &sshSession{client: ssh.NewClient(conn, chans, reqs)}, nil
+		key, _ := ssh.ParsePublicKey([]byte(presented))
+		host := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(key)))
+		return &sshSession{client: ssh.NewClient(conn, chans, reqs), host: host}, nil
 	}
 }
 
-type sshSession struct{ client *ssh.Client }
+// hostKeys indexes a node's identities by wire encoding and lists their
+// algorithms so the handshake negotiates a key Virfield can verify.
+func hostKeys(n Node) (map[string]bool, []string, error) {
+	accepted, seen := map[string]bool{}, map[string]bool{}
+	var algorithms []string
+	for _, line := range n.HostKeys {
+		key, _, _, _, err := ssh.ParseAuthorizedKey([]byte(line))
+		if err != nil {
+			return nil, nil, errors.New("node host key is invalid")
+		}
+		accepted[string(key.Marshal())] = true
+		if !seen[key.Type()] {
+			seen[key.Type()] = true
+			algorithms = append(algorithms, key.Type())
+		}
+	}
+	if len(accepted) == 0 {
+		return nil, nil, errors.New("node host key is not configured")
+	}
+	return accepted, algorithms, nil
+}
+
+type sshSession struct {
+	client *ssh.Client
+	host   string
+}
 
 func (s *sshSession) Close() { _ = s.client.Close() }
+
+func (s *sshSession) HostKey() string { return s.host }
 
 // Run executes one fixed command; output is bounded and stays private.
 func (s *sshSession) Run(ctx context.Context, command, input string) (string, error) {

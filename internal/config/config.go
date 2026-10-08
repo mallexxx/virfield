@@ -47,15 +47,18 @@ type Runtime struct {
 }
 
 // Node is a physical host controlled over pinned SSH as one unprivileged
-// account. HostKey is the node's SSH host key in authorized-keys format.
+// account. HostKey is the node's SSH host key in authorized-keys format;
+// HostKeys adds the identities of other systems booted at the same address,
+// such as the other macOS volumes of a multi-boot Mac.
 type Node struct {
-	ID      string `json:"id"`
-	Name    string `json:"name,omitempty"`
-	Address string `json:"address"`
-	User    string `json:"user"`
-	HostKey string `json:"host_key"`
-	OS      string `json:"os"`
-	Arch    string `json:"arch"`
+	ID       string   `json:"id"`
+	Name     string   `json:"name,omitempty"`
+	Address  string   `json:"address"`
+	User     string   `json:"user"`
+	HostKey  string   `json:"host_key"`
+	HostKeys []string `json:"host_keys,omitempty"`
+	OS       string   `json:"os"`
+	Arch     string   `json:"arch"`
 	// KeepAwakeFile is honored by the node's own sleep guard while it exists.
 	KeepAwakeFile string    `json:"keep_awake_file,omitempty"`
 	WakeOnLAN     *NodeWake `json:"wake_on_lan,omitempty"`
@@ -387,8 +390,10 @@ func validateNodes(r *Runtime) error {
 		if n.Address == "" || strings.ContainsAny(n.Address, "@/ \\") || !domain.ValidName(n.User) {
 			return errors.New("runtime node " + n.ID + " needs an address and a user")
 		}
-		if _, _, _, _, err := ssh.ParseAuthorizedKey([]byte(n.HostKey)); err != nil {
-			return errors.New("runtime node " + n.ID + " host_key must be an SSH public key")
+		for _, key := range append([]string{n.HostKey}, n.HostKeys...) {
+			if _, _, _, _, err := ssh.ParseAuthorizedKey([]byte(key)); err != nil {
+				return errors.New("runtime node " + n.ID + " host keys must be SSH public keys")
+			}
 		}
 		if n.KeepAwakeFile != "" && (!filepath.IsAbs(n.KeepAwakeFile) || strings.ContainsAny(n.KeepAwakeFile, "'\"\n\r\t ")) {
 			return errors.New("runtime node " + n.ID + " keep_awake_file must be an absolute path without quotes or spaces")

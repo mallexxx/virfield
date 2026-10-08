@@ -82,7 +82,8 @@ uses that node's own slot, never a Mac VM slot or Mac CPU, memory or disk.
 
 ```json
 "nodes": [
-  {"id": "mbp-2014", "address": "192.168.1.79", "user": "admin", "host_key": "ssh-ed25519 AAAA…", "os": "macOS", "arch": "amd64"},
+  {"id": "mbp-2014", "address": "192.168.1.79", "user": "admin", "host_key": "ssh-ed25519 AAAA…",
+   "host_keys": ["ssh-ed25519 AAAA… (Big Sur)"], "os": "macOS", "arch": "amd64"},
   {"id": "htpc", "address": "192.168.1.86", "user": "bazzite", "host_key": "ssh-ed25519 AAAA…", "os": "linux", "arch": "amd64",
    "keep_awake_file": "/tmp/rsync-active", "wake_on_lan": {"mac": "B0:6E:BF:60:6D:64", "broadcast": "192.168.1.255:9"}}
 ]
@@ -93,6 +94,14 @@ with the node. On first start `virfieldd` creates its node management key in
 `state_dir/nodes/management`; append `state_dir/nodes/management.pub` once to
 the node account's `~/.ssh/authorized_keys` (each macOS boot volume has its
 own home and is enrolled when booted).
+
+Each boot volume of a multi-boot Mac also has its own SSH host key, so the
+same address presents a different identity per booted system. List the extra
+identities in `host_keys`: Virfield accepts any configured key and reports the
+one presented in the lease's `ssh.host_key`. For an interactive client, keep
+one `known_hosts` line per identity for the address (OpenSSH accepts any
+matching line); `ssh-keyscan -t ed25519 <address>` while the new volume is
+booted gives the key, which you compare out of band before trusting it.
 
 A node reports its booted environment as a pseudo-golden named after the boot
 volume (`Monterey`, `Big-Sur`, `bazzite`). A template with

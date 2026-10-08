@@ -25,9 +25,11 @@ type localNodes struct {
 	dials   int
 }
 
-type localSession struct{ home string }
+type localSession struct{ home, host string }
 
 func (s localSession) Close() {}
+
+func (s localSession) HostKey() string { return s.host }
 
 func (s localSession) Run(ctx context.Context, command, input string) (string, error) {
 	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command)
@@ -44,7 +46,7 @@ func (l *localNodes) dial(_ context.Context, n Node) (session, error) {
 	if l.offline[n.ID] {
 		return nil, errors.New("connect: no route to host")
 	}
-	return localSession{home: l.homes[n.ID]}, nil
+	return localSession{home: l.homes[n.ID], host: n.HostKeys[0]}, nil
 }
 
 func (l *localNodes) setOffline(id string, offline bool) {
@@ -67,7 +69,7 @@ func testRuntime(t *testing.T, nodes ...Node) (*Runtime, *localNodes) {
 }
 
 func mbp() Node {
-	return Node{ID: "mbp-2014", Address: "127.0.0.1", User: "admin", HostKey: testHostKey, OS: "macOS", Arch: "amd64"}
+	return Node{ID: "mbp-2014", Address: "127.0.0.1", User: "admin", HostKeys: []string{testHostKey}, OS: "macOS", Arch: "amd64"}
 }
 
 func vmNamed(o domain.Observation, name string) (domain.VM, bool) {
@@ -163,7 +165,7 @@ func TestAsleepNodeIsAdmittedAndWokenForItsLease(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer listener.Close()
-	htpc := Node{ID: "htpc", Address: "127.0.0.1", User: "bazzite", HostKey: testHostKey, OS: "linux", Arch: "amd64", WakeMAC: "B0:6E:BF:60:6D:64", WakeBroadcast: listener.LocalAddr().String()}
+	htpc := Node{ID: "htpc", Address: "127.0.0.1", User: "bazzite", HostKeys: []string{testHostKey}, OS: "linux", Arch: "amd64", WakeMAC: "B0:6E:BF:60:6D:64", WakeBroadcast: listener.LocalAddr().String()}
 	r, local := testRuntime(t, htpc)
 	ctx := context.Background()
 	if _, err := r.Observe(ctx); err != nil {

@@ -20,16 +20,20 @@ import (
 
 const providerName = "baremetal"
 
-// Node is one physical host. KeepAwakeFile is an optional absolute path that
-// the node's own sleep guard honors while it exists.
+// Node is one physical host. HostKeys are every identity the address may
+// present, one per bootable system. KeepAwakeFile is an optional absolute
+// path that the node's own sleep guard honors while it exists.
 type Node struct {
-	ID, Name, Address, User, HostKey, OS, Arch string
-	KeepAwakeFile                              string
-	WakeMAC, WakeBroadcast                     string
+	ID, Name, Address, User, OS, Arch string
+	HostKeys                          []string
+	KeepAwakeFile                     string
+	WakeMAC, WakeBroadcast            string
 }
 
 type session interface {
 	Run(ctx context.Context, command, input string) (string, error)
+	// HostKey is the identity the node presented, in authorized-keys format.
+	HostKey() string
 	Close()
 }
 

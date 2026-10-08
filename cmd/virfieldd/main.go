@@ -165,7 +165,7 @@ func run() error {
 		}
 		configured := make([]baremetal.Node, 0, len(cfg.Runtime.Nodes))
 		for _, n := range cfg.Runtime.Nodes {
-			node := baremetal.Node{ID: n.ID, Name: n.Name, Address: n.Address, User: n.User, HostKey: n.HostKey, OS: n.OS, Arch: n.Arch, KeepAwakeFile: n.KeepAwakeFile}
+			node := baremetal.Node{ID: n.ID, Name: n.Name, Address: n.Address, User: n.User, HostKeys: append([]string{n.HostKey}, n.HostKeys...), OS: n.OS, Arch: n.Arch, KeepAwakeFile: n.KeepAwakeFile}
 			if n.WakeOnLAN != nil {
 				node.WakeMAC, node.WakeBroadcast = n.WakeOnLAN.MAC, n.WakeOnLAN.Broadcast
 			}
