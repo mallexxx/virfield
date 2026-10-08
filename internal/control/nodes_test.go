@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -152,4 +153,69 @@ func TestNodeLeaseIsNotChargedToMacResources(t *testing.T) {
 	if _, err := c.Acquire(context.Background(), "vm-after-node", domain.AcquireRequest{Template: "test", TTLSeconds: 3600}); err != nil {
 		t.Fatal("Mac VM admission blocked by an active node lease:", err)
 	}
+}
+
+func nodeImageController(t *testing.T) (*Controller, *fakeImageBuilder) {
+	t.Helper()
+	c, _, node := nodeController(t)
+	p := domain.ImageProfile{Node: &domain.NodeSource{Golden: "sonoma-bootstrap"}, MacOS: "14.8.9", Build: "23J631", DisableSIP: true}
+	c.templates["mbp-sonoma"] = domain.Template{ID: "mbp-sonoma", Name: "mbp-sonoma", Location: "mbp", Provider: "baremetal", OS: "macOS", GuestUser: "admin", GuestHome: "/Users/admin", Image: &p}
+	builder := &fakeImageBuilder{backend: node.fakeBackend}
+	c.SetImageBuilder(builder)
+	return c, builder
+}
+
+func TestNodeImageRunsBuildQualifyStopCommit(t *testing.T) {
+	c, b := nodeImageController(t)
+	ctx := context.Background()
+	// Full Mac VM capacity must not block an image built on a node.
+	for _, key := range []string{"vm-one-lease", "vm-two-lease"} {
+		if _, err := c.Acquire(ctx, key, domain.AcquireRequest{Template: "test", TTLSeconds: 3600}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	op, err := c.BuildImage(ctx, "mbp-sonoma", "node-image-build")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if op.Lease.Provider != "baremetal" || op.Lease.Location != "mbp" {
+		t.Fatal(op.Lease.Provider, op.Lease.Location)
+	}
+	for range 12 {
+		tick(t, c)
+	}
+	if strings.Join(b.steps, ",") != "build,qualify,stop,commit" {
+		t.Fatal(b.steps)
+	}
+	l, err := c.Lease(ctx, op.Lease.ID)
+	if err != nil || l.State != "image_ready" || l.ImageManifest != imageFingerprint(c.templates["mbp-sonoma"].Image) {
+		t.Fatal(l.State, err)
+	}
+}
+
+func TestNodeImageQualifyRetriesButCommitDoesNot(t *testing.T) {
+	c, b := nodeImageController(t)
+	ctx := context.Background()
+	b.fail = "qualify"
+	op, err := c.BuildImage(ctx, "mbp-sonoma", "node-image-qualify")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 10 {
+		tick(t, c)
+	}
+	b.fail = "commit"
+	tick(t, c)
+	if _, err := c.RecoverImage(ctx, op.Lease.ID, "node-retry-qualify", "mbp-sonoma", "retry", true); err != nil {
+		t.Fatal(err)
+	}
+	for range 12 {
+		tick(t, c)
+	}
+	j, err := c.Job(ctx, op.Job.ID)
+	if err != nil || j.Phase != "commit_dispatched" || j.State != "needs_attention" {
+		t.Fatal(j.Phase, j.State, err)
+	}
+	_, err = c.RecoverImage(ctx, op.Lease.ID, "node-retry-commit", "mbp-sonoma", "retry", true)
+	code(t, err, "unsafe_retry")
 }

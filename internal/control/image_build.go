@@ -41,7 +41,11 @@ func (c *Controller) buildImageLocked(ctx context.Context, t domain.Template, ke
 	if err != nil {
 		return domain.Operation{}, err
 	}
-	if c.capacity(ls).Available < 1 {
+	capacity := c.capacity(ls)
+	if c.secondaryProvider(t.Provider) {
+		capacity = c.capacityOn(ls, t.Location)
+	}
+	if capacity.Available < 1 {
 		return domain.Operation{}, domain.Err("capacity_exhausted", "image build requires one available VM slot")
 	}
 	for _, l := range ls {
@@ -56,6 +60,9 @@ func (c *Controller) buildImageLocked(ctx context.Context, t domain.Template, ke
 	}
 	now := c.now()
 	l := domain.Lease{ID: domain.NewID("image-"), Purpose: "image", Template: t.ID, VMName: t.Name, Location: t.Location, LegacyUUID: t.LegacyUUID, GuestUser: t.GuestUser, GuestHome: t.GuestHome, State: "image_building", CreatedAt: now, UpdatedAt: now}
+	if c.secondaryProvider(t.Provider) {
+		l.Provider = t.Provider
+	}
 	profile := *t.Image
 	j := domain.Job{ID: domain.NewID("job-"), LeaseID: l.ID, Kind: "image_build", Image: &profile, Phase: "queued", State: "queued", CreatedAt: now, UpdatedAt: now, Deadline: now.Add(10 * time.Hour)}
 	save := func() error {
@@ -78,6 +85,21 @@ func (c *Controller) buildImageLocked(ctx context.Context, t domain.Template, ke
 // tartImageNext adopts a pinned Tart image: Packer builds, Virfield qualifies.
 var tartImageNext = map[string]string{"queued": "resolve", "resolve_done": "build", "build_done": "qualify", "qualify_done": "stop"}
 
+// nodeImageNext secures a node's bootstrap golden: clone it, secure and
+// verify the clone, stop it, and commit it as a new read-only golden.
+var nodeImageNext = map[string]string{"queued": "build", "build_done": "qualify", "qualify_done": "stop", "stop_done": "commit"}
+
+// imageChain returns a profile's phase chain and its final phase.
+func imageChain(p *domain.ImageProfile) (map[string]string, string) {
+	switch {
+	case p.Node != nil:
+		return nodeImageNext, "commit_done"
+	case p.Tart != nil:
+		return tartImageNext, "stop_done"
+	}
+	return imageNext, "stop_done"
+}
+
 var imageNext = map[string]string{"queued": "download", "download_dispatched": "download", "download_done": "create", "create_done": "setup", "setup_done": "assistant", "assistant_done": "sip", "sip_done": "verify", "verify_done": "stop", "provision_done": "verify"}
 
 func (c *Controller) advanceImageBuild(ctx context.Context, l domain.Lease, j domain.Job) error {
@@ -90,7 +112,8 @@ func (c *Controller) advanceImageBuild(ctx context.Context, l domain.Lease, j do
 		}
 		return c.advanceImageExport(ctx, l, j)
 	}
-	if j.Phase == "stop_done" {
+	next, final := imageChain(j.Image)
+	if j.Phase == final {
 		v, exists := c.vm(l)
 		if !exists || v.State != "stopped" {
 			return nil
@@ -103,15 +126,11 @@ func (c *Controller) advanceImageBuild(ctx context.Context, l domain.Lease, j do
 		j.Error = nil
 		return c.save(ctx, l, j, "image.ready", "Verified image is stopped and available for cloning")
 	}
-	next := imageNext
-	if j.Image.Tart != nil {
-		next = tartImageNext
-	}
 	step, ok := next[j.Phase]
 	if !ok {
 		return nil
 	}
-	if j.Image.Tart == nil && j.Phase == "sip_done" && j.Image.Provision != "" {
+	if j.Image.Tart == nil && j.Image.Node == nil && j.Phase == "sip_done" && j.Image.Provision != "" {
 		step = "provision"
 	}
 	if step == "create" || step == "build" {
@@ -122,6 +141,9 @@ func (c *Controller) advanceImageBuild(ctx context.Context, l domain.Lease, j do
 	j.Phase = step + "_dispatched"
 	j.State = "running"
 	j.Progress = map[string]string{"download": "Downloading and verifying selected Apple installers", "create": "Installing macOS from the verified IPSW", "setup": "Preparing guest account, SSH and automatic login", "assistant": "Completing Setup Assistant and checking Finder", "sip": "Applying guest SIP policy through paired Recovery", "provision": "Installing selected guest developer tools", "verify": "Verifying build, SIP, SSH credentials and desktop after reboot", "stop": "Stopping the verified image before publication", "resolve": "Verifying the pinned Tart source, Xcode archive and build recipe", "build": "Building the image with Packer from the pinned Tart source", "qualify": "Securing credentials and verifying build, SIP, desktop, disk policy and Xcode after reboot"}[step]
+	if j.Image.Node != nil {
+		j.Progress = map[string]string{"build": "Cloning the node's bootstrap golden for securing", "qualify": "Securing credentials and verifying build, SIP, desktop and password after reboot", "stop": "Stopping the secured clone", "commit": "Committing the secured clone as a read-only golden on the node"}[step]
+	}
 	if step == "provision" && j.Image.Provision == "security-v1" {
 		j.Progress = "Applying guest Gatekeeper, AMFI and TCC policy"
 	}
