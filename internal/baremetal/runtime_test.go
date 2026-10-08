@@ -60,6 +60,7 @@ func testRuntime(t *testing.T, nodes ...Node) (*Runtime, *localNodes) {
 		local.homes[n.ID] = t.TempDir()
 	}
 	r := New(nodes, local.dial)
+	r.probeInterval = 0
 	r.wakePoll = 10 * time.Millisecond
 	r.wakeTimeout = 2 * time.Second
 	return r, local
@@ -218,4 +219,29 @@ func TestOfflineNodeIsReprobedOnlyAfterBackoff(t *testing.T) {
 	if o.Hosts[0].Availability != "available" {
 		t.Fatal("node not re-probed after its backoff")
 	}
+}
+
+// Inventory must not keep a node awake: an online node is probed at most once
+// per probe interval, unless a Virfield operation just changed it.
+func TestOnlineNodeIsProbedOncePerIntervalUnlessChanged(t *testing.T) {
+	r, local := testRuntime(t, mbp())
+	r.probeInterval = time.Hour
+	ctx := context.Background()
+	if _, err := r.Observe(ctx); err != nil {
+		t.Fatal(err)
+	}
+	dials := local.dials
+	o, err := r.Observe(ctx)
+	if err != nil || local.dials != dials || o.Hosts[0].Availability != "available" || len(o.VMs) != 1 {
+		t.Fatal("online node re-probed inside its interval", local.dials, dials, o.Hosts, err)
+	}
+	l := domain.Lease{VMName: "vf-0123456789abcdef", Location: "mbp-2014"}
+	if err := r.Clone(ctx, domain.Template{}, l); err != nil {
+		t.Fatal(err)
+	}
+	o, _ = r.Observe(ctx)
+	if _, ok := vmNamed(o, l.VMName); !ok {
+		t.Fatal("a changed node was not re-probed")
+	}
+	_ = r.Delete(ctx, l)
 }

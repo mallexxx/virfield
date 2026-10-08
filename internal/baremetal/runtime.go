@@ -54,13 +54,17 @@ type Runtime struct {
 	// offlineBackoff spaces probes of an unreachable node, so a sleeping node
 	// does not add its dial timeout to every inventory refresh.
 	offlineBackoff time.Duration
-	mu             sync.Mutex
-	last           map[string]probe
-	failedAt       map[string]time.Time
+	// probeInterval spaces probes of an online node: each probe is an SSH
+	// session, and a node's sleep guard may hold it awake for SSH sessions.
+	probeInterval time.Duration
+	mu            sync.Mutex
+	last          map[string]probe
+	failedAt      map[string]time.Time
+	changed       map[string]bool
 }
 
 func New(nodes []Node, dial dialer) *Runtime {
-	return &Runtime{nodes: nodes, dial: dial, now: func() time.Time { return time.Now().UTC() }, probeTimeout: 10 * time.Second, wakeTimeout: 3 * time.Minute, wakePoll: 5 * time.Second, offlineBackoff: 30 * time.Second, last: map[string]probe{}, failedAt: map[string]time.Time{}}
+	return &Runtime{nodes: nodes, dial: dial, now: func() time.Time { return time.Now().UTC() }, probeTimeout: 10 * time.Second, wakeTimeout: 3 * time.Minute, wakePoll: 5 * time.Second, offlineBackoff: 30 * time.Second, probeInterval: time.Minute, last: map[string]probe{}, failedAt: map[string]time.Time{}, changed: map[string]bool{}}
 }
 
 func (r *Runtime) ProviderName() string { return providerName }
@@ -87,6 +91,11 @@ func (r *Runtime) Observe(ctx context.Context) (domain.Observation, error) {
 		if failed, ok := r.failedAt[n.ID]; ok && now.Sub(failed) < r.offlineBackoff {
 			skip[i] = true
 			errs[i] = errors.New("node offline; probe deferred")
+		} else if cached, ok := r.last[n.ID]; ok && !r.changed[n.ID] && now.Sub(cached.at) < r.probeInterval {
+			skip[i] = true
+			results[i] = cached
+		} else {
+			delete(r.changed, n.ID)
 		}
 	}
 	r.mu.Unlock()
@@ -234,10 +243,12 @@ func (r *Runtime) WakeHost(ctx context.Context, hostID string) error {
 	return wol.Send(ctx, n.WakeMAC, n.WakeBroadcast)
 }
 
-// reached clears a node's offline backoff after any successful connection.
+// reached clears a node's offline backoff after any successful connection and
+// marks it for a fresh probe, since a Virfield operation just changed it.
 func (r *Runtime) reached(n Node) {
 	r.mu.Lock()
 	delete(r.failedAt, n.ID)
+	r.changed[n.ID] = true
 	r.mu.Unlock()
 }
 
