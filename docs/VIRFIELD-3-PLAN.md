@@ -21,7 +21,7 @@ follows [the Tart image adoption design](superpowers/specs/2026-10-07-tart-image
 | macOS 27 UI-test golden (`macos27`) and Broker v1 smoke on Tart | **Passed** 2026-10-08, Broker unchanged ([record](VERIFICATION.md#macos-27-ui-test-golden-and-broker-smoke-2026-10-08)) |
 | VS Code remote-debug on Tart leases; GHCR publication | Not started |
 | Remote nodes R1: bare-metal SSH provider (2014 MacBook Pro, Bazzite HTPC), per-host capacity, Wake-on-LAN | **Live** 2026-10-08: 20/20 node acceptance; all four MacBook volumes (Monterey, Big Sur, Catalina, Ventura) leased 5/5 each via multiple host keys; probes survive restarts ([record](VERIFICATION.md#remote-nodes-r1-2026-10-08)); wake-by-lease pending |
-| R2 macOS VMs on the HTPC ([spec](superpowers/specs/2026-10-08-hackintosh-nodes-r2-design.md)) | **In progress**: Sonoma 14.8.9 and Sequoia 15.8.1 goldens (SIP disabled) built on the HDD; overlay clones proven by hand. Virfield provider code not started |
+| R2 macOS VMs on the HTPC ([spec](superpowers/specs/2026-10-08-hackintosh-nodes-r2-design.md), [plan](superpowers/plans/2026-10-08-remote-nodes-r2-macos-vms.md)) | **Live** 2026-10-08: Virfield-secured Sonoma 14.8.9 and Sequoia 15.8.1 goldens; 19/19 two-VM acceptance beside the host lease ([record](VERIFICATION.md#remote-nodes-r2-macos-vms-on-the-htpc-2026-10-08)) |
 | R3 desktop/noVNC gateway | Not started |
 | Orchard live pool acceptance | Not started |
 

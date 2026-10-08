@@ -120,6 +120,32 @@ Virfield-managed macOS VM leases on the HTPC (goldens and hand-made clones
 are recorded in the [R2 spec](superpowers/specs/2026-10-08-hackintosh-nodes-r2-design.md)),
 and the desktop gateway.
 
+## Remote nodes R2: macOS VMs on the HTPC (2026-10-08)
+
+Bootstrap goldens Sonoma 14.8.9 (23J631) and Sequoia 15.8.1 (24H32) were
+installed by hand under `dockurr/macos` on the HTPC and stored read-only on its
+HDD ([spec](superpowers/specs/2026-10-08-hackintosh-nodes-r2-design.md)).
+Virfield then secured both as `htpc-sonoma-14` and `htpc-sequoia-15`: clone,
+password rotation, management key, key-only SSH, auto-login, reboot, and
+verification of version, SIP disabled, desktop and password, then commit
+(Sonoma 13 minutes, Sequoia 21 minutes, commits about six minutes each on the
+HDD).
+
+Live acceptance `accept-r2.py` passed 19/19: `htpc-sonoma-14`,
+`htpc-sequoia-15` and the `htpc-bazzite` host lease admitted together (HTPC
+3/3); the VM leases served SSH on 192.168.1.86:22100 and :22101 as `admin`
+with the lease key and pinned host key, reported 14.8.9 / 15.8.1,
+`iMacPro1,1` and SIP disabled, and refused the other lease's key and the
+bootstrap password; the host lease saw both VM containers; release closed both
+ports and left no lease folders, containers or keep-awake on the node. Both
+VMs became ready 550 s after acquisition while booting together off the HDD.
+
+Defects found by the live runs and fixed: a dropped SSH handshake through the
+port forward was fatal and the probe reported SSH before the guest listened
+(`0b0cf05`); lease isolation timed out after one minute while `sysadminctl`
+was still running in a slow guest (`dcf96e2`); right after an image commit a
+stale probe sent a lease down the host-lease path (`163caa4`).
+
 ## VS Code remote LLDB (2026-10-07)
 
 The DuckDuckGo SwiftPM worktree was built on the host with its existing

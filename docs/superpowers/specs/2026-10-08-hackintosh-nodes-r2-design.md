@@ -1,6 +1,6 @@
 # Remote nodes R2: macOS VMs on the Linux HTPC
 
-Status: in progress (2026-10-08). Builds on R1 (`2026-10-08-remote-nodes-r1-design.md`).
+Status: live (2026-10-08); see VERIFICATION.md "Remote nodes R2". Builds on R1 (`2026-10-08-remote-nodes-r1-design.md`).
 
 ## Goal
 

@@ -133,6 +133,47 @@ only if the lease created it). Release revokes the key and removes the
 workspace. Physical hosts are not disposable: processes the lease started
 under the shared account are not killed.
 
+### macOS VMs on a Linux node (R2)
+
+A Linux node with `vms` runs disposable macOS VMs as rootless Podman
+containers of a digest-pinned `dockurr/macos` image (QEMU + OpenCore). No sudo
+or libvirt group is needed; the node account must be able to use `/dev/kvm`
+and `/dev/net/tun`.
+
+```json
+"vms": {"image": "docker.io/dockurr/macos@sha256:08d1bcaac74ad44d548b7ce683b3dded083512d2a0d26416f9a620b763f8ea3d",
+        "goldens_dir": "/run/media/system/Data/virfield/goldens",
+        "port_base": 22100, "max": 2, "cpu": 4, "memory_gb": 8, "disk_size": "100G"}
+```
+
+- **Bootstrap goldens** are installed once by hand (see the
+  [R2 spec](superpowers/specs/2026-10-08-hackintosh-nodes-r2-design.md)):
+  `admin`/`admin`, Remote Login, passwordless sudo, SIP disabled through
+  `<golden>.opencore.plist` (`csr-active-config` `0x7F`). They are never
+  leased: a clone without a verified image is refused.
+- **Secured goldens** are built by Virfield from a template whose image is
+  `{"node": {"golden": "<bootstrap name>"}, "macos": …, "build": …,
+  "disable_sip": true}` (`POST /api/v1/images/<template>/build`). The job
+  clones the bootstrap golden into `~/virfield/images/<template>`, publishes
+  its SSH on the node loopback only, rotates the password, installs the
+  management key, turns password SSH off and sets auto-login, verifies
+  version, SIP, desktop and password after a reboot, and commits the clone as
+  `<goldens_dir>/<template>.qcow2` (mode 0444). Rebuilding needs a new
+  template name or deleting the old golden by hand.
+- **Leases** of that template clone a qcow2 overlay into
+  `~/virfield/leases/<vm>/storage` (copy-on-write off) and start container
+  `virfield-<vm>` with guest SSH published on `0.0.0.0:<port>` (ports
+  `port_base … port_base+max-1`; image builds use the next `max`). The lease's
+  `ip` is the node address and `ssh.port` its port; `virfield ssh-config`
+  writes the port. Virfield's own guest SSH tunnels through the pinned node
+  connection to `127.0.0.1:<port>`. A running VM reports SSH only once the
+  guest's SSH banner answers, since the port forward accepts TCP earlier.
+- **Stop** asks the container to stop for 30 s and then kills it: macOS clones
+  can hang at the very end of a shutdown. Release deletes the clone.
+- Capacity: the node admits its host lease plus `max` VMs. Two VMs booting
+  together off a 5400 rpm HDD took about nine minutes to become ready;
+  one boots in about two.
+
 ### Tart image adoption
 
 A Tart daemon uses its own `config.json` and `state_dir`; it never shares the
