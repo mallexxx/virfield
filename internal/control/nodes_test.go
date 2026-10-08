@@ -126,7 +126,12 @@ func TestNodeTemplatesNeedAClientKeyButNoImageProfile(t *testing.T) {
 // A node lease is bounded by the node's own slot, never by this Mac's CPU,
 // memory or clone-storage budget.
 func TestNodeLeaseIsNotChargedToMacResources(t *testing.T) {
-	c, _, node := nodeController(t)
+	c, vms, node := nodeController(t)
+	vms.mu.Lock()
+	macGolden := vms.vms["home/golden"]
+	macGolden.Resources = domain.Resources{CPU: 1, MemoryBytes: 1 << 30, DiskBytes: 1 << 30}
+	vms.vms["home/golden"] = macGolden
+	vms.mu.Unlock()
 	node.mu.Lock()
 	golden := node.vms["mbp/Monterey"]
 	golden.Resources = domain.Resources{CPU: 4, MemoryBytes: 16 << 30}
@@ -142,5 +147,9 @@ func TestNodeLeaseIsNotChargedToMacResources(t *testing.T) {
 	}
 	if op.Lease.Resources != (domain.Resources{}) {
 		t.Fatalf("node lease reserved Mac resources: %#v", op.Lease.Resources)
+	}
+	// Mac VM admission keeps working while a node lease is active.
+	if _, err := c.Acquire(context.Background(), "vm-after-node", domain.AcquireRequest{Template: "test", TTLSeconds: 3600}); err != nil {
+		t.Fatal("Mac VM admission blocked by an active node lease:", err)
 	}
 }

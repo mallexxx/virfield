@@ -64,8 +64,10 @@ func (c *Controller) resources(ls []domain.Lease) (domain.Resources, map[string]
 		disk[location] += r.DiskBytes
 		return nil
 	}
+	// Physical nodes are bounded by their own lease slot, not this Mac's budget.
+	nodeLocations, _ := c.nodeHosts()
 	for _, l := range ls {
-		if l.Purpose == "image" {
+		if l.Purpose == "image" || nodeLocations[l.Location] != "" {
 			continue
 		}
 		r := l.Resources
@@ -80,7 +82,7 @@ func (c *Controller) resources(ls []domain.Lease) (domain.Resources, map[string]
 		}
 	}
 	for _, v := range c.observation.VMs {
-		if v.State != "stopped" {
+		if v.State != "stopped" && nodeLocations[v.Location] == "" {
 			if err := add(v.Key(), v.Location, v.Resources); err != nil {
 				return sum, disk, err
 			}
