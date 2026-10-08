@@ -21,8 +21,8 @@ host key, per-lease client key, TTL, release destroys the clone.
 - Storage: goldens are read-only qcow2 files on the HDD
   (`/run/media/system/Data/virfield/goldens`, btrfs, 2.7 TB free). Each lease
   is a qcow2 overlay on the SSD (`~/virfield/hackintosh/leases/<vm>`) whose
-  backing file is the golden, plus a copy of the golden's OVMF NVRAM vars.
-  Writes stay on the SSD; untouched blocks are read from the HDD and then
+  backing file is the golden; dockur generates a fresh identity and NVRAM
+  per lease. Writes stay on the SSD; untouched blocks are read from the HDD and then
   served from the page cache.
 - Goldens are built on the SSD (installs are write-heavy), then compacted to
   the HDD with `qemu-img convert` under a versioned name and made read-only. A
@@ -30,8 +30,8 @@ host key, per-lease client key, TTL, release destroys the clone.
   references it. The HDD is an automount (`nofail`), so goldens are available
   only while it is mounted.
 - Install: dockur downloads Apple's recovery image for `VERSION`. Disk Utility
-  and the installer are driven over the web VNC viewer. Setup Assistant creates
-  the bootstrap account; the user performs account creation. After SSH is up,
+  and the installer are driven over the web VNC viewer, and Setup Assistant
+  creates the bootstrap account `admin`/`admin`. After SSH is up,
   Virfield's existing guest scripts apply: guest checks (OS/build, SIP),
   secure (rotate bootstrap password, auto-login), host-key reset, per-lease
   SSH isolation, and the developer recipe's Xcode steps when wanted.
