@@ -109,7 +109,13 @@ host key fingerprint confirmed at the MacBook's own console) and the same
 "Remote Login starting…"; `sudo launchctl load -w
 /System/Library/LaunchDaemons/ssh.plist` started SSH instead.
 
-Not yet covered: the Ventura volume (enroll when booted), the wake
+Ventura (2026-10-08): enrolled the same way (13.7.8; host key trusted on
+first use at the operator's request, ED25519
+`SHA256:KtTqiHnjWkqG64oxDwJzP0XPiND85QPshoa1rBgMqeg`); the `mbp2014-ventura`
+lease test passed 5/5. All four MacBook volumes are now leasable, one at a
+time, as whichever is booted.
+
+Not yet covered: the wake
 path by a real lease (pending at time of writing), the Hackintosh provider on
 the HTPC (needs VT-x enabled in UEFI), and the desktop gateway.
 
