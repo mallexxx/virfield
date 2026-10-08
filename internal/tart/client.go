@@ -68,6 +68,21 @@ type Client struct {
 	probe    func(context.Context, string) (volume, error)
 	now      func() time.Time
 	capacity domain.HostCapacity
+	specMu   sync.Mutex
+	specs    map[string]vmSpec
+}
+
+// vmSpec is a VM's static configuration, valid while its config.json is
+// unchanged. tart get on an ASIF VM attaches and mounts the disk image to
+// size it (and Finder then crawls the volume), so it must not run on every
+// inventory refresh.
+type vmSpec struct {
+	modified time.Time
+	size     int64
+	os       string
+	cpu      int
+	memory   int64
+	disk     int64
 }
 
 func New(config Config) (*Client, error) {
@@ -258,40 +273,67 @@ func (c *Client) inspectAll(ctx context.Context, container ContainerConfig, rows
 	return vms, nil
 }
 
+// spec returns the VM's static configuration, running tart get only when the
+// VM's config.json changed since the last read (or cannot be inspected).
+func (c *Client) spec(ctx context.Context, container ContainerConfig, name string) (vmSpec, error) {
+	key := container.ID + "/" + name
+	info, statErr := os.Stat(filepath.Join(container.Path, "vms", name, "config.json"))
+	if statErr == nil {
+		c.specMu.Lock()
+		cached, ok := c.specs[key]
+		c.specMu.Unlock()
+		if ok && cached.modified.Equal(info.ModTime()) && cached.size == info.Size() {
+			return cached, nil
+		}
+	}
+	var raw struct {
+		OS     string   `json:"OS"`
+		CPU    int      `json:"CPU"`
+		Memory int64    `json:"Memory"`
+		Disk   *float64 `json:"Disk"`
+	}
+	b, err := c.runner.Run(ctx, container.Path, []string{"get", name, "--format", "json"})
+	if err != nil {
+		return vmSpec{}, err
+	}
+	if err := json.Unmarshal(b, &raw); err != nil || raw.CPU < 1 || raw.Memory < 1 || raw.OS == "" {
+		return vmSpec{}, errors.New("invalid Tart get response")
+	}
+	spec := vmSpec{os: normalizeOS(raw.OS), cpu: raw.CPU, memory: raw.Memory << 20}
+	if raw.Disk != nil {
+		spec.disk = int64(*raw.Disk * 1_000_000_000)
+	}
+	if statErr == nil {
+		spec.modified, spec.size = info.ModTime(), info.Size()
+		c.specMu.Lock()
+		if c.specs == nil {
+			c.specs = map[string]vmSpec{}
+		}
+		c.specs[key] = spec
+		c.specMu.Unlock()
+	}
+	return spec, nil
+}
+
 func (c *Client) inspect(ctx context.Context, container ContainerConfig, row listRow, now time.Time) (domain.VM, error) {
 	if !domain.ValidName(row.Name) || row.State == "" {
 		return domain.VM{}, errors.New("invalid Tart VM record")
 	}
-	var raw struct {
-		OS      string   `json:"OS"`
-		CPU     int      `json:"CPU"`
-		Memory  int64    `json:"Memory"`
-		Disk    *float64 `json:"Disk"`
-		Running bool     `json:"Running"`
-		State   string   `json:"State"`
-	}
-	b, err := c.runner.Run(ctx, container.Path, []string{"get", row.Name, "--format", "json"})
+	spec, err := c.spec(ctx, container, row.Name)
 	if err != nil {
 		return domain.VM{}, err
 	}
-	if err := json.Unmarshal(b, &raw); err != nil || raw.CPU < 1 || raw.Memory < 1 || raw.OS == "" {
-		return domain.VM{}, errors.New("invalid Tart get response")
-	}
-	state := raw.State
-	if raw.Running || row.Running {
+	state := row.State
+	if row.Running {
 		state = "running"
 	}
 	if state == "Stopped" || state == "stopped" {
 		state = "stopped"
 	}
-	disk := int64(0)
-	if raw.Disk != nil {
-		disk = int64(*raw.Disk * 1_000_000_000)
-	}
 	vm := domain.VM{
-		Resources: domain.Resources{CPU: raw.CPU, MemoryBytes: raw.Memory << 20, DiskBytes: disk},
+		Resources: domain.Resources{CPU: spec.cpu, MemoryBytes: spec.memory, DiskBytes: spec.disk},
 		Name:      row.Name, Location: container.ID, Provider: c.ProviderName(), HostID: c.config.HostID,
-		ContainerID: container.ID, OS: normalizeOS(raw.OS), State: state, LastSeenAt: now,
+		ContainerID: container.ID, OS: spec.os, State: state, LastSeenAt: now,
 	}
 	if state == "running" {
 		ip, ipErr := c.runner.Run(ctx, container.Path, []string{"ip", row.Name, "--wait", "0"})

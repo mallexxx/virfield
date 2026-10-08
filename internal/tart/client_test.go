@@ -206,3 +206,62 @@ func TestObserveInspectsVMsConcurrentlyInListOrder(t *testing.T) {
 		}
 	}
 }
+
+type countingRunner struct {
+	mu   sync.Mutex
+	gets int
+}
+
+func (r *countingRunner) Run(_ context.Context, _ string, args []string) ([]byte, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	switch args[0] {
+	case "list":
+		return []byte(`[{"Name":"golden","Running":false,"State":"stopped"}]`), nil
+	case "get":
+		r.gets++
+		return []byte(`{"OS":"darwin","CPU":4,"Memory":8192,"Disk":80,"Running":false,"State":"stopped"}`), nil
+	}
+	return nil, errors.New("unexpected command")
+}
+
+func (r *countingRunner) StartDetached(string, []string) error { return nil }
+
+// tart get on an ASIF VM attaches and mounts its disk image to size it, and
+// Finder then crawls the mounted macOS volume. Specs are cached until the VM
+// configuration changes; live state comes from tart list.
+func TestObserveReusesVMSpecsUntilConfigChanges(t *testing.T) {
+	home := t.TempDir()
+	config := filepath.Join(home, "vms", "golden", "config.json")
+	if err := os.MkdirAll(filepath.Dir(config), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(config, []byte(`{"version":1}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	runner := &countingRunner{}
+	client := &Client{
+		config: Config{HostID: "macbook", MaxVMs: 2, Containers: []ContainerConfig{{ID: "local", Path: home, Kind: "local"}}},
+		runner: runner,
+		probe: func(context.Context, string) (volume, error) {
+			return volume{Identity: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", Total: 1 << 40, Free: 500 << 30}, nil
+		},
+		now: func() time.Time { return time.Unix(100, 0).UTC() },
+	}
+	for range 3 {
+		o, err := client.Observe(context.Background())
+		if err != nil || len(o.VMs) != 1 || o.VMs[0].Resources.CPU != 4 {
+			t.Fatal(o.VMs, err)
+		}
+	}
+	if runner.gets != 1 {
+		t.Fatalf("tart get ran %d times for an unchanged VM", runner.gets)
+	}
+	later := time.Now().Add(time.Minute)
+	if err := os.Chtimes(config, later, later); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Observe(context.Background()); err != nil || runner.gets != 2 {
+		t.Fatal("changed VM configuration was not re-read", runner.gets, err)
+	}
+}
