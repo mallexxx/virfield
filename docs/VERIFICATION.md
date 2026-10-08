@@ -115,9 +115,10 @@ first use at the operator's request, ED25519
 lease test passed 5/5. All four MacBook volumes are now leasable, one at a
 time, as whichever is booted.
 
-Not yet covered: the wake
-path by a real lease (pending at time of writing), the Hackintosh provider on
-the HTPC (needs VT-x enabled in UEFI), and the desktop gateway.
+Not yet covered: the wake path by a real lease (pending at time of writing),
+Virfield-managed macOS VM leases on the HTPC (goldens and hand-made clones
+are recorded in the [R2 spec](superpowers/specs/2026-10-08-hackintosh-nodes-r2-design.md)),
+and the desktop gateway.
 
 ## VS Code remote LLDB (2026-10-07)
 

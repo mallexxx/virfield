@@ -114,6 +114,18 @@ kept in `state_dir/nodes/<id>.probe.json`, so a daemon restart while a node
 sleeps keeps it admissible and keeps its leases in inventory; the first
 observation after a restart still dials every node.
 
+A MacBook node is kept awake on its charger by the node itself, once per
+boot volume (each volume has its own power settings):
+
+```bash
+ssh -t admin@192.168.1.79 'sudo pmset -c sleep 0 disksleep 0 standby 0 autopoweroff 0 powernap 0 displaysleep 10 womp 1 tcpkeepalive 1'
+```
+
+Applied on Ventura (2026-10-08); Monterey, Big Sur and Catalina still need
+it. Closing the lid still sleeps the Mac unless `pmset -a disablesleep 1`.
+On Catalina, if the Sharing pane hangs on "Remote Login starting…", start SSH
+with `sudo launchctl load -w /System/Library/LaunchDaemons/ssh.plist`.
+
 A lease authorizes the client key in `authorized_keys` (tagged
 `virfield-lease-<vm>`), creates `~/virfield/leases/<vm>/workspace`, and keeps
 the node awake (`caffeinate` on macOS, the `keep_awake_file` on Linux, removed

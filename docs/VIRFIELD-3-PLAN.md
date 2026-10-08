@@ -20,8 +20,9 @@ follows [the Tart image adoption design](superpowers/specs/2026-10-07-tart-image
 | Live golden builds and two-clone acceptance (Ventura 13.7.4 + Xcode 15.2, Monterey 12.7.6 + Xcode 13.4.1) | **Passed** 2026-10-07: both goldens qualified by the service; 23/23 two-clone checks each ([record](VERIFICATION.md#tart-image-adoption-2026-10-07)) |
 | macOS 27 UI-test golden (`macos27`) and Broker v1 smoke on Tart | **Passed** 2026-10-08, Broker unchanged ([record](VERIFICATION.md#macos-27-ui-test-golden-and-broker-smoke-2026-10-08)) |
 | VS Code remote-debug on Tart leases; GHCR publication | Not started |
-| Remote nodes R1: bare-metal SSH provider (2014 MacBook Pro, Bazzite HTPC), per-host capacity, Wake-on-LAN | **Live** 2026-10-08: 20/20 node acceptance ([record](VERIFICATION.md#remote-nodes-r1-2026-10-08)); wake-by-lease pending |
-| R2 Hackintosh/libvirt on the HTPC; R3 desktop/noVNC gateway | Not started (R2 needs VT-x enabled in the HTPC UEFI) |
+| Remote nodes R1: bare-metal SSH provider (2014 MacBook Pro, Bazzite HTPC), per-host capacity, Wake-on-LAN | **Live** 2026-10-08: 20/20 node acceptance; all four MacBook volumes (Monterey, Big Sur, Catalina, Ventura) leased 5/5 each via multiple host keys; probes survive restarts ([record](VERIFICATION.md#remote-nodes-r1-2026-10-08)); wake-by-lease pending |
+| R2 macOS VMs on the HTPC ([spec](superpowers/specs/2026-10-08-hackintosh-nodes-r2-design.md)) | **In progress**: Sonoma 14.8.9 and Sequoia 15.8.1 goldens (SIP disabled) built on the HDD; overlay clones proven by hand. Virfield provider code not started |
+| R3 desktop/noVNC gateway | Not started |
 | Orchard live pool acceptance | Not started |
 
 The local Tart golden, two-clone and Broker smoke parts of the Phase 1 exit
@@ -157,6 +158,12 @@ Access forwards bytes and enforces lease/grant lifetime. It does not terminate
 SSH, accept arbitrary destinations or expose a raw provider network.
 
 ## Linux/Hackintosh lab provider
+
+> 2026-10-08: the first slice (R2) uses rootless Podman with the pinned
+> `dockurr/macos` image (QEMU + OpenCore) instead of libvirt: it needs no
+> sudo or libvirt group on the node and already packages OpenCore. The
+> overlay, per-lease identity and SSH-readiness steps below still apply; see
+> the [R2 spec](superpowers/specs/2026-10-08-hackintosh-nodes-r2-design.md).
 
 The Linux node-agent uses libvirt rather than teaching Virfield QEMU process
 management:
