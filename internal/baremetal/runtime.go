@@ -248,8 +248,13 @@ func (r *Runtime) Clone(ctx context.Context, t domain.Template, l domain.Lease) 
 	if err := r.ensureAwake(ctx, n); err != nil {
 		return err
 	}
-	if r.vmGolden(n, t.Name) {
+	// A verified image is always a VM lease; only host leases have none.
+	// Bootstrap goldens keep a public password and are never leased.
+	if l.ImageID != "" {
 		return r.cloneVM(ctx, n, t, l)
+	}
+	if r.vmGolden(n, t.Name) {
+		return domain.Err("invalid_request", "Node VM leases require a verified image")
 	}
 	return r.runLease(ctx, l, cloneScript)
 }
@@ -263,7 +268,10 @@ func (r *Runtime) Start(ctx context.Context, l domain.Lease) error {
 	if err := r.ensureAwake(ctx, n); err != nil {
 		return err
 	}
-	if r.vmLease(n, l.VMName) {
+	if l.ImageID != "" {
+		if err := vmLeaseName(l); err != nil {
+			return err
+		}
 		return r.startVM(ctx, n, "leases", l.VMName, "0.0.0.0")
 	}
 	return r.runLease(ctx, l, startScript)
@@ -277,28 +285,27 @@ func (r *Runtime) Delete(ctx context.Context, l domain.Lease) error {
 	return r.stopLease(ctx, l, true)
 }
 
-// stopLease runs the VM or host script. A clone not yet seen by a probe is
-// recognised by the host script's refusal of a VM folder.
+// stopLease runs the VM script for a verified image and the host script
+// otherwise; host scripts refuse VM folders, so a mismatch fails loudly.
 func (r *Runtime) stopLease(ctx context.Context, l domain.Lease, remove bool) error {
 	n, err := r.node(l.Location)
 	if err != nil {
 		return err
 	}
-	vm := n.VMs != nil && r.vmLease(n, l.VMName)
-	if !vm {
-		script := stopScript
-		if remove {
-			script = deleteScript
-		}
-		out, err := r.runLeaseOut(ctx, l, script)
-		if err == nil || n.VMs == nil || !strings.Contains(out, "node VM folder") {
+	if l.ImageID != "" {
+		if err := vmLeaseName(l); err != nil {
 			return err
 		}
+		if n.VMs == nil {
+			return domain.Err("invalid_request", "Node "+n.ID+" has no VMs configured")
+		}
+		return r.stopVM(ctx, n, "leases", l.VMName, remove)
 	}
-	if !strings.HasPrefix(l.VMName, "vf-") || !domain.ValidName(l.VMName) {
-		return domain.Err("invalid_request", "Not a disposable lease name")
+	script := stopScript
+	if remove {
+		script = deleteScript
 	}
-	return r.stopVM(ctx, n, "leases", l.VMName, remove)
+	return r.runLease(ctx, l, script)
 }
 
 // WakeHost sends the node's configured magic packet.

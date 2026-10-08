@@ -260,3 +260,44 @@ func TestNodeImageVMLifecycle(t *testing.T) {
 		}
 	}
 }
+
+// A golden committed after the last probe must still be cloned as a VM:
+// a verified image never falls back to the host-lease path.
+func TestNodeVMLeaseIgnoresAStaleProbe(t *testing.T) {
+	r, local, goldens := vmRuntime(t)
+	ctx := context.Background()
+	if _, err := r.Observe(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"htpc-sequoia-15.qcow2", "htpc-sequoia-15.opencore.plist"} {
+		if err := os.WriteFile(filepath.Join(goldens, f), nil, 0444); err != nil {
+			t.Fatal(err)
+		}
+	}
+	l := domain.Lease{VMName: "vf-0123456789abcdef", Location: "htpc", ImageID: "image-0123"}
+	if err := r.Clone(ctx, domain.Template{Name: "htpc-sequoia-15"}, l); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(local.homes["htpc"], "virfield", "leases", l.VMName)
+	if read(t, filepath.Join(dir, "kind")) != "vm" {
+		t.Fatal("verified image cloned as a host lease")
+	}
+	if err := r.Start(ctx, l); err != nil {
+		t.Fatal("start before a probe:", err)
+	}
+	if !strings.Contains(read(t, filepath.Join(local.path, "podman.log")), "run -d --name virfield-"+l.VMName) {
+		t.Fatal("start did not run the VM")
+	}
+	if err := r.Delete(ctx, l); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatal("delete kept the clone")
+	}
+	missing := domain.Lease{VMName: "vf-fedcba9876543210", Location: "htpc", ImageID: "image-0123"}
+	err := r.Clone(ctx, domain.Template{Name: "absent"}, missing)
+	var e *domain.Error
+	if !errors.As(err, &e) || e.Code != "template_unavailable" {
+		t.Fatal(err)
+	}
+}

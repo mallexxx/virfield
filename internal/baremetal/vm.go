@@ -34,18 +34,33 @@ func (r *Runtime) vmGolden(n Node, name string) bool {
 	return n.VMs != nil && r.last[n.ID].goldens[name]
 }
 
-// vmLease reports whether the node's last probe saw name as a VM folder.
-func (r *Runtime) vmLease(n Node, name string) bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	rec, ok := r.last[n.ID].vms[name]
-	return n.VMs != nil && ok && rec.Scope == "leases"
+func vmLeaseName(l domain.Lease) error {
+	if !strings.HasPrefix(l.VMName, "vf-") || !domain.ValidName(l.VMName) {
+		return domain.Err("invalid_request", "Not a disposable lease name")
+	}
+	return nil
 }
 
+// cloneVM clones a secured golden. A golden committed after the last probe
+// is found by probing again, never by falling back to a host lease.
 func (r *Runtime) cloneVM(ctx context.Context, n Node, t domain.Template, l domain.Lease) error {
-	// Bootstrap goldens keep a public password; only a secured image is leased.
-	if l.ImageID == "" {
-		return domain.Err("invalid_request", "Node VM leases require a verified image")
+	if err := vmLeaseName(l); err != nil {
+		return err
+	}
+	if n.VMs == nil {
+		return domain.Err("invalid_request", "Node "+n.ID+" has no VMs configured")
+	}
+	if !r.vmGolden(n, t.Name) {
+		p, err := r.probe(ctx, n, r.now())
+		if err != nil {
+			return err
+		}
+		r.mu.Lock()
+		r.last[n.ID] = p
+		r.mu.Unlock()
+		if !p.goldens[t.Name] {
+			return domain.Err("template_unavailable", "Golden "+t.Name+" is not on node "+n.ID)
+		}
 	}
 	v := n.VMs
 	_, err := r.runOn(ctx, n, command(vmCloneScript, "leases", l.VMName, t.Name, v.GoldensDir, v.Image, strconv.Itoa(v.PortBase), strconv.Itoa(v.Max)))
