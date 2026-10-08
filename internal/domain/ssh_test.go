@@ -3,6 +3,7 @@ package domain
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -27,5 +28,20 @@ func TestCanonicalPublicKey(t *testing.T) {
 		if _, err := CanonicalPublicKey(bad); err == nil {
 			t.Fatal("accepted invalid key")
 		}
+	}
+}
+
+func TestLeaseAndVMCarrySSHPort(t *testing.T) {
+	b, _ := json.Marshal(VM{Name: "vf-a", IP: "192.168.1.86", SSHPort: 22101})
+	if !strings.Contains(string(b), `"ssh_port":22101`) {
+		t.Fatal(string(b))
+	}
+	b, _ = json.Marshal(Lease{ID: "lease-a", IP: "192.168.1.86", SSHPort: 22101})
+	if !strings.Contains(string(b), `"ssh_port":22101`) {
+		t.Fatal(string(b))
+	}
+	b, _ = json.Marshal(VM{Name: "vf-b", IP: "10.0.0.2"})
+	if strings.Contains(string(b), "ssh_port") {
+		t.Fatal("port 0 must be omitted so existing leases are unchanged")
 	}
 }

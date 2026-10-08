@@ -105,10 +105,12 @@ type Lease struct {
 	StartRejected           bool           `json:"start_rejected,omitempty"`
 	StartAbsentObservations int            `json:"start_absent_observations,omitempty"`
 	IP                      string         `json:"ip,omitempty"`
-	ExpiresAt               time.Time      `json:"expires_at"`
-	CreatedAt               time.Time      `json:"created_at"`
-	UpdatedAt               time.Time      `json:"updated_at"`
-	Error                   *Error         `json:"error,omitempty"`
+	// SSHPort is the guest SSH port on IP; 0 means 22.
+	SSHPort   int       `json:"ssh_port,omitempty"`
+	ExpiresAt time.Time `json:"expires_at"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Error     *Error    `json:"error,omitempty"`
 }
 
 // Job is a persisted state machine. Phase is written before each external effect.
@@ -142,15 +144,17 @@ type Operation struct {
 
 // VM is an observation, never an instruction or an ownership claim.
 type VM struct {
-	Resources         Resources `json:"resources"`
-	Name              string    `json:"name"`
-	Location          string    `json:"location"`
-	Provider          string    `json:"provider,omitempty"`
-	HostID            string    `json:"host_id,omitempty"`
-	ContainerID       string    `json:"container_id,omitempty"`
-	OS                string    `json:"os"`
-	State             string    `json:"state"`
-	IP                string    `json:"ip,omitempty"`
+	Resources   Resources `json:"resources"`
+	Name        string    `json:"name"`
+	Location    string    `json:"location"`
+	Provider    string    `json:"provider,omitempty"`
+	HostID      string    `json:"host_id,omitempty"`
+	ContainerID string    `json:"container_id,omitempty"`
+	OS          string    `json:"os"`
+	State       string    `json:"state"`
+	IP          string    `json:"ip,omitempty"`
+	// SSHPort is the guest SSH port on IP; 0 means 22.
+	SSHPort           int       `json:"ssh_port,omitempty"`
 	UnavailableReason string    `json:"unavailable_reason,omitempty"`
 	LastSeenAt        time.Time `json:"last_seen_at,omitempty"`
 	SSHAvailable      bool      `json:"ssh_available"`
