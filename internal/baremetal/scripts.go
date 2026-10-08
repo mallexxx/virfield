@@ -25,6 +25,7 @@ fi
 mkdir -p "$HOME/virfield/leases"
 for d in "$HOME"/virfield/leases/*/; do
   [ -f "$d/state" ] || continue
+  [ -f "$d/kind" ] && continue
   echo "lease=$(basename "$d") $(cat "$d/state")"
 done
 `
@@ -42,6 +43,7 @@ mkdir -p "$d/workspace"
 const startScript = `set -eu
 d="$HOME/virfield/leases/$1"
 [ -d "$d" ]
+[ -f "$d/kind" ] && { echo "node VM folder" >&2; exit 3; }
 if command -v caffeinate >/dev/null 2>&1; then
   if [ ! -f "$d/inhibitor.pid" ] || ! kill -0 "$(cat "$d/inhibitor.pid")" 2>/dev/null; then
     nohup caffeinate -dimsu </dev/null >/dev/null 2>&1 &
@@ -59,6 +61,7 @@ printf running > "$d/state"
 const stopScript = `set -eu
 d="$HOME/virfield/leases/$1"
 [ -d "$d" ] || exit 0
+[ -f "$d/kind" ] && { echo "node VM folder" >&2; exit 3; }
 if [ -f "$d/inhibitor.pid" ]; then
   kill "$(cat "$d/inhibitor.pid")" 2>/dev/null || true
   rm -f "$d/inhibitor.pid"
@@ -87,6 +90,7 @@ const prepareScript = `set -eu
 IFS= read -r key
 d="$HOME/virfield/leases/$1"
 [ -d "$d" ]
+[ -f "$d/kind" ] && { echo "node VM folder" >&2; exit 3; }
 umask 077
 mkdir -p "$HOME/.ssh"
 k="$HOME/.ssh/authorized_keys"
