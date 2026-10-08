@@ -89,6 +89,15 @@ func (c *Controller) resources(ls []domain.Lease) (domain.Resources, map[string]
 	return sum, disk, nil
 }
 func (c *Controller) admitResources(ls []domain.Lease, t domain.Template, requestedLocation string) (domain.Resources, string, error) {
+	if c.secondaryProvider(t.Provider) {
+		// A physical node is bounded by its own lease slot (capacityOn), never by
+		// this Mac's CPU, memory or clone storage.
+		candidates, err := c.cloneLocationCandidates(t, requestedLocation)
+		if err != nil {
+			return domain.Resources{}, "", err
+		}
+		return domain.Resources{}, candidates[0], nil
+	}
 	request := t.Resources
 	for _, v := range c.observation.VMs {
 		if v.Key() == t.Location+"/"+t.Name {

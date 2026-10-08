@@ -122,3 +122,25 @@ func TestNodeTemplatesNeedAClientKeyButNoImageProfile(t *testing.T) {
 	close(p.finish)
 	c.wg.Wait()
 }
+
+// A node lease is bounded by the node's own slot, never by this Mac's CPU,
+// memory or clone-storage budget.
+func TestNodeLeaseIsNotChargedToMacResources(t *testing.T) {
+	c, _, node := nodeController(t)
+	node.mu.Lock()
+	golden := node.vms["mbp/Monterey"]
+	golden.Resources = domain.Resources{CPU: 4, MemoryBytes: 16 << 30}
+	node.vms["mbp/Monterey"] = golden
+	node.mu.Unlock()
+	c.SetResources(domain.ResourceLimits{CPU: 2, MemoryBytes: 4 << 30, DiskReserveBytes: 1}, func() (map[string]int64, error) {
+		return map[string]int64{"home": 1 << 40}, nil
+	})
+	tick(t, c)
+	op, err := c.Acquire(context.Background(), "node-resources", domain.AcquireRequest{Template: "mbp-monterey", TTLSeconds: 3600})
+	if err != nil {
+		t.Fatal("node lease charged to Mac resources:", err)
+	}
+	if op.Lease.Resources != (domain.Resources{}) {
+		t.Fatalf("node lease reserved Mac resources: %#v", op.Lease.Resources)
+	}
+}
