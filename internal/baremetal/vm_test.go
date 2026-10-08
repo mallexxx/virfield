@@ -175,3 +175,33 @@ func TestNodeVMsSurviveRestartWhileNodeSleeps(t *testing.T) {
 		t.Fatalf("VM lease forgotten: %#v", o.VMs)
 	}
 }
+
+type fakeGuests struct{ prepared, forgotten []string }
+
+func (g *fakeGuests) Prepare(_ context.Context, l domain.Lease) (domain.SSHConnection, error) {
+	g.prepared = append(g.prepared, l.VMName)
+	return domain.SSHConnection{User: "admin", Port: l.SSHPort, HostKey: testHostKey}, nil
+}
+
+func (g *fakeGuests) Forget(l domain.Lease) error {
+	g.forgotten = append(g.forgotten, l.VMName)
+	return nil
+}
+
+func TestPrepareDelegatesVMLeasesToGuests(t *testing.T) {
+	r, _, _ := vmRuntime(t, "htpc-sonoma-14")
+	g := &fakeGuests{}
+	r.SetGuests(g)
+	l := domain.Lease{VMName: "vf-0123456789abcdef", Location: "htpc", ImageID: "image-0123", SSHPort: 22100, SSHPublicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC9D6mucoloj9cxdHV3tI03FWab3N3RsSl8Va/gXFvyQ"}
+	c, err := r.Prepare(context.Background(), l)
+	if err != nil || c.Port != 22100 || len(g.prepared) != 1 {
+		t.Fatal(c, err, g.prepared)
+	}
+	if err := r.Forget(l); err != nil || len(g.forgotten) != 1 {
+		t.Fatal(err, g.forgotten)
+	}
+	host := domain.Lease{VMName: "vf-fedcba9876543210", Location: "htpc"}
+	if err := r.Forget(host); err != nil || len(g.forgotten) != 1 {
+		t.Fatal("host lease reached the guests manager")
+	}
+}

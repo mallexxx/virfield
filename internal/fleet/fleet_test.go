@@ -3,6 +3,7 @@ package fleet
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -131,5 +132,26 @@ func TestObserveRunsRuntimesConcurrently(t *testing.T) {
 	}
 	if elapsed := time.Since(started); elapsed > 500*time.Millisecond {
 		t.Fatalf("runtimes observed sequentially: %v", elapsed)
+	}
+}
+
+type forgettingPreparer struct {
+	fakePreparer
+	forgotten *[]string
+}
+
+func (p forgettingPreparer) Forget(l domain.Lease) error {
+	*p.forgotten = append(*p.forgotten, p.name+":"+l.ID)
+	return nil
+}
+
+func TestForgetRoutesByLeaseProvider(t *testing.T) {
+	var forgotten []string
+	p := NewPreparer(forgettingPreparer{fakePreparer{"vm"}, &forgotten}, map[string]Preparer{"baremetal": forgettingPreparer{fakePreparer{"node"}, &forgotten}})
+	f := p.(interface{ Forget(domain.Lease) error })
+	_ = f.Forget(domain.Lease{ID: "a", Provider: "tart"})
+	_ = f.Forget(domain.Lease{ID: "b", Provider: "baremetal"})
+	if strings.Join(forgotten, ",") != "vm:a,node:b" {
+		t.Fatal(forgotten)
 	}
 }

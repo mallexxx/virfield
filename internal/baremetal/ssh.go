@@ -18,6 +18,13 @@ import (
 // lease: a physical host keeps the identity of the system it booted.
 func (r *Runtime) Prepare(ctx context.Context, l domain.Lease) (domain.SSHConnection, error) {
 	var none domain.SSHConnection
+	// A node VM lease is a cloned image; only host leases have no image.
+	if l.ImageID != "" {
+		if r.guests == nil {
+			return none, domain.Err("ssh_profile_missing", "Node VM leases need a guest credential manager")
+		}
+		return r.guests.Prepare(ctx, l)
+	}
 	public, err := domain.CanonicalPublicKey(l.SSHPublicKey)
 	if err != nil {
 		return none, err
@@ -117,6 +124,10 @@ type sshSession struct {
 func (s *sshSession) Close() { _ = s.client.Close() }
 
 func (s *sshSession) HostKey() string { return s.host }
+
+func (s *sshSession) Dial(network, address string) (net.Conn, error) {
+	return s.client.Dial(network, address)
+}
 
 // Run executes one fixed command; output is bounded and stays private.
 func (s *sshSession) Run(ctx context.Context, command, input string) (string, error) {

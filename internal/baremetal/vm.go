@@ -2,6 +2,7 @@ package baremetal
 
 import (
 	"context"
+	"net"
 	"strconv"
 	"strings"
 
@@ -94,4 +95,55 @@ func parseVMLine(value string) (string, vmRecord, bool) {
 		return "", vmRecord{}, false
 	}
 	return f[1], vmRecord{Scope: f[0], State: f[2], Port: port, Golden: f[4]}, true
+}
+
+// Guests prepares node VM leases with the image pipeline's credentials.
+type Guests interface {
+	Prepare(context.Context, domain.Lease) (domain.SSHConnection, error)
+	Forget(domain.Lease) error
+}
+
+func (r *Runtime) SetGuests(g Guests) { r.guests = g }
+
+// Forget removes a node VM lease's private credentials after deletion; host
+// leases keep none.
+func (r *Runtime) Forget(l domain.Lease) error {
+	if l.ImageID == "" || r.guests == nil {
+		return nil
+	}
+	return r.guests.Forget(l)
+}
+
+// DialGuest reaches a node VM's published SSH port from the node itself, so
+// Virfield's guest SSH never depends on the port being published on the LAN.
+func (r *Runtime) DialGuest(ctx context.Context, l domain.Lease, _ string) (net.Conn, error) {
+	n, err := r.node(l.Location)
+	if err != nil {
+		return nil, err
+	}
+	if l.SSHPort < 1 {
+		return nil, domain.Err("guest_connect_failed", "Node VM has no SSH port")
+	}
+	s, err := r.dial(ctx, n)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := s.Dial("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(l.SSHPort)))
+	if err != nil {
+		s.Close()
+		return nil, err
+	}
+	return &tunnelConn{Conn: conn, session: s}, nil
+}
+
+// tunnelConn closes the node session with the forwarded connection.
+type tunnelConn struct {
+	net.Conn
+	session session
+}
+
+func (c *tunnelConn) Close() error {
+	err := c.Conn.Close()
+	c.session.Close()
+	return err
 }

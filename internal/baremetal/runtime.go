@@ -35,6 +35,8 @@ type session interface {
 	Run(ctx context.Context, command, input string) (string, error)
 	// HostKey is the identity the node presented, in authorized-keys format.
 	HostKey() string
+	// Dial opens a TCP connection from the node itself.
+	Dial(network, address string) (net.Conn, error)
 	Close()
 }
 
@@ -69,6 +71,8 @@ type Runtime struct {
 	failedAt      map[string]time.Time
 	changed       map[string]bool
 	persistDir    string
+	// guests prepares node VM leases with the image pipeline's credentials.
+	guests Guests
 }
 
 func New(nodes []Node, dial dialer) *Runtime {

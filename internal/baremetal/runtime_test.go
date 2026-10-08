@@ -33,6 +33,10 @@ func (s localSession) Close() {}
 
 func (s localSession) HostKey() string { return s.host }
 
+func (s localSession) Dial(network, address string) (net.Conn, error) {
+	return net.Dial(network, address)
+}
+
 func (s localSession) Run(ctx context.Context, command, input string) (string, error) {
 	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command)
 	path := "/usr/bin:/bin:/usr/sbin:/sbin"

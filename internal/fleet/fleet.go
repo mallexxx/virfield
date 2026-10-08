@@ -168,13 +168,15 @@ func (p *routedPreparer) Prepare(ctx context.Context, l domain.Lease) (domain.SS
 	return p.primary.Prepare(ctx, l)
 }
 
-// Forget and ForgetImage remove the primary's private lease and image
-// credentials; the controller calls them after confirmed deletion.
+// Forget and ForgetImage remove private lease and image credentials; the
+// controller calls them after confirmed deletion. A lease's credentials
+// belong to its runtime; image credentials live with the primary.
 func (p *routedPreparer) Forget(l domain.Lease) error {
-	if _, routed := p.byProvider[l.Provider]; routed {
-		return nil
+	owner := p.primary
+	if routed, ok := p.byProvider[l.Provider]; ok {
+		owner = routed
 	}
-	if f, ok := p.primary.(interface{ Forget(domain.Lease) error }); ok {
+	if f, ok := owner.(interface{ Forget(domain.Lease) error }); ok {
 		return f.Forget(l)
 	}
 	return nil
