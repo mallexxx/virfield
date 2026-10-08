@@ -3,7 +3,9 @@ package tart
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -34,14 +36,30 @@ func (r *fakeRunner) StartDetached(home string, args []string) error {
 	return nil
 }
 
+// tartHome creates a TART_HOME with one stopped VM directory per name.
+func tartHome(t *testing.T, names ...string) string {
+	t.Helper()
+	home := t.TempDir()
+	for _, name := range names {
+		dir := filepath.Join(home, "vms", name)
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{"version":1}`), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return home
+}
+
 func TestObserveKeepsUnmountedExternalContainer(t *testing.T) {
+	local := tartHome(t, "golden")
 	runner := &fakeRunner{responses: map[string]string{
-		"/local|list --source local --format json": `[{"Name":"golden","Running":false,"State":"stopped"}]`,
-		"/local|get golden --format json":          `{"OS":"darwin","CPU":4,"Memory":8192,"Disk":80,"Running":false,"State":"stopped"}`,
+		local + "|get golden --format json": `{"OS":"darwin","CPU":4,"Memory":8192,"Disk":80,"Running":false,"State":"stopped"}`,
 	}}
 	client := &Client{
 		config: Config{HostID: "macbook", HostName: "MacBook", MaxVMs: 2, Containers: []ContainerConfig{
-			{ID: "local", Path: "/local", Kind: "local"},
+			{ID: "local", Path: local, Kind: "local"},
 			{ID: "samsung", Path: "/samsung", Kind: "external", VolumeUUID: "123e4567-e89b-12d3-a456-426614174000"},
 		}},
 		runner: runner,
@@ -185,7 +203,7 @@ func (r *slowGetRunner) StartDetached(string, []string) error { return nil }
 func TestObserveInspectsVMsConcurrentlyInListOrder(t *testing.T) {
 	names := []string{"a", "b", "c", "d", "e", "f"}
 	client := &Client{
-		config: Config{HostID: "macbook", MaxVMs: 2, Containers: []ContainerConfig{{ID: "local", Path: "/local", Kind: "local"}}},
+		config: Config{HostID: "macbook", MaxVMs: 2, Containers: []ContainerConfig{{ID: "local", Path: tartHome(t, names...), Kind: "local"}}},
 		runner: &slowGetRunner{names: names, delay: 200 * time.Millisecond},
 		probe: func(context.Context, string) (volume, error) {
 			return volume{Identity: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", Total: 1 << 40, Free: 500 << 30}, nil
@@ -208,13 +226,15 @@ func TestObserveInspectsVMsConcurrentlyInListOrder(t *testing.T) {
 }
 
 type countingRunner struct {
-	mu   sync.Mutex
-	gets int
+	mu    sync.Mutex
+	gets  int
+	calls int
 }
 
 func (r *countingRunner) Run(_ context.Context, _ string, args []string) ([]byte, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.calls++
 	switch args[0] {
 	case "list":
 		return []byte(`[{"Name":"golden","Running":false,"State":"stopped"}]`), nil
@@ -263,5 +283,53 @@ func TestObserveReusesVMSpecsUntilConfigChanges(t *testing.T) {
 	}
 	if _, err := client.Observe(context.Background()); err != nil || runner.gets != 2 {
 		t.Fatal("changed VM configuration was not re-read", runner.gets, err)
+	}
+}
+
+// A running Tart VM is one whose config.json is locked by its tart run
+// process; listing must not run tart list, which mounts every ASIF disk.
+func TestListReadsVMDirectoriesAndRunLocks(t *testing.T) {
+	home := t.TempDir()
+	for _, name := range []string{"golden", "vf-lease"} {
+		dir := filepath.Join(home, "vms", name)
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{"version":1}`), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.MkdirAll(filepath.Join(home, "vms", "incomplete"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	// Another process holds the run lock, as tart run does.
+	holder := exec.Command("/usr/bin/python3", "-c", "import fcntl,sys,time\nf=open(sys.argv[1],'r+')\nfcntl.lockf(f,fcntl.LOCK_EX)\nprint('locked',flush=True)\ntime.sleep(30)", filepath.Join(home, "vms", "vf-lease", "config.json"))
+	out, err := holder.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := holder.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = holder.Process.Kill(); _ = holder.Wait() }()
+	ready := make([]byte, 7)
+	if _, err := io.ReadFull(out, ready); err != nil {
+		t.Fatal(err)
+	}
+	runner := &countingRunner{}
+	client := &Client{runner: runner}
+	rows, err := client.list(context.Background(), ContainerConfig{ID: "local", Path: home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	states := map[string]bool{}
+	for _, row := range rows {
+		states[row.Name] = row.Running
+	}
+	if len(rows) != 2 || states["golden"] || !states["vf-lease"] {
+		t.Fatalf("rows = %#v", rows)
+	}
+	if runner.calls != 0 {
+		t.Fatal("listing ran a tart command")
 	}
 }

@@ -236,16 +236,53 @@ type listRow struct {
 	State   string `json:"State"`
 }
 
-func (c *Client) list(ctx context.Context, container ContainerConfig) ([]listRow, error) {
-	b, err := c.runner.Run(ctx, container.Path, []string{"list", "--source", "local", "--format", "json"})
+// list enumerates the container's VMs without tart list, which sizes (and so
+// attaches and mounts) every ASIF disk on each call. A VM is running while its
+// tart run process holds the fcntl lock on config.json, as tart list checks.
+func (c *Client) list(_ context.Context, container ContainerConfig) ([]listRow, error) {
+	entries, err := os.ReadDir(filepath.Join(container.Path, "vms"))
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}
-	var rows []listRow
-	if err := json.Unmarshal(b, &rows); err != nil || rows == nil {
-		return nil, errors.New("invalid Tart list response")
+	rows := []listRow{}
+	for _, entry := range entries {
+		config := filepath.Join(container.Path, "vms", entry.Name(), "config.json")
+		if !entry.IsDir() {
+			continue
+		}
+		if _, err := os.Stat(config); err != nil {
+			continue
+		}
+		running, err := runLocked(config)
+		if err != nil {
+			return nil, err
+		}
+		state := "stopped"
+		if running {
+			state = "running"
+		}
+		rows = append(rows, listRow{Name: entry.Name(), Running: running, State: state})
 	}
 	return rows, nil
+}
+
+// runLocked reports whether another process holds a lock on the file.
+// Closing this descriptor cannot release that lock: fcntl locks belong to
+// their owning process, and this process never locks VM files.
+func runLocked(path string) (bool, error) {
+	f, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+	lock := syscall.Flock_t{Type: syscall.F_WRLCK, Whence: 0}
+	if err := syscall.FcntlFlock(f.Fd(), syscall.F_GETLK, &lock); err != nil {
+		return false, err
+	}
+	return lock.Type != syscall.F_UNLCK, nil
 }
 
 // inspectAll runs tart get for every VM with bounded concurrency and keeps
