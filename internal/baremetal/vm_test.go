@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mallexxx/virfield/internal/domain"
@@ -203,5 +204,51 @@ func TestPrepareDelegatesVMLeasesToGuests(t *testing.T) {
 	host := domain.Lease{VMName: "vf-fedcba9876543210", Location: "htpc"}
 	if err := r.Forget(host); err != nil || len(g.forgotten) != 1 {
 		t.Fatal("host lease reached the guests manager")
+	}
+}
+
+func TestNodeImageVMLifecycle(t *testing.T) {
+	r, local, goldens := vmRuntime(t, "sonoma-bootstrap")
+	ctx := context.Background()
+	if _, err := r.Observe(ctx); err != nil {
+		t.Fatal(err)
+	}
+	l := domain.Lease{ID: "image-0123", VMName: "htpc-sonoma", Location: "htpc", Purpose: "image"}
+	if err := r.CloneImage(ctx, l, "sonoma-bootstrap"); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.StartImage(ctx, l); err != nil {
+		t.Fatal(err)
+	}
+	o, _ := r.Observe(ctx)
+	vm, ok := vmNamed(o, "htpc-sonoma")
+	if !ok || vm.State != "running" || vm.SSHPort != 22102 {
+		t.Fatalf("image VM = %#v", vm)
+	}
+	calls := read(t, filepath.Join(local.path, "podman.log"))
+	if !strings.Contains(calls, "-p 127.0.0.1:22102:22") {
+		t.Fatal("image VM published beyond the node loopback:", calls)
+	}
+	if err := r.StopImage(ctx, l); err != nil {
+		t.Fatal(err)
+	}
+	// The fake qemu-img writes nothing; stand in for the overlay.
+	disk := filepath.Join(local.homes["htpc"], "virfield", "images", "htpc-sonoma", "storage", "data.qcow2")
+	if err := os.WriteFile(disk, []byte("overlay"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(goldens, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.CommitImage(ctx, l); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(goldens, "htpc-sonoma.opencore.plist")); err != nil {
+		t.Fatal("commit did not publish the golden's OpenCore config", err)
+	}
+	for _, bad := range []string{"vf-0123456789abcdef", "../x"} {
+		if err := r.CloneImage(ctx, domain.Lease{VMName: bad, Location: "htpc"}, "sonoma-bootstrap"); err == nil {
+			t.Fatal("accepted image name", bad)
+		}
 	}
 }

@@ -147,3 +147,69 @@ func (c *tunnelConn) Close() error {
 	c.session.Close()
 	return err
 }
+
+// imageNode validates an image VM name and returns its node. Image VMs live
+// in their own scope and never take a lease name.
+func (r *Runtime) imageNode(l domain.Lease) (Node, error) {
+	if !domain.ValidName(l.VMName) || strings.HasPrefix(l.VMName, "vf-") {
+		return Node{}, domain.Err("invalid_request", "Not an image name")
+	}
+	n, err := r.node(l.Location)
+	if err != nil {
+		return Node{}, err
+	}
+	if n.VMs == nil {
+		return Node{}, domain.Err("invalid_request", "Node "+n.ID+" has no VMs configured")
+	}
+	return n, nil
+}
+
+// CloneImage clones a bootstrap golden for securing. Image VMs use the ports
+// after the lease range.
+func (r *Runtime) CloneImage(ctx context.Context, l domain.Lease, golden string) error {
+	n, err := r.imageNode(l)
+	if err != nil {
+		return err
+	}
+	if !domain.ValidName(golden) {
+		return domain.Err("invalid_request", "Invalid golden name")
+	}
+	if err := r.ensureAwake(ctx, n); err != nil {
+		return err
+	}
+	v := n.VMs
+	_, err = r.runOn(ctx, n, command(vmCloneScript, "images", l.VMName, golden, v.GoldensDir, v.Image, strconv.Itoa(v.PortBase+v.Max), strconv.Itoa(v.Max)))
+	return err
+}
+
+// StartImage publishes the image VM's SSH on the node loopback only: its
+// bootstrap password is public until the image is secured.
+func (r *Runtime) StartImage(ctx context.Context, l domain.Lease) error {
+	n, err := r.imageNode(l)
+	if err != nil {
+		return err
+	}
+	if err := r.ensureAwake(ctx, n); err != nil {
+		return err
+	}
+	return r.startVM(ctx, n, "images", l.VMName, "127.0.0.1")
+}
+
+func (r *Runtime) StopImage(ctx context.Context, l domain.Lease) error {
+	n, err := r.imageNode(l)
+	if err != nil {
+		return err
+	}
+	return r.stopVM(ctx, n, "images", l.VMName, false)
+}
+
+// CommitImage writes the secured clone as a read-only golden named after the
+// image and removes the clone.
+func (r *Runtime) CommitImage(ctx context.Context, l domain.Lease) error {
+	n, err := r.imageNode(l)
+	if err != nil {
+		return err
+	}
+	_, err = r.runOn(ctx, n, command(vmCommitScript, "images", l.VMName, n.VMs.GoldensDir, n.VMs.Image))
+	return err
+}

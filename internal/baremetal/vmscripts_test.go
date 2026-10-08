@@ -26,6 +26,7 @@ case "$1" in
   kill) drop "$2" ;;
   rm) drop "$3" ;;
 esac
+case "$*" in *" convert "*) eval "out=\${$#}"; echo disk > "$out" ;; esac
 exit 0
 `
 	if err := os.WriteFile(filepath.Join(bin, "podman"), []byte(script), 0755); err != nil {
@@ -167,12 +168,6 @@ func TestVMCommitWritesAReadOnlyGolden(t *testing.T) {
 		t.Fatal(err)
 	}
 	bin, log := fakePodman(t)
-	// The fake qemu-img convert writes nothing; stand in for its output.
-	if err := os.WriteFile(filepath.Join(bin, "podman"), []byte(strings.Replace(read(t, filepath.Join(bin, "podman")), "exit 0\n", `case "$*" in *" convert "*) eval "out=\${$#}"; echo disk > "$out" ;; esac
-exit 0
-`, 1)), 0755); err != nil {
-		t.Fatal(err)
-	}
 	if out, err := runVMScript(t, home, bin, vmCloneScript, "images", "htpc-sonoma", "sonoma-bootstrap", goldens, testVMImage, "22102", "2"); err != nil {
 		t.Fatal(out, err)
 	}
