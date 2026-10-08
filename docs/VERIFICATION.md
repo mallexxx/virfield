@@ -115,10 +115,9 @@ first use at the operator's request, ED25519
 lease test passed 5/5. All four MacBook volumes are now leasable, one at a
 time, as whichever is booted.
 
-Not yet covered: the wake path by a real lease (pending at time of writing),
-Virfield-managed macOS VM leases on the HTPC (goldens and hand-made clones
-are recorded in the [R2 spec](superpowers/specs/2026-10-08-hackintosh-nodes-r2-design.md)),
-and the desktop gateway.
+Not yet covered: the wake path by a real lease (pending at time of writing)
+and the desktop gateway. macOS VM leases on the HTPC are recorded under
+Remote nodes R2.
 
 ## Remote nodes R2: macOS VMs on the HTPC (2026-10-08)
 
