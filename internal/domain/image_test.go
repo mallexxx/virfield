@@ -84,3 +84,21 @@ func TestTartUITestProfileValidates(t *testing.T) {
 		t.Fatal("accepted a UI-test profile with SIP enabled")
 	}
 }
+
+func TestNodeSourceProfile(t *testing.T) {
+	p := ImageProfile{Node: &NodeSource{Golden: "sonoma-14.8.9-23J631-20261008"}, MacOS: "14.8.9", Build: "23J631", DisableSIP: true}
+	if err := p.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	for name, bad := range map[string]ImageProfile{
+		"path golden": {Node: &NodeSource{Golden: "../etc"}, MacOS: "14.8.9", Build: "23J631"},
+		"two sources": {Node: p.Node, Tart: &TartSource{Upstream: "ghcr.io/a/b@sha256:" + strings.Repeat("0", 64)}, MacOS: "14.8.9", Build: "23J631", Provision: "developer-v1"},
+		"provisioned": {Node: p.Node, MacOS: "14.8.9", Build: "23J631", Provision: "security-v1", Security: "automation", DisableSIP: true},
+		"no build":    {Node: p.Node, MacOS: "14.8.9"},
+		"with ipsw":   {Node: p.Node, MacOS: "14.8.9", Build: "23J631", URL: "https://updates.cdn-apple.com/x.ipsw"},
+	} {
+		if bad.Validate() == nil {
+			t.Fatal(name, "accepted")
+		}
+	}
+}

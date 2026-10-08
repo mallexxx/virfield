@@ -26,6 +26,9 @@ func imageFingerprint(p *domain.ImageProfile) string {
 	type tart struct {
 		Upstream string `json:"upstream"`
 	}
+	type node struct {
+		Golden string `json:"golden"`
+	}
 	type identity struct {
 		Registry   *registry `json:"registry,omitempty"`
 		MacOS      string    `json:"macos,omitempty"`
@@ -38,6 +41,7 @@ func imageFingerprint(p *domain.ImageProfile) string {
 		Build      string    `json:"build"`
 		DisableSIP bool      `json:"disable_sip"`
 		Tart       *tart     `json:"tart,omitempty"`
+		Node       *node     `json:"node,omitempty"`
 	}
 	v := identity{MacOS: p.MacOS, Security: p.Security, Provision: p.Provision, URL: p.URL, SHA256: p.SHA256, Size: p.Size, Build: p.Build, DisableSIP: p.DisableSIP}
 	if p.Registry != nil {
@@ -50,6 +54,9 @@ func imageFingerprint(p *domain.ImageProfile) string {
 	}
 	if p.Tart != nil {
 		v.Tart = &tart{p.Tart.Upstream}
+	}
+	if p.Node != nil {
+		v.Node = &node{p.Node.Golden}
 	}
 	return fingerprint(v)
 }

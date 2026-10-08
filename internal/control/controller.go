@@ -92,8 +92,9 @@ func New(s *store.Store, b Backend, templates []domain.Template, limit int, log 
 		if t.Arch != "arm64" && t.Arch != "amd64" {
 			return nil, fmt.Errorf("template %s has unsupported architecture", t.ID)
 		}
-		// Cirrus Tart images ship the admin account; the build recipe uses it.
-		tartImage := t.Image != nil && t.Image.Tart != nil
+		// Cirrus Tart images and node goldens ship the bootstrap account
+		// admin/admin; the image pipeline secures it.
+		tartImage := t.Image != nil && (t.Image.Tart != nil || t.Image.Node != nil)
 		if t.GuestUser == "" {
 			if t.Source != "" || tartImage {
 				t.GuestUser = "admin"
@@ -102,7 +103,7 @@ func New(s *store.Store, b Backend, templates []domain.Template, limit int, log 
 			}
 		}
 		if tartImage && t.GuestUser != "admin" {
-			return nil, fmt.Errorf("template %s: Tart images use the Cirrus admin account", t.ID)
+			return nil, fmt.Errorf("template %s: Tart and node images use the admin account", t.ID)
 		}
 		if !domain.ValidName(t.GuestUser) {
 			return nil, fmt.Errorf("template %s has invalid guest user", t.ID)

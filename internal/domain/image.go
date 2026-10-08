@@ -11,6 +11,7 @@ import (
 // The digest and size identify one immutable Apple restore image.
 type ImageProfile struct {
 	Tart       *TartSource        `json:"tart,omitempty"`
+	Node       *NodeSource        `json:"node,omitempty"`
 	Registry   *RegistryReference `json:"registry,omitempty"`
 	MacOS      string             `json:"macos,omitempty"`
 	Xcode      *XcodeRelease      `json:"xcode,omitempty"`
@@ -21,6 +22,13 @@ type ImageProfile struct {
 	Size       int64              `json:"size"`
 	Build      string             `json:"build"`
 	DisableSIP bool               `json:"disable_sip"`
+}
+
+// NodeSource names a bootstrap golden in a node's goldens directory: a
+// hand-installed macOS disk with the bootstrap account and SSH enabled.
+// Virfield secures a clone of it into the golden that leases use.
+type NodeSource struct {
+	Golden string `json:"golden"`
 }
 
 // TartSource pins one upstream Tart OCI image. Only digest references on GHCR
@@ -84,6 +92,12 @@ func (p ImageProfile) Validate() error {
 		if !ValidVersion(p.MacOS) || CompareVersions(p.MacOS, p.Xcode.Requires) < 0 {
 			return Err("incompatible_versions", "Selected Xcode requires macOS "+p.Xcode.Requires+" or newer")
 		}
+	}
+	if p.Node != nil {
+		if p.Tart != nil || p.Registry != nil || p.URL != "" || p.SHA256 != "" || p.Size != 0 || p.Provision != "" || p.Xcode != nil || !ValidVersion(p.MacOS) || !ValidName(p.Build) || !ValidName(p.Node.Golden) {
+			return Err("invalid_profile", "Node images need expected macOS/build, a golden name, no provisioning and no competing source")
+		}
+		return nil
 	}
 	if p.Tart != nil {
 		if p.Registry != nil || p.URL != "" || p.SHA256 != "" || p.Size != 0 || !ValidVersion(p.MacOS) || !ValidName(p.Build) || (p.Provision != "developer-v1" && p.Provision != "uitest-27-v1") {

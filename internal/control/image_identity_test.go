@@ -37,3 +37,14 @@ func TestImageFingerprintIgnoresCatalogOnlyXcodeState(t *testing.T) {
 		t.Fatal("catalog metadata changed manifest identity", got, want)
 	}
 }
+
+func TestNodeGoldenIsPartOfTheFingerprint(t *testing.T) {
+	a := domain.ImageProfile{MacOS: "14.8.9", Build: "23J631", DisableSIP: true, Node: &domain.NodeSource{Golden: "sonoma-a"}}
+	b := a
+	b.Node = &domain.NodeSource{Golden: "sonoma-b"}
+	plain := a
+	plain.Node = nil
+	if imageFingerprint(&a) == imageFingerprint(&b) || imageFingerprint(&a) == imageFingerprint(&plain) {
+		t.Fatal("node goldens share an image identity")
+	}
+}
