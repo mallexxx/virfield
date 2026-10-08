@@ -5,6 +5,8 @@ package provider
 
 import (
 	"context"
+	"errors"
+	"net"
 
 	"github.com/mallexxx/virfield/internal/domain"
 )
@@ -30,6 +32,14 @@ type Named interface {
 type CreateStartsVM interface {
 	CreateStartsVM() bool
 }
+
+// ServiceDialer is optional: it reaches a lease's private service endpoint,
+// such as its desktop, where the controller cannot dial the lease address.
+type ServiceDialer interface {
+	DialService(ctx context.Context, l domain.Lease, service string) (net.Conn, error)
+}
+
+var ErrNoServiceDialer = errors.New("runtime has no service dialer")
 
 // PowerController is optional. A runtime exposes it only when it has a tested
 // relay capable of waking that specific physical host.

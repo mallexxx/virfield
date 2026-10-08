@@ -3,11 +3,13 @@ package fleet
 import (
 	"context"
 	"errors"
+	"net"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/mallexxx/virfield/internal/domain"
+	"github.com/mallexxx/virfield/internal/provider"
 )
 
 type fakeRuntime struct {
@@ -177,5 +179,46 @@ func TestImageStepsRouteByLeaseProvider(t *testing.T) {
 	none := NewImageBuilder(nil, map[string]ImageBuilder{"baremetal": recordingBuilder{"node", &steps}})
 	if err := none.Step(context.Background(), domain.Lease{}, domain.ImageProfile{}, "resolve", nil); err == nil {
 		t.Fatal("routed a primary step without a primary builder")
+	}
+}
+
+type dialingRuntime struct {
+	fakeRuntime
+	dialed []string
+}
+
+func (d *dialingRuntime) DialService(_ context.Context, l domain.Lease, service string) (net.Conn, error) {
+	d.dialed = append(d.dialed, l.ID+":"+service)
+	a, b := net.Pipe()
+	b.Close()
+	return a, nil
+}
+
+type passwordPreparer struct{ fakePreparer }
+
+func (p passwordPreparer) LeasePassword(l domain.Lease) (string, error) {
+	return p.name + ":" + l.ID, nil
+}
+
+func TestServiceDialAndPasswordRouteByProvider(t *testing.T) {
+	node := &dialingRuntime{fakeRuntime: fakeRuntime{name: "baremetal"}}
+	f := New(&fakeRuntime{name: "tart"}, node)
+	c, err := f.DialService(context.Background(), domain.Lease{ID: "a", Provider: "baremetal"}, "desktop")
+	if err != nil || strings.Join(node.dialed, ",") != "a:desktop" {
+		t.Fatal(node.dialed, err)
+	}
+	c.Close()
+	if _, err := f.DialService(context.Background(), domain.Lease{ID: "b"}, "desktop"); !errors.Is(err, provider.ErrNoServiceDialer) {
+		t.Fatal("primary without a dialer:", err)
+	}
+	p := NewPreparer(passwordPreparer{fakePreparer{"vm"}}, map[string]Preparer{"baremetal": passwordPreparer{fakePreparer{"node"}}})
+	pw := p.(interface {
+		LeasePassword(domain.Lease) (string, error)
+	})
+	if got, _ := pw.LeasePassword(domain.Lease{ID: "c", Provider: "baremetal"}); got != "node:c" {
+		t.Fatal(got)
+	}
+	if got, _ := pw.LeasePassword(domain.Lease{ID: "d"}); got != "vm:d" {
+		t.Fatal(got)
 	}
 }

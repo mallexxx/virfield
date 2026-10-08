@@ -6,6 +6,7 @@ package fleet
 import (
 	"context"
 	"errors"
+	"net"
 	"sync"
 
 	"github.com/mallexxx/virfield/internal/domain"
@@ -136,6 +137,19 @@ func (f *Fleet) Delete(ctx context.Context, l domain.Lease) error {
 }
 
 // WakeHost asks the runtime that last reported the host.
+// DialService routes a lease service connection to the lease's runtime.
+func (f *Fleet) DialService(ctx context.Context, l domain.Lease, service string) (net.Conn, error) {
+	r, err := f.runtime(l.Provider)
+	if err != nil {
+		return nil, err
+	}
+	d, ok := r.(provider.ServiceDialer)
+	if !ok {
+		return nil, provider.ErrNoServiceDialer
+	}
+	return d.DialService(ctx, l, service)
+}
+
 func (f *Fleet) WakeHost(ctx context.Context, hostID string) error {
 	f.mu.Lock()
 	r := f.owners[hostID]
@@ -180,6 +194,20 @@ func (p *routedPreparer) Forget(l domain.Lease) error {
 		return f.Forget(l)
 	}
 	return nil
+}
+
+// LeasePassword returns a lease's guest password from its runtime.
+func (p *routedPreparer) LeasePassword(l domain.Lease) (string, error) {
+	owner := p.primary
+	if routed, ok := p.byProvider[l.Provider]; ok {
+		owner = routed
+	}
+	if f, ok := owner.(interface {
+		LeasePassword(domain.Lease) (string, error)
+	}); ok {
+		return f.LeasePassword(l)
+	}
+	return "", domain.Err("lease_unavailable", "Lease has no guest password")
 }
 
 func (p *routedPreparer) ForgetImage(l domain.Lease) error {
