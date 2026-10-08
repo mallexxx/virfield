@@ -1,6 +1,6 @@
 # R3: Desktop access to VM leases
 
-Status: approved design (2026-10-08). Follows R2
+Status: live (2026-10-08); see VERIFICATION.md "R3 desktop access". Follows R2
 (`2026-10-08-hackintosh-nodes-r2-design.md`).
 
 ## Goal

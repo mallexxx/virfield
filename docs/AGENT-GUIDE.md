@@ -56,8 +56,8 @@ letters, digits, `_`, `.` or `-`. `ID` placeholders below are not interchangeabl
 | `vm_lease` | `{"id":"LEASE_OR_IMAGE_RECORD_ID"}` | Durable record; a ready worker includes `ip`, `ssh`, `expires_at` |
 | `virfield_events` | `{"after":0,"lease_id":"LEASE_OR_IMAGE_RECORD_ID"}`; both optional | Ordered events and `next_cursor`; persist cursor after processing |
 | `vm_renew` | `{"id":"LEASE_ID","expires_at":"ABSOLUTE_RFC3339_TIMESTAMP"}` | Updated lease; deadline must be in the future, at most 24 hours ahead |
-| `vm_tunnel` | `{"id":"LEASE_ID"}` | `{lease_id,address}`; address is loopback on the daemon host |
-| `vm_tunnel_close` | `{"id":"LEASE_ID"}` | Close the tunnel and its active connections |
+| `vm_tunnel` | `{"id":"LEASE_ID","service":"ssh"\|"desktop"}` | `{lease_id,address,service,url}`; address is loopback on the daemon host; a `desktop` tunnel (VM leases only) returns `url` `vnc://admin:<lease password>@127.0.0.1:<port>` for Screen Sharing |
+| `vm_tunnel_close` | `{"id":"LEASE_ID","service":"ssh"\|"desktop"}` | Close that service's tunnel and its active connections (`ssh` by default) |
 | `vm_release` | `{"id":"LEASE_ID","idempotency_key":"NEW_RELEASE_KEY"}` | Permanent clone deletion; poll returned job to completion |
 
 `image_create.id` / `template` identify the golden configuration. An operation's

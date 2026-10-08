@@ -22,7 +22,7 @@ follows [the Tart image adoption design](superpowers/specs/2026-10-07-tart-image
 | VS Code remote-debug on Tart leases; GHCR publication | Not started |
 | Remote nodes R1: bare-metal SSH provider (2014 MacBook Pro, Bazzite HTPC), per-host capacity, Wake-on-LAN | **Live** 2026-10-08: 20/20 node acceptance; all four MacBook volumes (Monterey, Big Sur, Catalina, Ventura) leased 5/5 each via multiple host keys; probes survive restarts; wake-by-lease passed (27 s) ([record](VERIFICATION.md#remote-nodes-r1-2026-10-08)) |
 | R2 macOS VMs on the HTPC ([spec](superpowers/specs/2026-10-08-hackintosh-nodes-r2-design.md), [plan](superpowers/plans/2026-10-08-remote-nodes-r2-macos-vms.md)) | **Live** 2026-10-08: Virfield-secured Sonoma 14.8.9 and Sequoia 15.8.1 goldens; 19/19 two-VM acceptance beside the host lease ([record](VERIFICATION.md#remote-nodes-r2-macos-vms-on-the-htpc-2026-10-08)) |
-| R3 desktop/noVNC gateway | Not started |
+| R3 desktop access ([spec](superpowers/specs/2026-10-08-desktop-r3-design.md), [plan](superpowers/plans/2026-10-08-desktop-r3.md)) | **Live** 2026-10-08: Screen Sharing for Tart and HTPC VM leases over lease tunnels; 11/11 ([record](VERIFICATION.md#r3-desktop-access-2026-10-08)). noVNC in the browser and bare-metal desktops not started |
 | Orchard live pool acceptance | Not started |
 
 The local Tart golden, two-clone and Broker smoke parts of the Phase 1 exit

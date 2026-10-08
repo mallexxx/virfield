@@ -125,8 +125,8 @@ elapsed under the hold; the guard now suspends 30 minutes after it releases a
 hold unless something holds sleep again or another block inhibitor (game,
 video) is present.
 
-Not yet covered: the desktop gateway. macOS VM leases on the HTPC are recorded
-under Remote nodes R2.
+macOS VM leases on the HTPC are recorded under Remote nodes R2 and desktops
+under R3.
 
 ## Remote nodes R2: macOS VMs on the HTPC (2026-10-08)
 
@@ -153,6 +153,17 @@ port forward was fatal and the probe reported SSH before the guest listened
 (`0b0cf05`); lease isolation timed out after one minute while `sysadminctl`
 was still running in a slow guest (`dcf96e2`); right after an image commit a
 stale probe sent a lease down the host-lease path (`163caa4`).
+
+## R3 desktop access (2026-10-08)
+
+Live acceptance `accept-r3.py` with a Tart `ventura-xcode-15.2` lease and an
+HTPC `htpc-sonoma-14` lease passed 11/11: each desktop tunnel returned a
+`vnc://admin:…@127.0.0.1:<port>` URL whose port matched its loopback address,
+answered with Apple RFB `RFB 003.889`, and carried the lease account's password
+(`dscl -authonly` over lease SSH); each lease's SSH tunnel was separate; after
+release both desktop tunnels refused connections and the HTPC kept no clone or
+container. Opening the Tart URL in Screen Sharing.app signed in without a
+prompt and showed the Ventura desktop.
 
 ## VS Code remote LLDB (2026-10-07)
 

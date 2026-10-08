@@ -435,6 +435,26 @@ The CLI's `-help` is the command/argument reference. Capacity is at most two VMs
 external running VMs and reserved leases count. A full pool returns an explicit
 `capacity_exhausted` message. Execution queueing belongs to Broker.
 
+### Desktop (R3)
+
+A ready VM lease (Tart or a node VM) has a desktop: lease preparation enables
+the guest's Screen Sharing, and the lease account signs in with the lease's own
+password.
+
+```bash
+virfield desktop LEASE_ID          # opens Screen Sharing.app
+virfield desktop LEASE_ID --print  # prints vnc://admin:…@127.0.0.1:PORT
+```
+
+The Web Console has a Desktop button on ready VM leases; MCP agents call
+`vm_tunnel` with `"service":"desktop"`. The URL points at a loopback tunnel on
+the daemon host, closed on release, expiry, drift or `tunnel-close`. Tart
+desktops are dialed at the lease IP on Tart's host-only network; node VM
+desktops are published only on the node loopback (lease SSH port + 1000) and
+reached over the pinned node SSH connection. Host leases (the MacBook, the HTPC
+itself) have no desktop. The URL carries the lease password; treat it like the
+lease SSH key.
+
 ## MCP and remote access
 
 Use the generated `"$VIRFIELD_HOME/launchd/mcp.json"`; it includes the configured
