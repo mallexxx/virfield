@@ -115,9 +115,18 @@ first use at the operator's request, ED25519
 lease test passed 5/5. All four MacBook volumes are now leasable, one at a
 time, as whichever is booted.
 
-Not yet covered: the wake path by a real lease (pending at time of writing)
-and the desktop gateway. macOS VM leases on the HTPC are recorded under
-Remote nodes R2.
+Wake by lease (2026-10-08): with the HTPC suspended, an `htpc-bazzite` lease
+was admitted while inventory reported the node `asleep`; the clone sent
+Wake-on-LAN and the lease was ready 27 s later with lease SSH and the
+keep-awake file in place, then released cleanly. The HTPC's own sleep guard
+(`~/htpc-sleep-guard.py`) never let the node sleep again after a long
+Virfield hold, because the desktop idle timer fires once and had already
+elapsed under the hold; the guard now suspends 30 minutes after it releases a
+hold unless something holds sleep again or another block inhibitor (game,
+video) is present.
+
+Not yet covered: the desktop gateway. macOS VM leases on the HTPC are recorded
+under Remote nodes R2.
 
 ## Remote nodes R2: macOS VMs on the HTPC (2026-10-08)
 
