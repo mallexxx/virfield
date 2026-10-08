@@ -15,11 +15,10 @@ import (
 	"net/url"
 	"sort"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/mallexxx/virfield/internal/domain"
-	"golang.org/x/sys/unix"
+	"github.com/mallexxx/virfield/internal/wol"
 )
 
 const responseLimit = 4 << 20
@@ -411,45 +410,7 @@ func (c *Client) WakeHost(ctx context.Context, hostID string) error {
 	if !ok || limit.WakeOnLAN == nil {
 		return errors.New("Wake-on-LAN is not configured for host")
 	}
-	mac, err := net.ParseMAC(limit.WakeOnLAN.MACAddress)
-	if err != nil || len(mac) != 6 {
-		return errors.New("invalid Wake-on-LAN MAC")
-	}
-	address, err := net.ResolveUDPAddr("udp4", limit.WakeOnLAN.BroadcastAddress)
-	if err != nil {
-		return err
-	}
-	packet := bytes.Repeat([]byte{0xff}, 6)
-	for range 16 {
-		packet = append(packet, mac...)
-	}
-	connection, err := net.DialUDP("udp4", nil, address)
-	if err != nil {
-		return err
-	}
-	defer connection.Close()
-	raw, err := connection.SyscallConn()
-	if err != nil {
-		return err
-	}
-	var socketErr error
-	if err := raw.Control(func(fd uintptr) { socketErr = unix.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_BROADCAST, 1) }); err != nil {
-		return err
-	}
-	if socketErr != nil {
-		return socketErr
-	}
-	if deadline, ok := ctx.Deadline(); ok {
-		_ = connection.SetWriteDeadline(deadline)
-	} else {
-		_ = connection.SetWriteDeadline(time.Now().Add(2 * time.Second))
-	}
-	for range 3 {
-		if _, err := connection.Write(packet); err != nil {
-			return err
-		}
-	}
-	return nil
+	return wol.Send(ctx, limit.WakeOnLAN.MACAddress, limit.WakeOnLAN.BroadcastAddress)
 }
 
 func (c *Client) request(ctx context.Context, method, path string, body, result any) error {
