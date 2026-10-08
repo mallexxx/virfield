@@ -13,6 +13,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -23,7 +24,51 @@ import (
 
 // Manager owns private guest credentials and a fixed, bounded SSH transport.
 // Scope is chosen by the daemon, never by API callers.
-type Manager struct{ Dir, Scope, SSHPort string }
+type Manager struct {
+	Dir, Scope, SSHPort string
+	// Dial reaches a guest SSH address; nil dials it directly. Node VMs
+	// tunnel through the pinned node connection.
+	Dial func(ctx context.Context, l domain.Lease, address string) (net.Conn, error)
+	// Models lists accepted hw.model substrings; empty means Apple VirtualMac.
+	Models []string
+}
+
+// port is the lease's own guest SSH port, else the manager's, else 22.
+func (e *Manager) port(l domain.Lease) string {
+	if l.SSHPort > 0 {
+		return strconv.Itoa(l.SSHPort)
+	}
+	if e.SSHPort != "" {
+		return e.SSHPort
+	}
+	return "22"
+}
+
+func (e *Manager) dial(ctx context.Context, l domain.Lease, address string) (net.Conn, error) {
+	if e.Dial != nil {
+		return e.Dial(ctx, l, address)
+	}
+	dialer := net.Dialer{Timeout: 10 * time.Second}
+	return dialer.DialContext(ctx, "tcp", address)
+}
+
+func (e *Manager) acceptedModel(model string) bool {
+	models := e.Models
+	if len(models) == 0 {
+		models = []string{"VirtualMac"}
+	}
+	for _, m := range models {
+		if strings.Contains(model, m) {
+			return true
+		}
+	}
+	return false
+}
+
+// derive copies the connection settings into a manager with another scope.
+func (e *Manager) derive(scope string) *Manager {
+	return &Manager{Dir: e.Dir, Scope: scope, SSHPort: e.SSHPort, Dial: e.Dial, Models: e.Models}
+}
 
 func (e *Manager) Directory(l domain.Lease) string {
 	scope := e.Scope
@@ -196,12 +241,8 @@ func (e *Manager) connectCredentials(ctx context.Context, l domain.Lease, ip str
 	if e.Scope == "leases" {
 		cfg.HostKeyAlgorithms = []string{ssh.KeyAlgoED25519}
 	}
-	port := e.SSHPort
-	if port == "" {
-		port = "22"
-	}
-	dialer := net.Dialer{Timeout: 10 * time.Second}
-	raw, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(ip, port))
+	address := net.JoinHostPort(ip, e.port(l))
+	raw, err := e.dial(ctx, l, address)
 	if err != nil {
 		_ = os.WriteFile(filepath.Join(e.Directory(l), "ssh-connect.log"), []byte(err.Error()+"\n"), 0600)
 		return nil, domain.Err("guest_connect_failed", "Cannot connect to the guest SSH endpoint; inspect private ssh-connect.log")
@@ -213,7 +254,7 @@ func (e *Manager) connectCredentials(ctx context.Context, l domain.Lease, ip str
 	_ = raw.SetDeadline(handshakeDeadline)
 	stopCancellation := context.AfterFunc(ctx, func() { _ = raw.Close() })
 	defer stopCancellation()
-	conn, chans, reqs, err := ssh.NewClientConn(raw, net.JoinHostPort(ip, port), cfg)
+	conn, chans, reqs, err := ssh.NewClientConn(raw, address, cfg)
 	if err != nil {
 		raw.Close()
 		if strings.Contains(err.Error(), "unable to authenticate") {
@@ -224,9 +265,9 @@ func (e *Manager) connectCredentials(ctx context.Context, l domain.Lease, ip str
 	_ = raw.SetDeadline(time.Time{})
 	g := &Client{client: ssh.NewClient(conn, chans, reqs), raw: raw}
 	model, err := g.Run(ctx, "/usr/sbin/sysctl -n hw.model", "")
-	if err != nil || !strings.Contains(model, "VirtualMac") {
+	if err != nil || !e.acceptedModel(model) {
 		g.Close()
-		return nil, domain.Err("guest_identity_failed", "Refusing provisioning: target is not an Apple virtual Mac")
+		return nil, domain.Err("guest_identity_failed", "Refusing provisioning: target is not an accepted virtual Mac")
 	}
 	return g, nil
 }

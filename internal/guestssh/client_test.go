@@ -226,3 +226,36 @@ func TestInvalidGuestUserIsRefused(t *testing.T) {
 		t.Fatal("accepted invalid guest user", err)
 	}
 }
+
+func TestConnectUsesLeasePortAndDialer(t *testing.T) {
+	port, _ := sshServerFor(t, "iMacPro1,1", "admin")
+	dir := t.TempDir()
+	var dialed string
+	e := &Manager{Dir: dir, Models: []string{"VirtualMac", "iMacPro1,1"}, Dial: func(ctx context.Context, l domain.Lease, address string) (net.Conn, error) {
+		dialed = address
+		return (&net.Dialer{}).DialContext(ctx, "tcp", "127.0.0.1:"+port)
+	}}
+	l := domain.Lease{ID: "image-test", VMName: "golden", Location: "htpc", Purpose: "image", GuestUser: "admin", SSHPort: 22101}
+	if err := os.MkdirAll(filepath.Join(dir, "images", l.ID), 0700); err != nil {
+		t.Fatal(err)
+	}
+	g, err := e.Connect(context.Background(), l, "192.168.1.86", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g.Close()
+	if dialed != "192.168.1.86:22101" {
+		t.Fatal(dialed)
+	}
+}
+
+func TestConnectRejectsUnlistedGuestModel(t *testing.T) {
+	port, _ := sshServerFor(t, "iMacPro1,1", "admin")
+	e, l := testImageGuest(t, port)
+	l.GuestUser = "admin"
+	_, err := e.Connect(context.Background(), l, "127.0.0.1", true)
+	var failure *domain.Error
+	if !errors.As(err, &failure) || failure.Code != "guest_identity_failed" {
+		t.Fatal(err)
+	}
+}

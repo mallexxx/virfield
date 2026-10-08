@@ -26,8 +26,8 @@ func (e *Manager) Prepare(ctx context.Context, l domain.Lease) (domain.SSHConnec
 	if err != nil {
 		return result, err
 	}
-	source := &Manager{Dir: e.Dir, SSHPort: e.SSHPort}
-	image := domain.Lease{ID: l.ImageID, GuestUser: l.GuestUser}
+	source := e.derive("")
+	image := domain.Lease{ID: l.ImageID, GuestUser: l.GuestUser, Location: l.Location, SSHPort: l.SSHPort}
 	// Do not bootstrap a missing source credential or trust a new host key.
 	if _, err := os.Stat(source.CredentialPath(image)); err != nil {
 		return result, domain.Err("image_credentials_missing", "Verified image credentials are unavailable")
@@ -45,7 +45,7 @@ func (e *Manager) Prepare(ctx context.Context, l domain.Lease) (domain.SSHConnec
 	}
 
 	defer g.Close()
-	scoped := &Manager{Dir: e.Dir, Scope: "leases", SSHPort: e.SSHPort}
+	scoped := e.derive("leases")
 	if err := os.MkdirAll(scoped.Directory(l), 0700); err != nil {
 		return result, err
 	}
@@ -129,7 +129,7 @@ func (e *Manager) Prepare(ctx context.Context, l domain.Lease) (domain.SSHConnec
 	}
 	host, _ := ssh.ParsePublicKey(c.HostKey)
 	clientKey, _, _, _, _ := ssh.ParseAuthorizedKey([]byte(public))
-	return domain.SSHConnection{User: user, Port: 22, HostKey: strings.TrimSpace(string(ssh.MarshalAuthorizedKey(host))), ClientKeyFingerprint: ssh.FingerprintSHA256(clientKey)}, nil
+	return domain.SSHConnection{User: user, Port: portNumber(l), HostKey: strings.TrimSpace(string(ssh.MarshalAuthorizedKey(host))), ClientKeyFingerprint: ssh.FingerprintSHA256(clientKey)}, nil
 }
 
 // Fixed script, only generated secrets and canonical public keys arrive on stdin.
@@ -172,4 +172,12 @@ func (e *Manager) ForgetImage(l domain.Lease) error {
 		return domain.Err("invalid_request", "Not an image identity")
 	}
 	return os.RemoveAll(filepath.Join(e.Dir, "images", l.ID))
+}
+
+// portNumber is the guest SSH port a client uses for the lease.
+func portNumber(l domain.Lease) int {
+	if l.SSHPort > 0 {
+		return l.SSHPort
+	}
+	return 22
 }
