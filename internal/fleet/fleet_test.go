@@ -111,3 +111,25 @@ func TestPreparerRoutesByLeaseProvider(t *testing.T) {
 		}
 	}
 }
+
+type slowRuntime struct{ fakeRuntime }
+
+func (s *slowRuntime) Observe(ctx context.Context) (domain.Observation, error) {
+	time.Sleep(300 * time.Millisecond)
+	return s.fakeRuntime.Observe(ctx)
+}
+
+// A refresh must cost the slowest runtime, not the sum: the controller treats
+// inventory older than ten seconds as stale.
+func TestObserveRunsRuntimesConcurrently(t *testing.T) {
+	a := &slowRuntime{fakeRuntime{name: "tart", obs: observation("tart", "local", 0, 2)}}
+	b := &slowRuntime{fakeRuntime{name: "baremetal", obs: observation("baremetal", "htpc", 0, 1)}}
+	started := time.Now()
+	o, err := New(a, b).Observe(context.Background())
+	if err != nil || len(o.Hosts) != 2 || o.Hosts[0].ID != "local" {
+		t.Fatal(o, err)
+	}
+	if elapsed := time.Since(started); elapsed > 500*time.Millisecond {
+		t.Fatalf("runtimes observed sequentially: %v", elapsed)
+	}
+}

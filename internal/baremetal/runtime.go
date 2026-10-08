@@ -51,12 +51,16 @@ type Runtime struct {
 	probeTimeout time.Duration
 	wakeTimeout  time.Duration
 	wakePoll     time.Duration
-	mu           sync.Mutex
-	last         map[string]probe
+	// offlineBackoff spaces probes of an unreachable node, so a sleeping node
+	// does not add its dial timeout to every inventory refresh.
+	offlineBackoff time.Duration
+	mu             sync.Mutex
+	last           map[string]probe
+	failedAt       map[string]time.Time
 }
 
 func New(nodes []Node, dial dialer) *Runtime {
-	return &Runtime{nodes: nodes, dial: dial, now: func() time.Time { return time.Now().UTC() }, probeTimeout: 10 * time.Second, wakeTimeout: 3 * time.Minute, wakePoll: 5 * time.Second, last: map[string]probe{}}
+	return &Runtime{nodes: nodes, dial: dial, now: func() time.Time { return time.Now().UTC() }, probeTimeout: 10 * time.Second, wakeTimeout: 3 * time.Minute, wakePoll: 5 * time.Second, offlineBackoff: 30 * time.Second, last: map[string]probe{}, failedAt: map[string]time.Time{}}
 }
 
 func (r *Runtime) ProviderName() string { return providerName }
@@ -77,8 +81,20 @@ func (r *Runtime) Observe(ctx context.Context) (domain.Observation, error) {
 	now := r.now()
 	results := make([]probe, len(r.nodes))
 	errs := make([]error, len(r.nodes))
+	r.mu.Lock()
+	skip := make([]bool, len(r.nodes))
+	for i, n := range r.nodes {
+		if failed, ok := r.failedAt[n.ID]; ok && now.Sub(failed) < r.offlineBackoff {
+			skip[i] = true
+			errs[i] = errors.New("node offline; probe deferred")
+		}
+	}
+	r.mu.Unlock()
 	var wg sync.WaitGroup
 	for i, n := range r.nodes {
+		if skip[i] {
+			continue
+		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -91,6 +107,7 @@ func (r *Runtime) Observe(ctx context.Context) (domain.Observation, error) {
 	defer r.mu.Unlock()
 	for i, n := range r.nodes {
 		if errs[i] == nil {
+			delete(r.failedAt, n.ID)
 			r.last[n.ID] = results[i]
 			h := results[i].host
 			o.StorageContainers = append(o.StorageContainers, container(n, "available", "", now))
@@ -102,6 +119,9 @@ func (r *Runtime) Observe(ctx context.Context) (domain.Observation, error) {
 		}
 		// Offline: keep known leases visible without SSH. A node that can be
 		// woken keeps its last golden, so it can be admitted while asleep.
+		if !skip[i] {
+			r.failedAt[n.ID] = now
+		}
 		cached, known := r.last[n.ID]
 		reason := "offline"
 		if n.WakeMAC != "" {
@@ -214,10 +234,18 @@ func (r *Runtime) WakeHost(ctx context.Context, hostID string) error {
 	return wol.Send(ctx, n.WakeMAC, n.WakeBroadcast)
 }
 
+// reached clears a node's offline backoff after any successful connection.
+func (r *Runtime) reached(n Node) {
+	r.mu.Lock()
+	delete(r.failedAt, n.ID)
+	r.mu.Unlock()
+}
+
 func (r *Runtime) ensureAwake(ctx context.Context, n Node) error {
 	s, err := r.dial(ctx, n)
 	if err == nil {
 		s.Close()
+		r.reached(n)
 		return nil
 	}
 	if n.WakeMAC == "" {
@@ -235,6 +263,7 @@ func (r *Runtime) ensureAwake(ctx context.Context, n Node) error {
 		}
 		if s, err := r.dial(ctx, n); err == nil {
 			s.Close()
+			r.reached(n)
 			return nil
 		}
 	}
@@ -254,6 +283,7 @@ func (r *Runtime) runLease(ctx context.Context, l domain.Lease, script string) e
 		return err
 	}
 	defer s.Close()
+	r.reached(n)
 	_, err = s.Run(ctx, command(script, l.VMName, n.KeepAwakeFile), "")
 	return err
 }

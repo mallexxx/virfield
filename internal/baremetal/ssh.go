@@ -57,8 +57,9 @@ func SSHDialer(signer ssh.Signer) dialer {
 		if err != nil {
 			return nil, errors.New("node host key is invalid")
 		}
-		cfg := &ssh.ClientConfig{User: n.User, Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)}, HostKeyCallback: ssh.FixedHostKey(want), HostKeyAlgorithms: []string{want.Type()}, Timeout: 8 * time.Second}
-		dialer := net.Dialer{Timeout: 8 * time.Second}
+		cfg := &ssh.ClientConfig{User: n.User, Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)}, HostKeyCallback: ssh.FixedHostKey(want), HostKeyAlgorithms: []string{want.Type()}, Timeout: 4 * time.Second}
+		// Nodes share this LAN; a short dial keeps sleeping nodes cheap.
+		dialer := net.Dialer{Timeout: 4 * time.Second}
 		raw, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(n.Address, "22"))
 		if err != nil {
 			return nil, err

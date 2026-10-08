@@ -48,10 +48,23 @@ func (f *Fleet) runtime(name string) (provider.Runtime, error) {
 // Observe merges every runtime's inventory. Any failure pauses admission, so
 // a lease VM can never look absent because its runtime was unreadable.
 func (f *Fleet) Observe(ctx context.Context) (domain.Observation, error) {
+	// Observe concurrently: a refresh costs the slowest runtime, and the
+	// controller treats inventory older than ten seconds as stale.
+	results := make([]domain.Observation, len(f.order))
+	errs := make([]error, len(f.order))
+	var wg sync.WaitGroup
+	for i, r := range f.order {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			results[i], errs[i] = r.Observe(ctx)
+		}()
+	}
+	wg.Wait()
 	merged := domain.Observation{Provider: f.ProviderName(), VMs: []domain.VM{}}
 	owners := map[string]provider.Runtime{}
-	for _, r := range f.order {
-		o, err := r.Observe(ctx)
+	for i, r := range f.order {
+		o, err := results[i], errs[i]
 		if err != nil {
 			return domain.Observation{}, err
 		}

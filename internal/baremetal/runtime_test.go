@@ -196,3 +196,26 @@ func TestAsleepNodeIsAdmittedAndWokenAtStart(t *testing.T) {
 	}
 	_ = r.Delete(ctx, l)
 }
+
+// An unreachable node is re-probed at most every offline backoff, so a
+// sleeping node cannot stretch every inventory refresh by its dial timeout.
+func TestOfflineNodeIsReprobedOnlyAfterBackoff(t *testing.T) {
+	r, local := testRuntime(t, mbp())
+	r.offlineBackoff = time.Hour
+	local.setOffline("mbp-2014", true)
+	ctx := context.Background()
+	if _, err := r.Observe(ctx); err != nil {
+		t.Fatal(err)
+	}
+	dials := local.dials
+	o, err := r.Observe(ctx)
+	if err != nil || local.dials != dials || o.Hosts[0].UnavailableReason != "offline" {
+		t.Fatal("offline node re-probed inside its backoff", local.dials, dials, o.Hosts, err)
+	}
+	r.offlineBackoff = 0
+	local.setOffline("mbp-2014", false)
+	o, _ = r.Observe(ctx)
+	if o.Hosts[0].Availability != "available" {
+		t.Fatal("node not re-probed after its backoff")
+	}
+}
