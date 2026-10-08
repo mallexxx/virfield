@@ -195,22 +195,72 @@ func (c *Controller) healthy() error {
 	}
 	return nil
 }
+
+// capacity reports this Mac's VM slots, the primary runtime's host.
 func (c *Controller) capacity(leases []domain.Lease) domain.Capacity {
+	return c.capacityOn(leases, "")
+}
+
+// secondaryProvider reports whether a template or lease runs on a runtime
+// other than the primary, such as a physical node.
+func (c *Controller) secondaryProvider(name string) bool {
+	return name != "" && name != provider.Name(c.backend)
+}
+
+// nodeHosts maps storage locations to the secondary-runtime hosts that own
+// them. Locations of the primary runtime are absent and map to "".
+func (c *Controller) nodeHosts() (map[string]string, map[string]domain.Host) {
+	primary := provider.Name(c.backend)
+	hosts := map[string]domain.Host{}
+	for _, h := range c.observation.Hosts {
+		if h.Provider != "" && h.Provider != primary {
+			hosts[h.ID] = h
+		}
+	}
+	locations := map[string]string{}
+	for _, s := range c.observation.StorageContainers {
+		if _, ok := hosts[s.HostID]; ok {
+			locations[s.ID] = s.HostID
+		}
+	}
+	return locations, hosts
+}
+
+// hostLoad returns the runtime-reported running count and VM limit of the host
+// that owns location; "" or a primary location means this Mac.
+func (c *Controller) hostLoad(location string) (string, int, int) {
+	locations, nodes := c.nodeHosts()
+	if node := locations[location]; node != "" {
+		return node, nodes[node].Capacity.UsedVMs, nodes[node].Capacity.MaxVMs
+	}
+	used, max := c.observation.HostUsed, c.observation.HostMax
+	for _, h := range nodes {
+		used -= h.Capacity.UsedVMs
+		max -= h.Capacity.MaxVMs
+	}
+	return "", used, max
+}
+
+// capacityOn counts the slots of one host: its reserved leases and running
+// VMs, against that host's limit. A physical node never uses a Mac VM slot.
+func (c *Controller) capacityOn(leases []domain.Lease, location string) domain.Capacity {
+	locations, _ := c.nodeHosts()
+	node, hostUsed, hostMax := c.hostLoad(location)
 	// Union observed active VMs with durable reservations, not sum (no double count).
 	used := map[string]bool{}
 	observed := 0
 	for _, v := range c.observation.VMs {
-		if v.State != "stopped" {
+		if v.State != "stopped" && locations[v.Location] == node {
 			used[v.Key()] = true
 			observed++
 		}
 	}
 	for _, l := range leases {
-		if l.State != "released" && l.State != "image_ready" {
+		if l.State != "released" && l.State != "image_ready" && locations[l.Location] == node {
 			used[l.Key()] = true
 		}
 	}
-	unknown := max(0, c.observation.HostUsed-observed)
+	unknown := max(0, hostUsed-observed)
 	names := make([]string, 0, len(used))
 	for k := range used {
 		names = append(names, k)
@@ -220,9 +270,12 @@ func (c *Controller) capacity(leases []domain.Lease) domain.Capacity {
 		names = append(names, fmt.Sprintf("%d additional slot(s) reported by Lume", unknown))
 	}
 	n := len(used) + unknown
-	limit := min(c.limit, c.observation.HostMax)
-	if limit < 1 {
-		limit = c.limit
+	limit := hostMax
+	if node == "" {
+		limit = min(c.limit, hostMax)
+		if limit < 1 {
+			limit = c.limit
+		}
 	}
 	available := max(0, limit-n)
 	return domain.Capacity{Limit: limit, Used: n, Available: available, Blockers: names}
@@ -377,7 +430,8 @@ func (c *Controller) AcquireAs(ctx context.Context, key string, r domain.Acquire
 		}
 	}
 	imageID := ""
-	if c.leasePreparer != nil && (t.Image == nil || r.SSHPublicKey == "") {
+	// Physical nodes have no image profile; every lease still needs its own key.
+	if c.leasePreparer != nil && (r.SSHPublicKey == "" || t.Image == nil && !c.secondaryProvider(t.Provider)) {
 		return domain.Operation{}, domain.Err("ssh_profile_missing", "A verified image profile and a fresh ssh_public_key are required for each lease")
 	}
 	for _, active := range ls {
@@ -397,7 +451,7 @@ func (c *Controller) AcquireAs(ctx context.Context, key string, r domain.Acquire
 			return domain.Operation{}, domain.Err("template_unavailable", "Configured image profile has no matching verified build; build and verify it before acquiring leases")
 		}
 	}
-	cap := c.capacity(ls)
+	cap := c.capacityOn(ls, t.Location)
 	if cap.Available == 0 {
 		return domain.Operation{}, cap.FullError()
 	}
@@ -407,7 +461,11 @@ func (c *Controller) AcquireAs(ctx context.Context, key string, r domain.Acquire
 	}
 	now := c.now()
 	id := domain.NewID("lease-")
-	l := domain.Lease{Resources: reservation, Source: &t, ImageID: imageID, LegacyUUID: t.LegacyUUID, SSHPublicKey: r.SSHPublicKey, Owner: owner, ID: id, VMName: "vf-" + id[6:], Location: destinationLocation, Template: t.ID, Provider: provider.Name(c.backend), GuestUser: t.GuestUser, GuestHome: t.GuestHome, State: "pending", ExpiresAt: now.Add(time.Duration(r.TTLSeconds) * time.Second), CreatedAt: now, UpdatedAt: now}
+	leaseProvider := provider.Name(c.backend)
+	if c.secondaryProvider(t.Provider) {
+		leaseProvider = t.Provider
+	}
+	l := domain.Lease{Resources: reservation, Source: &t, ImageID: imageID, LegacyUUID: t.LegacyUUID, SSHPublicKey: r.SSHPublicKey, Owner: owner, ID: id, VMName: "vf-" + id[6:], Location: destinationLocation, Template: t.ID, Provider: leaseProvider, GuestUser: t.GuestUser, GuestHome: t.GuestHome, State: "pending", ExpiresAt: now.Add(time.Duration(r.TTLSeconds) * time.Second), CreatedAt: now, UpdatedAt: now}
 	j := domain.Job{ID: domain.NewID("job-"), LeaseID: id, Kind: "prepare", Phase: "queued", State: "queued", CreatedAt: now, UpdatedAt: now, Deadline: now.Add(10 * time.Minute)}
 	if err := c.store.Save(ctx, l, &j, key, fp, "lease.accepted", "Slot reserved; VM preparation queued"); err != nil {
 		return domain.Operation{}, err
@@ -830,8 +888,8 @@ func (c *Controller) advance(ctx context.Context, l domain.Lease, j domain.Job) 
 		if err != nil {
 			return err
 		}
-		cap := c.capacity(ls)
-		if cap.Used > cap.Limit || c.observation.HostUsed >= cap.Limit {
+		cap := c.capacityOn(ls, l.Location)
+		if _, running, _ := c.hostLoad(l.Location); cap.Used > cap.Limit || running >= cap.Limit {
 			return nil
 		}
 		if c.resourceLimits != nil {

@@ -92,10 +92,12 @@ func (r *Runtime) Observe(ctx context.Context) (domain.Observation, error) {
 	for i, n := range r.nodes {
 		if errs[i] == nil {
 			r.last[n.ID] = results[i]
-			o.Hosts = append(o.Hosts, results[i].host)
+			h := results[i].host
 			o.StorageContainers = append(o.StorageContainers, container(n, "available", "", now))
 			o.VMs = append(o.VMs, results[i].golden)
-			o.VMs = append(o.VMs, leaseVMs(n, results[i], true, &o.HostUsed)...)
+			o.VMs = append(o.VMs, leaseVMs(n, results[i], true, &h.Capacity.UsedVMs)...)
+			o.HostUsed += h.Capacity.UsedVMs
+			o.Hosts = append(o.Hosts, h)
 			continue
 		}
 		// Offline: keep known leases visible without SSH. A node that can be
@@ -106,7 +108,6 @@ func (r *Runtime) Observe(ctx context.Context) (domain.Observation, error) {
 			reason = "asleep"
 		}
 		h := r.host(n, "unavailable", reason, cached.host.Capacity.Total)
-		o.Hosts = append(o.Hosts, h)
 		if known && n.WakeMAC != "" {
 			o.StorageContainers = append(o.StorageContainers, container(n, "available", "", cached.at))
 			o.VMs = append(o.VMs, cached.golden)
@@ -114,8 +115,10 @@ func (r *Runtime) Observe(ctx context.Context) (domain.Observation, error) {
 			o.StorageContainers = append(o.StorageContainers, container(n, "unavailable", reason, cached.at))
 		}
 		if known {
-			o.VMs = append(o.VMs, leaseVMs(n, cached, false, &o.HostUsed)...)
+			o.VMs = append(o.VMs, leaseVMs(n, cached, false, &h.Capacity.UsedVMs)...)
 		}
+		o.HostUsed += h.Capacity.UsedVMs
+		o.Hosts = append(o.Hosts, h)
 	}
 	return o, nil
 }

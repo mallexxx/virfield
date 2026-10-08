@@ -14,7 +14,7 @@ type LeasePreparer interface {
 // SetLeasePreparer is configured once before Run; it enables strict SSH readiness.
 func (c *Controller) SetLeasePreparer(p LeasePreparer) { c.leasePreparer = p }
 func (c *Controller) prepareSSH(ctx context.Context, l domain.Lease, j domain.Job) error {
-	if l.SSHPublicKey == "" || l.ImageID == "" {
+	if l.SSHPublicKey == "" || l.ImageID == "" && !c.secondaryProvider(l.Provider) {
 		return c.attention(ctx, l, j, "ssh_profile_missing", "Lease predates scoped SSH provisioning; release it and acquire a new lease", false)
 	}
 	j.Phase = "ssh_dispatched"

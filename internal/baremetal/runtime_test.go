@@ -113,7 +113,7 @@ func TestLeaseLifecycleOnAReachableNode(t *testing.T) {
 	}
 	o, _ = r.Observe(ctx)
 	vm, ok := vmNamed(o, l.VMName)
-	if !ok || vm.State != "running" || vm.IP != "127.0.0.1" || !vm.SSHAvailable || o.HostUsed != 1 {
+	if !ok || vm.State != "running" || vm.IP != "127.0.0.1" || !vm.SSHAvailable || o.HostUsed != 1 || o.Hosts[0].Capacity.UsedVMs != 1 {
 		t.Fatalf("started lease = %#v used=%d", vm, o.HostUsed)
 	}
 	connection, err := r.Prepare(ctx, l)

@@ -129,6 +129,12 @@ func (c *Controller) admitResources(ls []domain.Lease, t domain.Template, reques
 }
 
 func (c *Controller) cloneLocationCandidates(t domain.Template, requestedLocation string) ([]string, error) {
+	if c.secondaryProvider(t.Provider) {
+		if requestedLocation != "" && requestedLocation != t.Location {
+			return nil, domain.Err("invalid_request", "A physical node template runs only on its own node")
+		}
+		return []string{t.Location}, nil
+	}
 	if requestedLocation != "" {
 		if len(c.storageLocations) > 0 && !c.storageLocations[requestedLocation] {
 			return nil, domain.Err("invalid_request", "destination_location is not in the operator storage allowlist")
