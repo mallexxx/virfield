@@ -115,6 +115,11 @@ func (e *Manager) Prepare(ctx context.Context, l domain.Lease) (domain.SSHConnec
 			return result, domain.Err("lease_ssh_failed", "Guest SSH policy differs from the lease policy")
 		}
 	}
+	// Screen Sharing starts asynchronously after it is enabled.
+	listening, err := verified.Run(ctx, screenSharingProbe, "")
+	if err != nil || strings.TrimSpace(listening) != "yes" {
+		return result, domain.Err("lease_ssh_failed", "Guest Screen Sharing did not start for the lease")
+	}
 	// Verify revocation using the NEW host pin, so host-key rotation alone
 	// cannot masquerade as refusal of the old authentication key.
 	inherited.HostKey = c.HostKey
@@ -152,6 +157,9 @@ printf '%s' "$hostkey" | /usr/bin/base64 -D > ~/.ssh/virfield-host-key
 printf '%s\n' "$new" | sudo -S -p '' /usr/bin/install -m 600 ~/.ssh/virfield-host-key /etc/ssh/ssh_host_ed25519_key
 /bin/rm ~/.ssh/virfield-host-key
 printf '%s\n' "$new" | sudo -S -p '' /bin/sh -c '/bin/rm -f /etc/ssh/ssh_host_rsa_key /etc/ssh/ssh_host_rsa_key.pub /etc/ssh/ssh_host_ecdsa_key /etc/ssh/ssh_host_ecdsa_key.pub; /usr/bin/ssh-keygen -y -f /etc/ssh/ssh_host_ed25519_key > /etc/ssh/ssh_host_ed25519_key.pub; printf "HostKey /etc/ssh/ssh_host_ed25519_key\nPasswordAuthentication no\nKbdInteractiveAuthentication no\nChallengeResponseAuthentication no\nPermitRootLogin no\nAllowAgentForwarding no\n" > /etc/ssh/sshd_config.d/000-virfield.conf; chmod 600 /etc/ssh/sshd_config.d/000-virfield.conf; /usr/sbin/sshd -t'
+printf '%s\n' "$new" | sudo -S -p '' /bin/launchctl enable system/com.apple.screensharing
+# Already loaded is fine; Prepare verifies the listener.
+printf '%s\n' "$new" | sudo -S -p '' /bin/launchctl bootstrap system /System/Library/LaunchDaemons/com.apple.screensharing.plist 2>/dev/null || true
 printf '%s\n%s\n' "$management" "$client" > ~/.ssh/authorized_keys.next
 chmod 600 ~/.ssh/authorized_keys.next
 mv ~/.ssh/authorized_keys.next ~/.ssh/authorized_keys
@@ -180,4 +188,17 @@ func portNumber(l domain.Lease) int {
 		return l.SSHPort
 	}
 	return 22
+}
+
+// screenSharingProbe waits up to 20 s for the guest's Screen Sharing listener.
+const screenSharingProbe = `for i in 1 2 3 4 5 6 7 8 9 10; do /usr/sbin/netstat -an -p tcp | /usr/bin/grep -q '[.]5900 .*LISTEN' && echo yes && exit 0; sleep 2; done; echo no`
+
+// LeasePassword is the lease's guest password; it signs in to Screen Sharing
+// as the lease account.
+func (e *Manager) LeasePassword(l domain.Lease) (string, error) {
+	c, err := LoadCredentials(e.derive("leases").CredentialPath(l))
+	if err != nil || !c.Secured {
+		return "", domain.Err("image_credentials_missing", "Lease credentials are unavailable")
+	}
+	return c.Password, nil
 }

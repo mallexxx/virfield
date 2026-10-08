@@ -2,10 +2,16 @@ package guestssh
 
 import (
 	"bytes"
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/base64"
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
+
+	"github.com/mallexxx/virfield/internal/domain"
+	"golang.org/x/crypto/ssh"
 )
 
 func TestLoginPasswordTerminatesAndPads(t *testing.T) {
@@ -56,5 +62,52 @@ func TestAutologinRejectsStaleSecretAndAcceptsNativeRandomPadding(t *testing.T) 
 	b[len(b)-1] ^= 0x5a
 	if !matchesLoginPassword(base64.StdEncoding.EncodeToString(b), "lume") {
 		t.Fatal("valid native padding rejected")
+	}
+}
+
+// Each VM lease signs in to Screen Sharing with its own password, so the
+// lease script enables the service and Prepare waits for its listener.
+func TestLeaseScriptEnablesScreenSharing(t *testing.T) {
+	for _, want := range []string{
+		`printf '%s\n' "$new" | sudo -S -p '' /bin/launchctl enable system/com.apple.screensharing`,
+		`printf '%s\n' "$new" | sudo -S -p '' /bin/launchctl bootstrap system /System/Library/LaunchDaemons/com.apple.screensharing.plist 2>/dev/null || true`,
+	} {
+		if !strings.Contains(leaseScript, want) {
+			t.Fatal("lease script lacks", want)
+		}
+	}
+	if out, err := exec.Command("/bin/sh", "-n", "-c", screenSharingProbe).CombinedOutput(); err != nil {
+		t.Fatal("probe does not parse:", string(out), err)
+	}
+}
+
+func TestLeasePasswordReadsTheLeaseCredential(t *testing.T) {
+	m := &Manager{Dir: t.TempDir()}
+	l := domain.Lease{ID: "lease-0123456789abcdef"}
+	if _, err := m.LeasePassword(l); err == nil {
+		t.Fatal("password without a lease credential")
+	}
+	scoped := m.derive("leases")
+	if err := os.MkdirAll(scoped.Directory(l), 0700); err != nil {
+		t.Fatal(err)
+	}
+	c, err := scoped.CredentialsFor(l)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	host, err := ssh.NewPublicKey(pub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Secured, c.HostKey = true, host.Marshal()
+	if err := SaveCredentials(scoped.CredentialPath(l), c); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := m.LeasePassword(l); err != nil || got != c.Password {
+		t.Fatal(got, err)
 	}
 }
