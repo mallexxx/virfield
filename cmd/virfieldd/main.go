@@ -17,11 +17,13 @@ import (
 	"time"
 
 	"github.com/mallexxx/virfield/internal/appleauth"
+	"github.com/mallexxx/virfield/internal/baremetal"
 	"github.com/mallexxx/virfield/internal/catalog"
 	"github.com/mallexxx/virfield/internal/client"
 	"github.com/mallexxx/virfield/internal/config"
 	"github.com/mallexxx/virfield/internal/control"
 	"github.com/mallexxx/virfield/internal/domain"
+	"github.com/mallexxx/virfield/internal/fleet"
 	"github.com/mallexxx/virfield/internal/guestssh"
 	"github.com/mallexxx/virfield/internal/hostlock"
 	"github.com/mallexxx/virfield/internal/hostresources"
@@ -153,6 +155,25 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	// Physical nodes join the primary runtime through a fleet; their leases
+	// use node-side SSH isolation instead of the VM credential rotation.
+	var nodes *baremetal.Runtime
+	if cfg.Runtime != nil && len(cfg.Runtime.Nodes) > 0 {
+		signer, _, keyErr := baremetal.LoadOrCreateKey(filepath.Join(cfg.StateDir, "nodes", "management"))
+		if keyErr != nil {
+			return keyErr
+		}
+		configured := make([]baremetal.Node, 0, len(cfg.Runtime.Nodes))
+		for _, n := range cfg.Runtime.Nodes {
+			node := baremetal.Node{ID: n.ID, Name: n.Name, Address: n.Address, User: n.User, HostKey: n.HostKey, OS: n.OS, Arch: n.Arch, KeepAwakeFile: n.KeepAwakeFile}
+			if n.WakeOnLAN != nil {
+				node.WakeMAC, node.WakeBroadcast = n.WakeOnLAN.MAC, n.WakeOnLAN.Broadcast
+			}
+			configured = append(configured, node)
+		}
+		nodes = baremetal.New(configured, baremetal.SSHDialer(signer))
+		backend = fleet.New(backend, nodes)
+	}
 	manager, err := control.New(db, backend, cfg.Templates, cfg.MaxVMs, log)
 	if err != nil {
 		return err
@@ -201,7 +222,11 @@ func run() error {
 	// Every local runtime hands out leases only after per-lease credential
 	// isolation; Orchard leases are isolated by the Orchard worker path later.
 	if !remoteRuntime {
-		manager.SetLeasePreparer(&guestssh.Manager{Dir: cfg.StateDir})
+		var preparer control.LeasePreparer = &guestssh.Manager{Dir: cfg.StateDir}
+		if nodes != nil {
+			preparer = fleet.NewPreparer(preparer, map[string]fleet.Preparer{nodes.ProviderName(): nodes})
+		}
+		manager.SetLeasePreparer(preparer)
 	}
 	registryClient, err := registry.New(cfg.Registries)
 	if err != nil {
