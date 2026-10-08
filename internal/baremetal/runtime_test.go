@@ -157,7 +157,7 @@ func TestOfflineNodeIsUnavailableNotAnInventoryFailure(t *testing.T) {
 	}
 }
 
-func TestAsleepNodeIsAdmittedAndWokenAtStart(t *testing.T) {
+func TestAsleepNodeIsAdmittedAndWokenForItsLease(t *testing.T) {
 	listener, err := net.ListenPacket("udp4", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -183,13 +183,12 @@ func TestAsleepNodeIsAdmittedAndWokenAtStart(t *testing.T) {
 	}()
 	local.setOffline("htpc", true)
 	l := domain.Lease{VMName: "vf-0123456789abcdef", Location: "htpc"}
-	local.setOffline("htpc", false)
+	// The controller clones before it starts: clone must wake the node.
 	if err := r.Clone(ctx, domain.Template{}, l); err != nil {
-		t.Fatal(err)
+		t.Fatal("clone did not wake the node", err)
 	}
-	local.setOffline("htpc", true)
 	if err := r.Start(ctx, l); err != nil {
-		t.Fatal("start did not wake the node", err)
+		t.Fatal(err)
 	}
 	o, _ = r.Observe(ctx)
 	if vm, ok := vmNamed(o, l.VMName); !ok || vm.State != "running" {

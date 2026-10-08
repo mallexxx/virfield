@@ -207,7 +207,16 @@ func leaseVMs(n Node, p probe, reachable bool, used *int) []domain.VM {
 	return vms
 }
 
+// Clone reserves the lease on the node. The controller clones before it
+// starts, and a failed clone is quarantined, so a sleeping node is woken here.
 func (r *Runtime) Clone(ctx context.Context, _ domain.Template, l domain.Lease) error {
+	n, err := r.node(l.Location)
+	if err != nil {
+		return err
+	}
+	if err := r.ensureAwake(ctx, n); err != nil {
+		return err
+	}
 	return r.runLease(ctx, l, cloneScript)
 }
 
