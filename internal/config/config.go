@@ -96,8 +96,8 @@ func validateNodeVMs(n Node) error {
 		return fail("goldens_dir must be an absolute path without quotes or spaces")
 	case v.Max < 1 || v.Max > 8:
 		return fail("max must be 1-8")
-	case v.PortBase < 1024 || v.PortBase+2*v.Max > 65535:
-		return fail("port_base must leave 2*max ports between 1024 and 65535")
+	case v.PortBase < 1024 || v.PortBase+1000+2*v.Max > 65535:
+		return fail("port_base must leave 2*max ports and their desktop ports (+1000) between 1024 and 65535")
 	case v.CPU < 1 || v.MemoryGB < 4:
 		return fail("cpu must be at least 1 and memory_gb at least 4")
 	case !diskSize.MatchString(v.DiskSize):

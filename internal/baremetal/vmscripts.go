@@ -45,15 +45,17 @@ fi
 `
 
 // vmStartScript: $3 goldens dir, $4 image, $5 publish address, $6 cpu,
-// $7 memory GB, $8 disk size, $9 keep-awake file (may be empty).
+// $7 memory GB, $8 disk size, $9 keep-awake file (may be empty), $10 desktop
+// publish address (empty for none). passt forwards guest SSH and Screen
+// Sharing; QEMU's own VNC moves off 5900 and is never published.
 const vmStartScript = vmDirs + `[ -f "$d/port" ]
 g=$(cat "$d/golden")
 p=$(cat "$d/port")
 if ! podman inspect -f '{{.State.Running}}' "$c" 2>/dev/null | grep -qx true; then
   podman rm -f "$c" >/dev/null 2>&1 || true
   podman run -d --name "$c" --device /dev/kvm --device /dev/net/tun --cap-add NET_ADMIN \
-    -e DISK_FMT=qcow2 -e "DISK_SIZE=$8" -e "RAM_SIZE=$7G" -e "CPU_CORES=$6" -e USER_PORTS=22 \
-    -p "$5:$p:22" -v "$d/storage:/storage:Z" -v "$3:$3:ro,z" -v "$3/$g.opencore.plist:/custom.plist:ro,z" \
+    -e DISK_FMT=qcow2 -e "DISK_SIZE=$8" -e "RAM_SIZE=$7G" -e "CPU_CORES=$6" -e USER_PORTS=22,5900 -e VNC_PORT=5950 \
+    -p "$5:$p:22" ${10:+-p "${10}:5900"} -v "$d/storage:/storage:Z" -v "$3:$3:ro,z" -v "$3/$g.opencore.plist:/custom.plist:ro,z" \
     --stop-timeout 30 "$4" >/dev/null
 fi
 if [ -n "${9:-}" ] && [ ! -e "$9" ]; then

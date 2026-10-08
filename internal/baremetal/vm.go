@@ -67,10 +67,48 @@ func (r *Runtime) cloneVM(ctx context.Context, n Node, t domain.Template, l doma
 	return err
 }
 
-func (r *Runtime) startVM(ctx context.Context, n Node, scope, name, publish string) error {
+// DesktopPortOffset places a lease's Screen Sharing on the node loopback at
+// its SSH port plus this offset.
+const DesktopPortOffset = 1000
+
+// startVM publishes guest SSH on publish and, when desktop is set, the
+// guest's Screen Sharing on the node loopback.
+func (r *Runtime) startVM(ctx context.Context, n Node, scope, name, publish string, desktop bool) error {
 	v := n.VMs
-	_, err := r.runOn(ctx, n, command(vmStartScript, scope, name, v.GoldensDir, v.Image, publish, strconv.Itoa(v.CPU), strconv.Itoa(v.MemoryGB), v.DiskSize, n.KeepAwakeFile))
+	desktopAddress := ""
+	if desktop {
+		port, err := r.vmPort(ctx, n, scope, name)
+		if err != nil {
+			return err
+		}
+		desktopAddress = "127.0.0.1:" + strconv.Itoa(port+DesktopPortOffset)
+	}
+	_, err := r.runOn(ctx, n, command(vmStartScript, scope, name, v.GoldensDir, v.Image, publish, strconv.Itoa(v.CPU), strconv.Itoa(v.MemoryGB), v.DiskSize, n.KeepAwakeFile, desktopAddress))
 	return err
+}
+
+// vmPort reads a clone's SSH port from the node.
+func (r *Runtime) vmPort(ctx context.Context, n Node, scope, name string) (int, error) {
+	out, err := r.runOn(ctx, n, command(`cat "$HOME/virfield/$1/$2/port"`, scope, name))
+	if err != nil {
+		return 0, err
+	}
+	port, err := strconv.Atoi(strings.TrimSpace(out))
+	if err != nil || port < 1024 || port > 65535-DesktopPortOffset {
+		return 0, domain.Err("invalid_request", "Node VM has no valid SSH port")
+	}
+	return port, nil
+}
+
+// DialService reaches a node VM lease's desktop: the guest's Screen Sharing
+// published on the node loopback, through the pinned node connection.
+func (r *Runtime) DialService(ctx context.Context, l domain.Lease, service string) (net.Conn, error) {
+	if service != "desktop" || l.ImageID == "" || l.SSHPort < 1 {
+		return nil, domain.Err("invalid_request", "Only node VM leases have a desktop")
+	}
+	desktop := l
+	desktop.SSHPort = l.SSHPort + DesktopPortOffset
+	return r.DialGuest(ctx, desktop, "")
 }
 
 func (r *Runtime) stopVM(ctx context.Context, n Node, scope, name string, remove bool) error {
@@ -117,7 +155,16 @@ func parseVMLine(value string) (string, vmRecord, bool) {
 // Guests prepares node VM leases with the image pipeline's credentials.
 type Guests interface {
 	Prepare(context.Context, domain.Lease) (domain.SSHConnection, error)
+	LeasePassword(domain.Lease) (string, error)
 	Forget(domain.Lease) error
+}
+
+// LeasePassword is a node VM lease's guest password; host leases have none.
+func (r *Runtime) LeasePassword(l domain.Lease) (string, error) {
+	if l.ImageID == "" || r.guests == nil {
+		return "", domain.Err("lease_unavailable", "Only node VM leases have a guest password")
+	}
+	return r.guests.LeasePassword(l)
 }
 
 func (r *Runtime) SetGuests(g Guests) { r.guests = g }
@@ -209,7 +256,7 @@ func (r *Runtime) StartImage(ctx context.Context, l domain.Lease) error {
 	if err := r.ensureAwake(ctx, n); err != nil {
 		return err
 	}
-	return r.startVM(ctx, n, "images", l.VMName, "127.0.0.1")
+	return r.startVM(ctx, n, "images", l.VMName, "127.0.0.1", false)
 }
 
 func (r *Runtime) StopImage(ctx context.Context, l domain.Lease) error {

@@ -272,7 +272,7 @@ func (r *Runtime) Start(ctx context.Context, l domain.Lease) error {
 		if err := vmLeaseName(l); err != nil {
 			return err
 		}
-		return r.startVM(ctx, n, "leases", l.VMName, "0.0.0.0")
+		return r.startVM(ctx, n, "leases", l.VMName, "0.0.0.0", true)
 	}
 	return r.runLease(ctx, l, startScript)
 }

@@ -175,3 +175,40 @@ func TestDialGuestTunnelsToNodeLoopbackPort(t *testing.T) {
 		t.Fatal("tunnel target", *requested)
 	}
 }
+
+func TestDialServiceDesktopTunnelsToNodeLoopback(t *testing.T) {
+	echo, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer echo.Close()
+	go func() {
+		for {
+			c, err := echo.Accept()
+			if err != nil {
+				return
+			}
+			go func() { io.Copy(c, c); c.Close() }()
+		}
+	}()
+	host := newSigner(t)
+	addr, requested := serveForwarding(t, host, echo.Addr().String())
+	address, port, _ := net.SplitHostPort(addr)
+	n := Node{ID: "htpc", Address: address, User: "bazzite", HostKeys: []string{authorized(host)}, OS: "linux", Arch: "amd64", VMs: &VMConfig{PortBase: 22100, Max: 2}}
+	r := New([]Node{n}, sshDialer(newSigner(t), port))
+	l := domain.Lease{Location: "htpc", SSHPort: 22100, ImageID: "image-x"}
+	conn, err := r.DialService(context.Background(), l, "desktop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn.Close()
+	if *requested != "127.0.0.1:23100" {
+		t.Fatal("desktop target", *requested)
+	}
+	if _, err := r.DialService(context.Background(), l, "ssh"); err == nil {
+		t.Fatal("dialed a service other than desktop")
+	}
+	if _, err := r.DialService(context.Background(), domain.Lease{Location: "htpc"}, "desktop"); err == nil {
+		t.Fatal("dialed a desktop for a host lease")
+	}
+}

@@ -192,6 +192,8 @@ func (g *fakeGuests) Prepare(_ context.Context, l domain.Lease) (domain.SSHConne
 	return domain.SSHConnection{User: "admin", Port: l.SSHPort, HostKey: testHostKey}, nil
 }
 
+func (g *fakeGuests) LeasePassword(l domain.Lease) (string, error) { return "pw-" + l.VMName, nil }
+
 func (g *fakeGuests) Forget(l domain.Lease) error {
 	g.forgotten = append(g.forgotten, l.VMName)
 	return nil
@@ -208,6 +210,12 @@ func TestPrepareDelegatesVMLeasesToGuests(t *testing.T) {
 	}
 	if err := r.Forget(l); err != nil || len(g.forgotten) != 1 {
 		t.Fatal(err, g.forgotten)
+	}
+	if pw, err := r.LeasePassword(l); err != nil || pw != "pw-"+l.VMName {
+		t.Fatal(pw, err)
+	}
+	if _, err := r.LeasePassword(domain.Lease{VMName: "vf-fedcba9876543210", Location: "htpc"}); err == nil {
+		t.Fatal("host lease has a guest password")
 	}
 	host := domain.Lease{VMName: "vf-fedcba9876543210", Location: "htpc"}
 	if err := r.Forget(host); err != nil || len(g.forgotten) != 1 {
@@ -234,8 +242,8 @@ func TestNodeImageVMLifecycle(t *testing.T) {
 		t.Fatalf("image VM = %#v", vm)
 	}
 	calls := read(t, filepath.Join(local.path, "podman.log"))
-	if !strings.Contains(calls, "-p 127.0.0.1:22102:22") {
-		t.Fatal("image VM published beyond the node loopback:", calls)
+	if !strings.Contains(calls, "-p 127.0.0.1:22102:22") || strings.Contains(calls, ":5900") {
+		t.Fatal("image VM published beyond the node loopback or with a desktop:", calls)
 	}
 	if err := r.StopImage(ctx, l); err != nil {
 		t.Fatal(err)
