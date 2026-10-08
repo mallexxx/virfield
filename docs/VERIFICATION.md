@@ -103,7 +103,13 @@ template was refused as `template_unavailable`, the lease reported the Big Sur
 host key, lease SSH and `caffeinate` worked, and release revoked the key and
 the keep-awake.
 
-Not yet covered: the Catalina and Ventura volumes (enroll each when booted), the wake
+Catalina (2026-10-08): the same enrollment on the Catalina volume (10.15.7;
+host key fingerprint confirmed at the MacBook's own console) and the same
+`mbp2014-catalina` lease test passed 5/5. On Catalina the Sharing pane hung on
+"Remote Login starting…"; `sudo launchctl load -w
+/System/Library/LaunchDaemons/ssh.plist` started SSH instead.
+
+Not yet covered: the Ventura volume (enroll when booted), the wake
 path by a real lease (pending at time of writing), the Hackintosh provider on
 the HTPC (needs VT-x enabled in UEFI), and the desktop gateway.
 
