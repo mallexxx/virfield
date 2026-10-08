@@ -169,6 +169,9 @@ func run() error {
 			if n.WakeOnLAN != nil {
 				node.WakeMAC, node.WakeBroadcast = n.WakeOnLAN.MAC, n.WakeOnLAN.Broadcast
 			}
+			if v := n.VMs; v != nil {
+				node.VMs = &baremetal.VMConfig{Image: v.Image, GoldensDir: v.GoldensDir, DiskSize: v.DiskSize, PortBase: v.PortBase, Max: v.Max, CPU: v.CPU, MemoryGB: v.MemoryGB}
+			}
 			configured = append(configured, node)
 		}
 		nodes = baremetal.New(configured, baremetal.SSHDialer(signer))

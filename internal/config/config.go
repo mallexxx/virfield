@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -62,6 +63,47 @@ type Node struct {
 	// KeepAwakeFile is honored by the node's own sleep guard while it exists.
 	KeepAwakeFile string    `json:"keep_awake_file,omitempty"`
 	WakeOnLAN     *NodeWake `json:"wake_on_lan,omitempty"`
+	VMs           *NodeVMs  `json:"vms,omitempty"`
+}
+
+// NodeVMs runs disposable macOS VMs as rootless Podman containers on a Linux
+// node. Goldens are read-only qcow2 files in GoldensDir; each lease publishes
+// guest SSH on a port from PortBase, and image builds use the next Max ports.
+type NodeVMs struct {
+	Image      string `json:"image"`
+	GoldensDir string `json:"goldens_dir"`
+	PortBase   int    `json:"port_base"`
+	Max        int    `json:"max"`
+	CPU        int    `json:"cpu"`
+	MemoryGB   int    `json:"memory_gb"`
+	DiskSize   string `json:"disk_size"`
+}
+
+var (
+	pinnedImage = regexp.MustCompile(`^[a-z0-9.-]+(/[a-z0-9._-]+)+@sha256:[0-9a-f]{64}$`)
+	diskSize    = regexp.MustCompile(`^[1-9][0-9]*G$`)
+)
+
+func validateNodeVMs(n Node) error {
+	v := n.VMs
+	fail := func(what string) error { return errors.New("runtime node " + n.ID + " vms: " + what) }
+	switch {
+	case n.OS != "linux":
+		return fail("supported on linux nodes")
+	case !pinnedImage.MatchString(v.Image):
+		return fail("image must be pinned by sha256 digest")
+	case !filepath.IsAbs(v.GoldensDir) || strings.ContainsAny(v.GoldensDir, "'\"\n\r\t "):
+		return fail("goldens_dir must be an absolute path without quotes or spaces")
+	case v.Max < 1 || v.Max > 8:
+		return fail("max must be 1-8")
+	case v.PortBase < 1024 || v.PortBase+2*v.Max > 65535:
+		return fail("port_base must leave 2*max ports between 1024 and 65535")
+	case v.CPU < 1 || v.MemoryGB < 4:
+		return fail("cpu must be at least 1 and memory_gb at least 4")
+	case !diskSize.MatchString(v.DiskSize):
+		return fail("disk_size must look like 100G")
+	}
+	return nil
 }
 
 type NodeWake struct {
@@ -400,6 +442,11 @@ func validateNodes(r *Runtime) error {
 		}
 		if (n.OS != "macOS" && n.OS != "linux") || (n.Arch != "amd64" && n.Arch != "arm64") {
 			return errors.New("runtime node " + n.ID + " needs os macOS|linux and arch amd64|arm64")
+		}
+		if n.VMs != nil {
+			if err := validateNodeVMs(n); err != nil {
+				return err
+			}
 		}
 		if w := n.WakeOnLAN; w != nil {
 			mac, err := net.ParseMAC(w.MAC)

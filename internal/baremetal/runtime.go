@@ -28,6 +28,7 @@ type Node struct {
 	HostKeys                          []string
 	KeepAwakeFile                     string
 	WakeMAC, WakeBroadcast            string
+	VMs                               *VMConfig
 }
 
 type session interface {

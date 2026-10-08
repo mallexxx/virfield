@@ -137,6 +137,8 @@ func TestRuntimeNodesValidate(t *testing.T) {
 	dir := t.TempDir()
 	base := `{"listen":"127.0.0.1:7780","state_dir":"/tmp/a","token_file":"/tmp/t","max_vms":2,"runtime":{"provider":"tart","tart":{"binary":"/opt/homebrew/bin/tart","host_id":"macbook","containers":[{"id":"samsung","path":"/Volumes/S/tart","kind":"external"}]},"nodes":[%s]},"templates":[]}`
 	key := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOjnNwacnnaogoL+pe0tgXiGBNpMpHmcc7WSGhoYjssV"
+	digest := "08d1bcaac74ad44d548b7ce683b3dded083512d2a0d26416f9a620b763f8ea3d"
+	vms := `,"vms":{"image":"docker.io/dockurr/macos@sha256:` + digest + `","goldens_dir":"/run/media/system/Data/virfield/goldens","port_base":22100,"max":2,"cpu":4,"memory_gb":8,"disk_size":"100G"}`
 	valid := `{"id":"htpc","name":"HTPC","address":"192.168.1.86","user":"bazzite","host_key":"` + key + `","os":"linux","arch":"amd64","keep_awake_file":"/tmp/rsync-active","wake_on_lan":{"mac":"B0:6E:BF:60:6D:64","broadcast":"192.168.1.255:9"}}`
 	for name, node := range map[string]string{
 		"valid":         valid,
@@ -149,6 +151,12 @@ func TestRuntimeNodesValidate(t *testing.T) {
 		"relative hold": strings.Replace(valid, `"/tmp/rsync-active"`, `"tmp/x"`, 1),
 		"bad extra key": strings.Replace(valid, `"os":"linux"`, `"host_keys":["ssh-ed25519 nope"],"os":"linux"`, 1),
 		"extra keys":    strings.Replace(valid, `"os":"linux"`, `"host_keys":["`+key+`"],"os":"linux"`, 1),
+		"with vms":      strings.Replace(valid, `"arch":"amd64"`, `"arch":"amd64"`+vms, 1),
+		"vm image tag":  strings.Replace(valid, `"arch":"amd64"`, `"arch":"amd64"`+strings.Replace(vms, "@sha256:"+digest, ":latest", 1), 1),
+		"vm low port":   strings.Replace(valid, `"arch":"amd64"`, `"arch":"amd64"`+strings.Replace(vms, "22100", "80", 1), 1),
+		"vm relative":   strings.Replace(valid, `"arch":"amd64"`, `"arch":"amd64"`+strings.Replace(vms, `"/run/media/system/Data/virfield/goldens"`, `"goldens"`, 1), 1),
+		"vm on macOS":   strings.Replace(strings.Replace(valid, `"os":"linux"`, `"os":"macOS"`, 1), `"arch":"amd64"`, `"arch":"amd64"`+vms, 1),
+		"vm disk size":  strings.Replace(valid, `"arch":"amd64"`, `"arch":"amd64"`+strings.Replace(vms, `"100G"`, `"100 G"`, 1), 1),
 	} {
 		path := filepath.Join(dir, strings.ReplaceAll(name, " ", "-")+".json")
 		if err := os.WriteFile(path, []byte(fmt.Sprintf(base, node)), 0600); err != nil {
@@ -157,6 +165,12 @@ func TestRuntimeNodesValidate(t *testing.T) {
 		cfg, err := Load(path)
 		if name == "valid" {
 			if err != nil || len(cfg.Runtime.Nodes) != 1 || cfg.Runtime.Nodes[0].WakeOnLAN.MAC != "B0:6E:BF:60:6D:64" {
+				t.Fatal(cfg.Runtime, err)
+			}
+			continue
+		}
+		if name == "with vms" {
+			if err != nil || cfg.Runtime.Nodes[0].VMs == nil || cfg.Runtime.Nodes[0].VMs.Max != 2 || cfg.Runtime.Nodes[0].VMs.PortBase != 22100 {
 				t.Fatal(cfg.Runtime, err)
 			}
 			continue
