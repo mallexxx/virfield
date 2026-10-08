@@ -69,6 +69,36 @@ admission (`2101918`).
 Not yet covered: VS Code remote-debug against Tart leases, GHCR publication of
 the goldens, Orchard, and restart during a Tart build.
 
+## Remote nodes R1 (2026-10-08)
+
+Two physical hosts joined the Tart service as `baremetal` nodes over pinned SSH
+([design](superpowers/specs/2026-10-08-remote-nodes-r1-design.md)):
+`mbp-2014` (MacBookPro11,1, Monterey 12.6.8 booted, `admin`, no sudo) and `htpc`
+(Bazzite 43, `bazzite`, no sudo, Wake-on-LAN, sleep-guard file
+`/tmp/rsync-active`). Inventory reported each booted environment as a
+pseudo-golden: `mbp2014-monterey` and `htpc-bazzite` available, the other
+MacBook volumes `artifact_missing` because they were not booted.
+
+Live acceptance (20/20): both node leases and one Tart VM lease were admitted
+concurrently and the Mac reported 1/2 VM slots used. Each node lease reached
+`ready` through node-side SSH isolation, accepted its own key with the pinned
+host key, had its workspace and keep-awake (`caffeinate`, the guard file), and
+rejected the other node lease's key. Release revoked both keys, removed the
+workspaces and tagged `authorized_keys` lines, and released keep-awake.
+
+Defects found by the live run and fixed: node leases were charged to Mac
+resource admission (`754f5d2`) and then blocked every Mac VM admission
+(`7746a8f`); a sleeping node stretched inventory refreshes past the 10-second
+staleness limit (`23bf2e2`); inventory probing every 2 seconds would have kept
+the HTPC awake through its SSH-aware sleep guard (`0a6568b`, now once a
+minute). Under heavy host load (Finder at 356% CPU crawling the VM SSD),
+Tart's disk-sizing commands took 12–18 s and admission paused briefly; this is
+fail-safe but noisy.
+
+Not yet covered: other MacBook volumes (enroll each when booted), the wake
+path by a real lease (pending at time of writing), the Hackintosh provider on
+the HTPC (needs VT-x enabled in UEFI), and the desktop gateway.
+
 ## VS Code remote LLDB (2026-10-07)
 
 The DuckDuckGo SwiftPM worktree was built on the host with its existing

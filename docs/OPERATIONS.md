@@ -74,6 +74,41 @@ as Lume. A Tart template therefore needs a verified image profile and every
 acquire needs a fresh `ssh_public_key`; a bare digest-pinned `source` template
 without a qualified image record is rejected with `ssh_profile_missing`.
 
+### Physical nodes
+
+`runtime.nodes` adds physical hosts beside the Tart runtime. Virfield controls
+them over pinned SSH as one unprivileged account (no sudo), and a node lease
+uses that node's own slot, never a Mac VM slot or Mac CPU, memory or disk.
+
+```json
+"nodes": [
+  {"id": "mbp-2014", "address": "192.168.1.79", "user": "admin", "host_key": "ssh-ed25519 AAAA…", "os": "macOS", "arch": "amd64"},
+  {"id": "htpc", "address": "192.168.1.86", "user": "bazzite", "host_key": "ssh-ed25519 AAAA…", "os": "linux", "arch": "amd64",
+   "keep_awake_file": "/tmp/rsync-active", "wake_on_lan": {"mac": "B0:6E:BF:60:6D:64", "broadcast": "192.168.1.255:9"}}
+]
+```
+
+Take `host_key` from a trusted `known_hosts` entry and compare its fingerprint
+with the node. On first start `virfieldd` creates its node management key in
+`state_dir/nodes/management`; append `state_dir/nodes/management.pub` once to
+the node account's `~/.ssh/authorized_keys` (each macOS boot volume has its
+own home and is enrolled when booted).
+
+A node reports its booted environment as a pseudo-golden named after the boot
+volume (`Monterey`, `Big-Sur`, `bazzite`). A template with
+`"provider": "baremetal"`, `"location": "<node id>"`, `"name": "<volume>"` and
+`guest_user` is available only while that volume is booted. An unreachable
+node is `offline` (or `asleep` with Wake-on-LAN, then still admissible and
+woken at start); it is re-probed at most every 30 seconds, and an online node
+at most once a minute so inventory never keeps it awake.
+
+A lease authorizes the client key in `authorized_keys` (tagged
+`virfield-lease-<vm>`), creates `~/virfield/leases/<vm>/workspace`, and keeps
+the node awake (`caffeinate` on macOS, the `keep_awake_file` on Linux, removed
+only if the lease created it). Release revokes the key and removes the
+workspace. Physical hosts are not disposable: processes the lease started
+under the shared account are not killed.
+
 ### Tart image adoption
 
 A Tart daemon uses its own `config.json` and `state_dir`; it never shares the
