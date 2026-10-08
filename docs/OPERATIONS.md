@@ -109,7 +109,10 @@ volume (`Monterey`, `Big-Sur`, `bazzite`). A template with
 `guest_user` is available only while that volume is booted. An unreachable
 node is `offline` (or `asleep` with Wake-on-LAN, then still admissible and
 woken at start); it is re-probed at most every 30 seconds, and an online node
-at most once a minute so inventory never keeps it awake.
+at most once a minute so inventory never keeps it awake. Each node's last probe is
+kept in `state_dir/nodes/<id>.probe.json`, so a daemon restart while a node
+sleeps keeps it admissible and keeps its leases in inventory; the first
+observation after a restart still dials every node.
 
 A lease authorizes the client key in `authorized_keys` (tagged
 `virfield-lease-<vm>`), creates `~/virfield/leases/<vm>/workspace`, and keeps
