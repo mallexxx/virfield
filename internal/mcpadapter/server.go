@@ -36,6 +36,10 @@ type acquireArgs struct {
 type idArgs struct {
 	ID string `json:"id"`
 }
+type tunnelArgs struct {
+	ID      string `json:"id"`
+	Service string `json:"service,omitempty" jsonschema:"ssh (default) or desktop. A desktop tunnel returns a vnc:// URL that signs in to the VM lease's Screen Sharing with the lease password."`
+}
 type releaseArgs struct {
 	ID  string `json:"id"`
 	Key string `json:"idempotency_key"`
@@ -102,11 +106,19 @@ func New(c *client.Client) *mcp.Server {
 	mcp.AddTool(s, &mcp.Tool{Name: "image_build", Annotations: &mcp.ToolAnnotations{IdempotentHint: true, DestructiveHint: &additive}, Description: "Build an absent VM from an already registered pinned image profile. To choose macOS/Xcode versions, use image_create instead. Downloads and installs macOS, completes setup, applies the operator-configured guest SIP policy and verifies credentials. Requires one available VM slot. Never overwrites an existing VM. Use the same idempotency key on retries."}, func(ctx context.Context, _ *mcp.CallToolRequest, a releaseArgs) (*mcp.CallToolResult, any, error) {
 		return result(c.Do(ctx, "POST", "images/"+url.PathEscape(a.ID)+"/build", empty{}, a.Key))
 	})
-	mcp.AddTool(s, &mcp.Tool{Name: "vm_tunnel", Description: "Open or return an ephemeral loopback TCP tunnel to this ready lease's SSH port. SSH authentication and pinned host key remain mandatory. Reopen after daemon restart.", Annotations: &mcp.ToolAnnotations{IdempotentHint: true}}, func(ctx context.Context, _ *mcp.CallToolRequest, a idArgs) (*mcp.CallToolResult, any, error) {
-		return result(c.Do(ctx, "POST", "leases/"+url.PathEscape(a.ID)+"/tunnel", nil, ""))
+	mcp.AddTool(s, &mcp.Tool{Name: "vm_tunnel", Description: "Open or return an ephemeral loopback TCP tunnel to this ready lease's SSH port, or with service desktop to a VM lease's Screen Sharing (returns a vnc:// URL). SSH authentication and pinned host key remain mandatory. Reopen after daemon restart.", Annotations: &mcp.ToolAnnotations{IdempotentHint: true}}, func(ctx context.Context, _ *mcp.CallToolRequest, a tunnelArgs) (*mcp.CallToolResult, any, error) {
+		var body any
+		if a.Service != "" {
+			body = map[string]string{"service": a.Service}
+		}
+		return result(c.Do(ctx, "POST", "leases/"+url.PathEscape(a.ID)+"/tunnel", body, ""))
 	})
-	mcp.AddTool(s, &mcp.Tool{Name: "vm_tunnel_close", Description: "Close this lease's loopback SSH tunnel and all its connections", Annotations: &mcp.ToolAnnotations{IdempotentHint: true}}, func(ctx context.Context, _ *mcp.CallToolRequest, a idArgs) (*mcp.CallToolResult, any, error) {
-		return result(c.Do(ctx, "DELETE", "leases/"+url.PathEscape(a.ID)+"/tunnel", nil, ""))
+	mcp.AddTool(s, &mcp.Tool{Name: "vm_tunnel_close", Description: "Close this lease's loopback tunnel for one service (ssh by default, or desktop) and all its connections", Annotations: &mcp.ToolAnnotations{IdempotentHint: true}}, func(ctx context.Context, _ *mcp.CallToolRequest, a tunnelArgs) (*mcp.CallToolResult, any, error) {
+		path := "leases/" + url.PathEscape(a.ID) + "/tunnel"
+		if a.Service != "" {
+			path += "?service=" + url.QueryEscape(a.Service)
+		}
+		return result(c.Do(ctx, "DELETE", path, nil, ""))
 	})
 	return s
 }

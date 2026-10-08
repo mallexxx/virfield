@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 
@@ -40,6 +41,7 @@ func run() error {
 Inspect: status | lease ID | job ID | events [AFTER] (-lease-id ID, -tail, -limit N)
 Leases:  acquire TEMPLATE TTL_SECONDS PUBLIC_KEY_FILE | renew ID RFC3339 | release ID
 SSH:     keygen DIRECTORY | ssh-config LEASE_ID IDENTITY_DIRECTORY | tunnel LEASE_ID | tunnel-close LEASE_ID
+Desktop: desktop LEASE_ID [--print]  (opens a VM lease's desktop in Screen Sharing)
 VS Code: vscode-config LEASE_ID IDENTITY_DIRECTORY SWIFTPM_WORKSPACE [LEASE_ID IDENTITY_DIRECTORY ...]
 Registry: registry-sources | registry-resolve SOURCE REPOSITORY TAG
           image-pull ID SOURCE REPOSITORY TAG MACOS [XCODE]
@@ -206,6 +208,20 @@ Recovery requires prior inspection that no operation remains in flight.
 			return err
 		}
 		body = domain.AcquireRequest{Template: args[1], TTLSeconds: ttl, SSHPublicKey: canonical, DestinationLocation: *location}
+	case "desktop":
+		print := len(args) == 3 && args[2] == "--print"
+		if (len(args) != 2 && !print) || !domain.ValidName(args[1]) {
+			return errors.New("usage: desktop LEASE_ID [--print]")
+		}
+		b, err := c.Do(context.Background(), "POST", "leases/"+args[1]+"/tunnel", map[string]string{"service": "desktop"}, "")
+		if err != nil {
+			return err
+		}
+		var t domain.Tunnel
+		if err := json.Unmarshal(b, &t); err != nil {
+			return err
+		}
+		return showDesktop(t, print, os.Stdout, func(url string) error { return exec.Command("/usr/bin/open", url).Run() })
 	case "ssh-config":
 		if len(args) != 3 || !domain.ValidName(args[1]) {
 			return errors.New("usage: ssh-config LEASE_ID IDENTITY_DIRECTORY")

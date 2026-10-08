@@ -429,11 +429,38 @@ func (s *Server) provisionImage(w http.ResponseWriter, r *http.Request) {
 	write(w, 202, op)
 }
 
+// tunnelService reads the optional service, ssh by default: a JSON body
+// {"service": ...} when opening, ?service= when closing.
+func tunnelService(w http.ResponseWriter, r *http.Request) (string, error) {
+	service := r.URL.Query().Get("service")
+	if r.Method == http.MethodPost && r.ContentLength != 0 {
+		var req struct {
+			Service string `json:"service"`
+		}
+		if err := decode(w, r, &req); err != nil {
+			return "", err
+		}
+		service = req.Service
+	}
+	if service == "" {
+		service = "ssh"
+	}
+	if service != "ssh" && service != "desktop" {
+		return "", domain.Err("invalid_request", "service must be ssh or desktop")
+	}
+	return service, nil
+}
+
 func (s *Server) openTunnel(w http.ResponseWriter, r *http.Request) {
 	if !s.ensureLeaseOwned(w, r) {
 		return
 	}
-	t, err := s.c.OpenTunnel(r.Context(), r.PathValue("id"), "ssh")
+	service, err := tunnelService(w, r)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	t, err := s.c.OpenTunnel(r.Context(), r.PathValue("id"), service)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -444,7 +471,12 @@ func (s *Server) closeTunnel(w http.ResponseWriter, r *http.Request) {
 	if !s.ensureLeaseOwned(w, r) {
 		return
 	}
-	if err := s.c.CloseTunnel(r.Context(), r.PathValue("id"), "ssh"); err != nil {
+	service, err := tunnelService(w, r)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	if err := s.c.CloseTunnel(r.Context(), r.PathValue("id"), service); err != nil {
 		s.fail(w, err)
 		return
 	}

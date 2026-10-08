@@ -350,3 +350,26 @@ func TestCatalogHTTPAdmissionAndStrictInput(t *testing.T) {
 		t.Fatal(ts, err)
 	}
 }
+
+func TestTunnelServiceDefaultsToSSH(t *testing.T) {
+	for _, tc := range []struct {
+		method, target, body, want string
+		ok                         bool
+	}{
+		{"POST", "/api/v1/leases/x/tunnel", "", "ssh", true},
+		{"POST", "/api/v1/leases/x/tunnel", `{"service":"desktop"}`, "desktop", true},
+		{"POST", "/api/v1/leases/x/tunnel", `{"service":"vnc"}`, "", false},
+		{"POST", "/api/v1/leases/x/tunnel", `{"other":1}`, "", false},
+		{"DELETE", "/api/v1/leases/x/tunnel?service=desktop", "", "desktop", true},
+		{"DELETE", "/api/v1/leases/x/tunnel", "", "ssh", true},
+	} {
+		r := httptest.NewRequest(tc.method, tc.target, strings.NewReader(tc.body))
+		if tc.body != "" {
+			r.Header.Set("Content-Type", "application/json")
+		}
+		got, err := tunnelService(httptest.NewRecorder(), r)
+		if (err == nil) != tc.ok || got != tc.want {
+			t.Fatalf("%s %s %q -> %q %v", tc.method, tc.target, tc.body, got, err)
+		}
+	}
+}

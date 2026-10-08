@@ -286,6 +286,18 @@ function renderLeases(state) {
       });
       actions.append(tunnel);
     }
+    if (lease.state === 'ready' && lease.ssh && lease.image_id) {
+      const desktop = node('button', 'Desktop');
+      desktop.addEventListener('click', async () => {
+        try {
+          desktop.disabled = true;
+          const result = await api('leases/' + encodeURIComponent(lease.id) + '/tunnel', 'POST', {service: 'desktop'});
+          window.location.href = result.url;
+        } catch (error) { report(error); }
+        desktop.disabled = false;
+      });
+      actions.append(desktop);
+    }
     const release = node('button', 'Release', 'danger');
     release.disabled = ['releasing', 'quarantined'].includes(lease.state);
     release.addEventListener('click', async () => {
