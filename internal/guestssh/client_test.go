@@ -76,6 +76,9 @@ func sshServerFor(t *testing.T, model, user string) (string, ssh.Signer) {
 								return
 							}
 							req.Reply(true, nil)
+							if payload.Command == "slow" {
+								time.Sleep(1200 * time.Millisecond)
+							}
 							if payload.Command == "block" {
 								_ = conn.Wait()
 								return
@@ -284,5 +287,32 @@ func TestDroppedHandshakeIsRetryable(t *testing.T) {
 	var failure *domain.Error
 	if !errors.As(err, &failure) || failure.Code != "guest_connect_failed" {
 		t.Fatal(err)
+	}
+}
+
+// Credential and SSH-policy scripts can take minutes on a slow guest; probes
+// keep their short bound.
+func TestMutationsOutliveTheProbeTimeout(t *testing.T) {
+	probe, mutation := commandTimeout, mutationTimeout
+	commandTimeout, mutationTimeout = 500*time.Millisecond, 5*time.Second
+	defer func() { commandTimeout, mutationTimeout = probe, mutation }()
+	port, _ := sshServer(t, "VirtualMac2,1")
+	e, l := testImageGuest(t, port)
+	g, err := e.Connect(context.Background(), l, "127.0.0.1", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g.Close()
+	if _, err := g.Run(context.Background(), "slow", ""); err == nil {
+		t.Fatal("probe outlived its bound")
+	}
+	// A timed-out probe ends its connection; mutations use a fresh one.
+	g, err = e.Connect(context.Background(), l, "127.0.0.1", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g.Close()
+	if _, err := g.RunMutation(context.Background(), "slow", ""); err != nil {
+		t.Fatal("mutation cut short:", err)
 	}
 }

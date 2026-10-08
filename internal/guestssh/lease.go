@@ -82,7 +82,7 @@ func (e *Manager) Prepare(ctx context.Context, l domain.Lease) (domain.SSHConnec
 	}
 	user := guestUser(l)
 	input := strings.Join([]string{user, inherited.Password, c.Password, management, public, base64.StdEncoding.EncodeToString(c.HostPrivate), loginPassword(c.Password)}, "\n") + "\n"
-	out, err := g.Run(ctx, "/bin/bash -c '"+strings.ReplaceAll(leaseScript, "'", "'\"'\"'")+"'", input)
+	out, err := g.RunMutation(ctx, "/bin/bash -c '"+strings.ReplaceAll(leaseScript, "'", "'\"'\"'")+"'", input)
 	if err != nil {
 		if saveErr := os.WriteFile(filepath.Join(scoped.Directory(l), "provision.log"), []byte(out), 0600); saveErr != nil {
 			return result, saveErr

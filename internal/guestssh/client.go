@@ -278,8 +278,19 @@ func (e *Manager) connectCredentials(ctx context.Context, l domain.Lease, ip str
 	}
 	return g, nil
 }
+
+// commandTimeout bounds short probes; mutationTimeout bounds credential and
+// SSH-policy scripts, which run minutes on a slow guest (sysadminctl updates
+// the login keychain; a node clone reads its golden off a spinning disk).
+var commandTimeout, mutationTimeout = time.Minute, 5 * time.Minute
+
 func (g *Client) Run(ctx context.Context, command, input string) (string, error) {
-	return g.RunReader(ctx, time.Minute, command, strings.NewReader(input))
+	return g.RunReader(ctx, commandTimeout, command, strings.NewReader(input))
+}
+
+// RunMutation runs a script that changes guest credentials or SSH policy.
+func (g *Client) RunMutation(ctx context.Context, command, input string) (string, error) {
+	return g.RunReader(ctx, mutationTimeout, command, strings.NewReader(input))
 }
 
 func (g *Client) RunReader(ctx context.Context, timeout time.Duration, command string, input io.Reader) (string, error) {
@@ -350,7 +361,7 @@ func (e *Manager) SecureImage(ctx context.Context, l domain.Lease, ip string, g 
 	// The administrator password travels over encrypted SSH stdin. Shell variables
 	// are used only inside the guest; no secret appears in host argv or event logs.
 	runSecret := func(stage, script, input string) error {
-		out, err := g.Run(ctx, "/bin/bash -c '"+strings.ReplaceAll(script, "'", "'\"'\"'")+"'", input)
+		out, err := g.RunMutation(ctx, "/bin/bash -c '"+strings.ReplaceAll(script, "'", "'\"'\"'")+"'", input)
 		if err != nil {
 			if logErr := os.WriteFile(filepath.Join(e.Directory(l), "credential-"+stage+".log"), []byte(out), 0600); logErr != nil {
 				return logErr
