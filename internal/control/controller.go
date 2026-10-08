@@ -426,7 +426,7 @@ func (c *Controller) AcquireAs(ctx context.Context, key string, r domain.Acquire
 			}
 		}
 		if !found {
-			return domain.Operation{}, domain.Err("template_unavailable", "configured golden template is unavailable from "+provider.Name(c.backend))
+			return domain.Operation{}, domain.Err("template_unavailable", "golden template "+t.Name+" is not in inventory at "+t.Location)
 		}
 	}
 	imageID := ""

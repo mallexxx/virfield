@@ -65,6 +65,7 @@ type Runtime struct {
 	last          map[string]probe
 	failedAt      map[string]time.Time
 	changed       map[string]bool
+	persistDir    string
 }
 
 func New(nodes []Node, dial dialer) *Runtime {
@@ -122,6 +123,10 @@ func (r *Runtime) Observe(ctx context.Context) (domain.Observation, error) {
 		if errs[i] == nil {
 			delete(r.failedAt, n.ID)
 			r.last[n.ID] = results[i]
+			if !skip[i] {
+				// Best effort: losing the record only costs asleep admission.
+				_ = r.remember(n.ID, results[i])
+			}
 			h := results[i].host
 			o.StorageContainers = append(o.StorageContainers, container(n, "available", "", now))
 			o.VMs = append(o.VMs, results[i].golden)

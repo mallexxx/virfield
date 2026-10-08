@@ -172,6 +172,9 @@ func run() error {
 			configured = append(configured, node)
 		}
 		nodes = baremetal.New(configured, baremetal.SSHDialer(signer))
+		if err := nodes.Persist(filepath.Join(cfg.StateDir, "nodes")); err != nil {
+			return err
+		}
 		backend = fleet.New(backend, nodes)
 	}
 	manager, err := control.New(db, backend, cfg.Templates, cfg.MaxVMs, log)
