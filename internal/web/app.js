@@ -94,6 +94,7 @@ async function connectWithToken(candidate) {
     el('console').hidden = false;
     el('nav').hidden = false;
     el('refresh').hidden = false;
+    el('disconnect').hidden = false;
     clearTimeout(pollTimer);
     pollTimer = setTimeout(poll, 3000);
     if (storageFailed) report(new Error('Connected, but the browser could not save the token. Check its storage/privacy settings.'));
@@ -404,6 +405,20 @@ el('connect').addEventListener('submit', async event => {
     return;
   }
   await connectWithToken(input.trim());
+});
+
+el('disconnect').addEventListener('click', () => {
+  clearTimeout(pollTimer);
+  try { localStorage.removeItem(tokenStorageKey); } catch (_) {}
+  token = '';
+  el('console').hidden = true;
+  el('nav').hidden = true;
+  el('refresh').hidden = true;
+  el('disconnect').hidden = true;
+  el('login').hidden = false;
+  el('login-error').hidden = true;
+  el('error').hidden = true;
+  setConnection('disconnected', '');
 });
 
 try {

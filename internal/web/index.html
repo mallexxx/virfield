@@ -18,6 +18,7 @@
     <div class="topbar-right">
       <button id="refresh" class="icon-button" title="Refresh" hidden>↻</button>
       <span id="connection" class="connection"><i></i> disconnected</span>
+      <button id="disconnect" type="button" hidden>Disconnect</button>
     </div>
   </header>
 
@@ -28,7 +29,7 @@
         <input id="token" type="password" autocomplete="off" required minlength="32" placeholder="API token">
         <button id="connect-button" class="primary">Connect</button>
       </form>
-      <p>The token is saved in this browser and restored automatically.</p>
+      <p>The token is saved in this browser and restored automatically. Disconnect to remove it.</p>
       <p id="login-error" class="login-error" role="alert" hidden></p>
     </section>
 
