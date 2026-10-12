@@ -324,10 +324,13 @@ installed separately; none are taken from the release author's machine.
    "$VIRFIELD_HOME/bin/virfield" -token-file "$VIRFIELD_HOME/token" status
    ```
 
-The console is at `http://127.0.0.1:7780`. Enter the deployment token locally;
-the browser retains it only in memory and clears the input after connection.
-Status reads the journal and last reconciler observation, not a new Lume request
-per browser poll. A cold or failed observation blocks admission.
+The console is at `http://127.0.0.1:7780`. Enter the deployment token locally.
+After a successful connection, the browser saves it in `localStorage` for this
+origin and restores it on reload; the password input is cleared. Use **Disconnect**
+to remove the saved token from this browser. Anyone with access to this browser
+profile can use that token, so disconnect on shared machines. Status reads the
+journal and last reconciler observation, not a new backend request per browser
+poll. A cold or failed observation blocks admission.
 
 ## System services
 
