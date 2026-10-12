@@ -158,6 +158,10 @@ type VM struct {
 	UnavailableReason string    `json:"unavailable_reason,omitempty"`
 	LastSeenAt        time.Time `json:"last_seen_at,omitempty"`
 	SSHAvailable      bool      `json:"ssh_available"`
+	// UITesting is a physical macOS boot volume's XCUITest readiness: ready,
+	// devtools_disabled, automation_mode_requires_auth or no_console_session.
+	// Empty when not reported.
+	UITesting string `json:"ui_testing,omitempty"`
 }
 
 func (v VM) Key() string    { return v.Location + "/" + v.Name }

@@ -126,6 +126,30 @@ it. Closing the lid still sleeps the Mac unless `pmset -a disablesleep 1`.
 On Catalina, if the Sharing pane hangs on "Remote Login starting…", start SSH
 with `sudo launchctl load -w /System/Library/LaunchDaemons/ssh.plist`.
 
+UI tests (XCUITest) on a macOS node need Developer Mode on that boot volume and
+Automation Mode that does not require authentication
+(`automationmodetool enable-automationmode-without-authentication`, present
+from macOS 12.6); otherwise testmanagerd asks for an admin password on the
+node's display and the run fails with "Timed out while enabling automation
+mode". This lets any process of that account drive the UI without a password,
+which is intended for a dedicated test node. Virfield has no sudo on nodes, so
+set both once per boot volume:
+
+```bash
+scp deploy/node-ui-testing.sh admin@192.168.1.79:
+ssh -t admin@192.168.1.79 'bash ~/node-ui-testing.sh'
+```
+
+Copy the script first: piped over stdin, sudo has no terminal to prompt on.
+Each boot volume presents its own host key (see above); a lease's generated
+`ssh-config` already pins the booted volume's key, so `ssh -t -F <config> virfield`
+works without editing `known_hosts`.
+
+The node account must also own the console session (log it in on the display,
+or enable automatic login). The probe reports the result on the node's
+pseudo-golden as `ui_testing`: `ready`, `devtools_disabled`,
+`automation_mode_requires_auth` or `no_console_session`.
+
 A lease authorizes the client key in `authorized_keys` (tagged
 `virfield-lease-<vm>`), creates `~/virfield/leases/<vm>/workspace`, and keeps
 the node awake (`caffeinate` on macOS, the `keep_awake_file` on Linux, removed

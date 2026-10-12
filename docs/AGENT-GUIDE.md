@@ -164,6 +164,12 @@ sandbox. Read the verification topic for the current live GHCR acceptance state.
    external running VMs. `capacity_exhausted` means stop acquiring and report the
    blockers. Broker owns queueing. TTL is 60–86400 seconds, starting at acceptance,
    not readiness; choose enough time for boot, execution and artifact export.
+   For UI tests (XCUITest) on a physical macOS node, require its pseudo-golden in
+   `virfield_status` to report `ui_testing: "ready"` before acquiring.
+   Any other value (`devtools_disabled`, `automation_mode_requires_auth`,
+   `no_console_session`) needs the one-time operator step
+   in Operations "Physical nodes"; report it instead of running tests that would
+   wait on a password prompt on the node's display.
 2. Generate a fresh Ed25519 identity outside Git for this lease. Save the private
    key locally and pass only its public key to `vm_acquire`. Save the returned
    lease/job IDs, request body and idempotency key in private workflow state.

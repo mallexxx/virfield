@@ -202,7 +202,7 @@ func (r *Runtime) probe(ctx context.Context, n Node, now time.Time) (probe, erro
 	resources := domain.Resources{CPU: p.cpu, MemoryBytes: p.memory}
 	h := r.host(n, "available", "", resources)
 	h.LastSeenAt = now
-	golden := domain.VM{Name: p.volume, Location: n.ID, Provider: providerName, HostID: n.ID, ContainerID: n.ID, OS: n.OS, State: "stopped", Resources: resources, LastSeenAt: now}
+	golden := domain.VM{Name: p.volume, Location: n.ID, Provider: providerName, HostID: n.ID, ContainerID: n.ID, OS: n.OS, State: "stopped", Resources: resources, LastSeenAt: now, UITesting: p.uiTesting}
 	return probe{golden: golden, host: h, leases: p.leases, goldens: p.goldens, vms: p.vms, ip: ip, at: now}, nil
 }
 
@@ -406,13 +406,18 @@ func command(script string, args ...string) string {
 func quote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'"'"'`) + "'" }
 
 type probeResult struct {
-	volume  string
-	cpu     int
-	memory  int64
-	leases  map[string]string
-	goldens map[string]bool
-	vms     map[string]vmRecord
+	volume    string
+	uiTesting string
+	cpu       int
+	memory    int64
+	leases    map[string]string
+	goldens   map[string]bool
+	vms       map[string]vmRecord
 }
+
+// uiTestingStates are the probe's XCUITest readiness values for a macOS
+// boot volume; see probeScript and OPERATIONS.md "Physical nodes".
+var uiTestingStates = map[string]bool{"ready": true, "devtools_disabled": true, "automation_mode_requires_auth": true, "no_console_session": true}
 
 var invalidName = regexp.MustCompile(`[^a-zA-Z0-9_.]+`)
 
@@ -432,6 +437,10 @@ func parseProbe(out string) (probeResult, error) {
 		switch key {
 		case "volume":
 			p.volume = normalizeVolume(value)
+		case "ui_testing":
+			if uiTestingStates[value] {
+				p.uiTesting = value
+			}
 		case "cpu":
 			p.cpu, _ = strconv.Atoi(value)
 		case "memory":

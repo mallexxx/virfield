@@ -6,7 +6,11 @@ package baremetal
 // touches only $HOME/virfield/leases/<vm> and authorized_keys lines tagged
 // "virfield-lease-<vm>", and is idempotent.
 
-// probeScript reports the booted environment and lease markers.
+// probeScript reports the booted environment and lease markers. On macOS it
+// also reports whether XCUITest can run unattended: Developer Mode
+// (DevToolsSecurity) must be enabled and Automation Mode must not require
+// authentication, or testmanagerd asks for an admin password on the console,
+// and the node account must own the console session.
 const probeScript = `set -eu
 if [ "$(uname -s)" = Darwin ]; then
   echo "version=$(sw_vers -productVersion)"
@@ -14,6 +18,15 @@ if [ "$(uname -s)" = Darwin ]; then
   echo "volume=$(diskutil info / | awk -F': *' '/Volume Name/ {print $2; exit}')"
   echo "cpu=$(sysctl -n hw.ncpu)"
   echo "memory=$(sysctl -n hw.memsize)"
+  if ! DevToolsSecurity -status 2>/dev/null | grep -q "currently enabled"; then
+    echo "ui_testing=devtools_disabled"
+  elif [ -x /usr/bin/automationmodetool ] && /usr/bin/automationmodetool 2>/dev/null | grep -q "requires user authentication"; then
+    echo "ui_testing=automation_mode_requires_auth"
+  elif [ "$(stat -f %Su /dev/console 2>/dev/null)" != "$(id -un)" ]; then
+    echo "ui_testing=no_console_session"
+  else
+    echo "ui_testing=ready"
+  fi
 else
   . /etc/os-release
   echo "version=${VERSION_ID:-}"

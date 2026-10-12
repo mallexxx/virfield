@@ -96,6 +96,26 @@ func vmNamed(o domain.Observation, name string) (domain.VM, bool) {
 	return domain.VM{}, false
 }
 
+func TestProbeReportsUITestingReadiness(t *testing.T) {
+	base := "volume=Monterey\ncpu=4\nmemory=17179869184\n"
+	for line, want := range map[string]string{
+		"ui_testing=ready":                         "ready",
+		"ui_testing=devtools_disabled":             "devtools_disabled",
+		"ui_testing=automation_mode_requires_auth": "automation_mode_requires_auth",
+		"ui_testing=no_console_session":            "no_console_session",
+		"ui_testing=bogus":                         "",
+		"":                                         "",
+	} {
+		p, err := parseProbe(base + line)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if p.uiTesting != want {
+			t.Fatalf("%q -> %q, want %q", line, p.uiTesting, want)
+		}
+	}
+}
+
 func TestNormalizeVolume(t *testing.T) {
 	for in, want := range map[string]string{"Big Sur": "Big-Sur", "Macintosh HD - Data": "Macintosh-HD-Data", "bazzite": "bazzite", " Monterey ": "Monterey"} {
 		if got := normalizeVolume(in); got != want {
