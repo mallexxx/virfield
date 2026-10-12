@@ -18,6 +18,14 @@ by Broker) then returned a verified inventory with `macos27` present and ready.
 The installed and built daemon SHA-256 values matched. This validates the
 Broker image-inventory contract; it is not a full Balda → Broker workload run.
 
+The final `main` build (`821636f`, daemon SHA-256
+`a993638e2f0af053333a5cff985f2d5ecb89ed8a55ee2859813d0ee272c3c727`) also
+contains the persistent-token and **Disconnect** console UX. The installed
+LaunchDaemon was gracefully restarted without sudo; launchd started PID `25015`
+and the live UI served the Disconnect control. A fresh status after restart
+reported no durable jobs and the pre-existing ready Broker lease still ready;
+its VM remained running. The update did not release or stop that lease.
+
 ## Tart image adoption (2026-10-07)
 
 The service ran with `runtime.provider = "tart"` (Tart 2.40.1, Packer 1.15.2,
