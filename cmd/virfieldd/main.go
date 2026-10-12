@@ -223,6 +223,15 @@ func run() error {
 	if err := manager.SetCloneLocations(cloneLocations, cfg.DefaultCloneLocation, cfg.FallbackCloneLocations); err != nil {
 		return err
 	}
+	// Image catalog metadata and installed-image inventory are also consumed by
+	// remote clients (notably Execution Broker) when images are built by Tart or
+	// a node provider. Keep the catalog available independently of Lume's
+	// optional image_tools builder.
+	imageLocations := make([]string, 0, len(cloneLocations))
+	for name := range cloneLocations {
+		imageLocations = append(imageLocations, name)
+	}
+	manager.SetImageCatalog(catalog.New(), imageLocations)
 	if cfg.ResourceLimits != nil && !remoteRuntime {
 		manager.SetResources(*cfg.ResourceLimits, func() (map[string]int64, error) { return hostresources.Disk(cfg.StoragePaths) })
 	}
@@ -270,11 +279,6 @@ func run() error {
 			}
 		}
 		imageBuilder = builder
-		locations := []string{}
-		for name := range cfg.StoragePaths {
-			locations = append(locations, name)
-		}
-		manager.SetImageCatalog(catalog.New(), locations)
 	}
 	if tartBackend != nil && cfg.Runtime.Tart.Image != nil {
 		homes := make(map[string]string, len(cfg.Runtime.Tart.Containers))

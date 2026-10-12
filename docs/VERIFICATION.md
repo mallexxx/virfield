@@ -2,9 +2,21 @@
 
 This is the current acceptance record and test runbook. It distinguishes the
 verified local host and image-tool deployment from the unaccepted full Balda
-workflow. Results were collected on Apple Silicon macOS through 2026-10-07 (timestamps UTC),
+workflow. Results were collected on Apple Silicon macOS through 2026-10-12 (timestamps UTC),
 using Go 1.26.8 and patched Lume 0.5.3. The full UI-test suite is verified on
 macOS 27 build `26A428`; versioned image coverage is recorded separately below.
+
+## Tart image catalog for Broker (2026-10-12)
+
+The live daemon used Tart and had `macos27` in `image_ready`. Before the fix,
+`GET /api/v1/images/catalog` returned HTTP 503 because catalog registration was
+inside the optional Lume `image_tools` setup. Registration now uses the
+configured clone locations for every runtime. After building and installing
+the daemon at `~/.virfield-v2/bin/virfieldd`, launchd restarted it on port 7780.
+The Virfield MCP catalog call (same `GET /api/v1/images/catalog` endpoint used
+by Broker) then returned a verified inventory with `macos27` present and ready.
+The installed and built daemon SHA-256 values matched. This validates the
+Broker image-inventory contract; it is not a full Balda → Broker workload run.
 
 ## Tart image adoption (2026-10-07)
 

@@ -39,6 +39,17 @@ Each Xcode entry also reports `local_state`: `available` (catalog metadata only)
 snapshot, not a promise that Apple will authorize a new download; the download
 stage rechecks archive integrity before installation.
 
+The catalog endpoint is registered for every configured runtime, including
+Tart and node-backed images; it is not gated by the legacy Lume `image_tools`
+configuration. Its `inventory` combines the fresh provider observation with
+configured image recipes and durable `image_ready` records. Broker uses
+`inventory.verified` and `configured_images[].ready` to select a worker image.
+Lume `image_tools` are still required only for the legacy Lume image builder.
+Tart image creation uses its separate digest-pinned `image.tart` recipe and
+Tart image builder. If public IPSW/Xcode metadata sources are unavailable, the
+catalog request still fails explicitly; this does not change the inventory's
+runtime readiness contract.
+
 Acceptance atomically persists the resolved manifest, template and build job in
 SQLite. Retrying an accepted request returns its original selection even if the
 catalog changes or is offline. The template survives daemon restart and appears
