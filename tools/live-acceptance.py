@@ -53,8 +53,14 @@ class Acceptance:
             request.add_header('Idempotency-Key', self.run_id + '-' + key)
             self.requests[key] = dict(path=path, body=body)
             self.save()  # Persist the replay key/body BEFORE dispatch.
-        with self.http.open(request, timeout=30) as response:
-            return json.load(response)
+        for attempt in range(3):
+            try:
+                with self.http.open(request, timeout=30) as response:
+                    return json.load(response)
+            except (TimeoutError, urllib.error.URLError):
+                if body is not None or attempt == 2:
+                    raise
+                time.sleep(5)
 
     def save(self):
         path = self.destination / 'journal.json'
@@ -85,33 +91,55 @@ class Acceptance:
             time.sleep(3)
         raise RuntimeError('Acceptance deadline: ' + lease_id)
 
-    def pair(self, template):
-        profiles = {t['id']: t for t in self.config['templates']}
+    def pair(self, template, sequential=False):
+        profiles = {t['id']: t for t in self.api('status')['templates']}
         selected = profiles[template]
         profile = selected['image']
         if 'tart' not in profile or selected.get('provider') not in (None, '', 'tart'):
             raise ValueError('This acceptance runner requires a configured Tart image')
         pair = []
-        try:
-            for i in range(2):
-                identity = self.destination / (template + '-' + str(i))
-                self.command(str(self.binary), 'keygen', str(identity))
-                request = dict(template=template, ttl_seconds=3600,
-                               ssh_public_key=(identity / 'id_ed25519.pub').read_text())
-                result = self.api('leases', request, template + '-acquire-' + str(i))
-                lease = result['lease']
-                if not lease['vm_name'].startswith('vf-') or lease.get('purpose') == 'image':
-                    raise RuntimeError('Unexpected disposable lease identity')
-                self.accepted.append(dict(id=lease['id'], vm_name=lease['vm_name'], template=template))
-                pair.append((lease, identity))
+        identities = []
+        host_keys = []
+        for i in range(2):
+            identity = self.destination / (template + '-' + str(i))
+            self.command(str(self.binary), 'keygen', str(identity))
+            identities.append(identity)
+
+        def acquire(i):
+            identity = identities[i]
+            request = dict(template=template, ttl_seconds=3600,
+                           ssh_public_key=(identity / 'id_ed25519.pub').read_text())
+            result = self.api('leases', request, template + '-acquire-' + str(i))
+            lease = result['lease']
+            if not lease['vm_name'].startswith('vf-') or lease.get('purpose') == 'image':
+                raise RuntimeError('Unexpected disposable lease identity')
+            self.accepted.append(dict(id=lease['id'], vm_name=lease['vm_name'], template=template))
+            pair.append((lease, identity))
+            self.save()
+            replay = self.api('leases', request, template + '-acquire-' + str(i))
+            if replay['lease']['id'] != lease['id']:
+                raise RuntimeError('Acquire replay created a new lease')
+
+        def release(lease):
+            current = self.api('leases/' + lease['id'])
+            if current['vm_name'] != lease['vm_name'] or current.get('purpose') == 'image':
+                raise RuntimeError('Cleanup identity changed; retaining journal')
+            if current['state'] != 'released':
+                self.api('leases/' + lease['id'] + '/release', {}, lease['id'] + '-release')
+                self.wait(lease['id'], 'released', timeout=600)
+                print(lease['id'] + ': released', flush=True)
                 self.save()
-                replay = self.api('leases', request, template + '-acquire-' + str(i))
-                if replay['lease']['id'] != lease['id']:
-                    raise RuntimeError('Acquire replay created a new lease')
-            ready = [(self.wait(l['id'], 'ready'), identity) for l, identity in pair]
-            if ready[0][0]['ssh']['host_key'] == ready[1][0]['ssh']['host_key']:
-                raise RuntimeError('Lease host keys are shared')
-            for lease, identity in ready:
+
+        try:
+            if not sequential:
+                for i in range(2):
+                    acquire(i)
+            for i in range(2):
+                if sequential:
+                    acquire(i)
+                initial, identity = pair[i]
+                lease = self.wait(initial['id'], 'ready')
+                host_keys.append(lease['ssh']['host_key'])
                 self.command(str(self.binary), '-url', self.base.removesuffix('/api/v1/'),
                              '-token-file', self.config['token_file'], 'ssh-config', lease['id'], str(identity))
                 ssh_config = str(identity / 'config')
@@ -121,7 +149,7 @@ class Acceptance:
                 if out != [profile['macos'], profile['build'], 'System Integrity Protection status: ' + sip + '.']:
                     raise RuntimeError('Guest OS/build/SIP mismatch')
                 # Cross-lease key must be rejected against the same host pin.
-                other = next(d for l, d in ready if l['id'] != lease['id'])
+                other = identities[1 - i]
                 bad_config = identity / 'wrong-key-config'
                 text = (identity / 'config').read_text().replace(str(identity / 'id_ed25519'), str(other / 'id_ed25519'))
                 with bad_config.open('w') as file:
@@ -143,22 +171,19 @@ class Acceptance:
                 if not banner.startswith(b'RFB '):
                     raise RuntimeError('Desktop protocol is not reachable')
                 self.results.append(dict(lease_id=lease['id'], template=template,
+                    mode='sequential' if sequential else 'concurrent',
                     guest_checked=True, cross_key_rejected=True, desktop_banner=banner.decode().strip(),
                     artifact_sha256=hashlib.sha256(artifact.read_bytes()).hexdigest()))
                 self.save()
+                if sequential:
+                    release(lease)
+            if host_keys[0] == host_keys[1]:
+                raise RuntimeError('Lease host keys are shared')
         finally:
             # Delete only IDs this script received from its own accepted requests.
             # Unknown/quarantined outcomes are retained for operator inspection.
             for lease, _ in pair:
-                current = self.api('leases/' + lease['id'])
-                if current['vm_name'] != lease['vm_name'] or current.get('purpose') == 'image':
-                    raise RuntimeError('Cleanup identity changed; retaining journal')
-                if current['state'] == 'released':
-                    continue
-                self.api('leases/' + lease['id'] + '/release', {}, lease['id'] + '-release')
-                self.wait(lease['id'], 'released', timeout=600)
-                print(lease['id'] + ': released', flush=True)
-                self.save()
+                release(lease)
 
 
 def main():
@@ -167,6 +192,7 @@ def main():
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--destination', type=Path, required=True)
     parser.add_argument('--approve-disposable-cleanup', action='store_true')
+    parser.add_argument('--sequential', action='store_true', help='Accept two successive clones when disk reserve prevents concurrent clones')
     parser.add_argument('templates', nargs='+')
     args = parser.parse_args()
     if not args.approve_disposable_cleanup:
@@ -176,7 +202,7 @@ def main():
     if status.get('jobs') or status['capacity']['used'] or any(l.get('purpose') != 'image' for l in status.get('leases', [])):
         raise RuntimeError('Acceptance requires an idle installed manager')
     for template in args.templates:
-        run.pair(template)
+        run.pair(template, sequential=args.sequential)
     print('Acceptance passed; private journal: ' + str(run.destination / 'journal.json'))
 
 

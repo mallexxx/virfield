@@ -22,7 +22,7 @@ drop() { grep -vx "$1" "$HOME/running" > "$HOME/running.t" 2>/dev/null; mv "$HOM
 drop_container() { grep -vx "$1" "$HOME/containers" > "$HOME/containers.t" 2>/dev/null; mv "$HOME/containers.t" "$HOME/containers" 2>/dev/null; true; }
 case "$1" in
   container) grep -qx "$3" "$HOME/containers" 2>/dev/null && exit 0; exit 1 ;;
-  inspect) grep -qx "$4" "$HOME/running" 2>/dev/null && echo true && exit 0; grep -qx "$4" "$HOME/containers" 2>/dev/null && echo false && exit 0; exit 125 ;;
+  inspect) case "$3" in *Config.Env*) printf 'CPU_CORES=4\nRAM_SIZE=8G\n'; exit 0;; esac; grep -qx "$4" "$HOME/running" 2>/dev/null && echo true && exit 0; grep -qx "$4" "$HOME/containers" 2>/dev/null && echo false && exit 0; exit 125 ;;
   run) [ "$2" = -d ] && [ "$3" = --name ] && { echo "$4" >> "$HOME/running"; echo "$4" >> "$HOME/containers"; } ;;
   stop) drop "$4" ;;
   kill) drop "$2" ;;
@@ -167,14 +167,14 @@ func TestVMProbeReportsGoldensAndVMs(t *testing.T) {
 	if err != nil {
 		t.Fatal(out, err)
 	}
-	if !strings.Contains(out, "vm=leases vf-aaaaaaaaaaaaaaaa running 22100 sonoma-secure 0\n") {
+	if !strings.Contains(out, "vm=leases vf-aaaaaaaaaaaaaaaa running 22100 sonoma-secure 0 4 8589934592 0\n") {
 		t.Fatal("guest SSH reported before its banner:", out)
 	}
 	if err := os.WriteFile(filepath.Join(home, "sshd"), []byte("22100\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	out, _ = runVMScript(t, home, bin, vmProbeLines, goldens)
-	for _, want := range []string{"golden=sonoma-secure\n", "golden=sequoia-secure\n", "vm=leases vf-aaaaaaaaaaaaaaaa running 22100 sonoma-secure 1\n", "vm=leases vf-bbbbbbbbbbbbbbbb stopped 22101 sonoma-secure 0\n", "vm=images htpc-sonoma stopped 22102 sonoma-secure 0\n"} {
+	for _, want := range []string{"golden=sonoma-secure 0\n", "golden=sequoia-secure 0\n", "vm=leases vf-aaaaaaaaaaaaaaaa running 22100 sonoma-secure 1 4 8589934592 0\n", "vm=leases vf-bbbbbbbbbbbbbbbb stopped 22101 sonoma-secure 0 0 0 0\n", "vm=images htpc-sonoma stopped 22102 sonoma-secure 0 0 0 0\n"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("missing %q in\n%s", want, out)
 		}
@@ -198,7 +198,7 @@ func TestVMCommitWritesAReadOnlyGolden(t *testing.T) {
 		t.Fatal(out, err)
 	}
 	info, err := os.Stat(filepath.Join(goldens, "htpc-sonoma.qcow2"))
-	if err != nil || info.Mode().Perm() != 0444 || read(t, filepath.Join(goldens, "htpc-sonoma.opencore.plist")) != "sonoma-bootstrap" {
+	if err != nil || info.Mode().Perm() != 0400 || read(t, filepath.Join(goldens, "htpc-sonoma.opencore.plist")) != "sonoma-bootstrap" {
 		t.Fatal("secured golden not written read-only with its OpenCore config", err)
 	}
 	if !strings.Contains(read(t, log), "convert -O qcow2 /src/data.qcow2 "+goldens+"/.htpc-sonoma.tmp") {

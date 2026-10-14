@@ -456,7 +456,7 @@ type execRunner struct {
 }
 
 func (r *execRunner) environment(home string, args []string) []string {
-	environment := append(os.Environ(), "TART_HOME="+home)
+	environment := append(os.Environ(), "TART_HOME="+home, "TART_NO_AUTO_PRUNE=1")
 	for host, credential := range r.credentials {
 		prefix := host + "/"
 		for _, argument := range args {
@@ -475,6 +475,9 @@ func (r *execRunner) environment(home string, args []string) []string {
 func (r *execRunner) Run(ctx context.Context, home string, args []string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, r.binary, args...)
 	cmd.Env = r.environment(home, args)
+	// A descendant may inherit stdout/stderr after the CLI exits. Bound the
+	// pipe drain so a timed-out inventory read cannot stall reconciliation.
+	cmd.WaitDelay = 2 * time.Second
 	var output limitedBuffer
 	cmd.Stdout = &output
 	cmd.Stderr = &output

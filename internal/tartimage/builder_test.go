@@ -33,6 +33,10 @@ type fakeRunner struct {
 func (r *fakeRunner) Run(_ context.Context, dir string, env []string, _ string, _ string, args ...string) error {
 	r.mu.Lock()
 	r.calls = append(r.calls, call{dir, env, args})
+	if len(args) == 0 || args[0] != "init" {
+		r.mu.Unlock()
+		return r.err
+	}
 	r.active++
 	if r.active > 1 {
 		r.overlap = true
@@ -132,7 +136,7 @@ func TestResolveVerifiesArchiveAndInitializesPinnedPlugin(t *testing.T) {
 	if err := b.Step(context.Background(), l, p, "resolve", noProgress); err != nil {
 		t.Fatal(err)
 	}
-	if len(runner.calls) != 1 || strings.Join(runner.calls[0].args, " ") != "init developer.pkr.hcl" {
+	if len(runner.calls) != 2 || strings.Join(runner.calls[0].args, " ") != "init developer.pkr.hcl" || strings.Join(runner.calls[1].args, " ") != "pull "+p.Tart.Upstream {
 		t.Fatal(runner.calls)
 	}
 	if digest, err := os.ReadFile(filepath.Join(b.config.StateDir, "images", l.ID, "recipe.sha256")); err != nil || string(digest) != RecipeDigest() {
@@ -152,7 +156,7 @@ func TestBuildPassesPinnedInputsAndScopedCredentials(t *testing.T) {
 	if err := b.Step(context.Background(), l, p, "build", noProgress); err != nil {
 		t.Fatal(err)
 	}
-	build := runner.calls[1]
+	build := runner.calls[2]
 	args := strings.Join(build.args, " ")
 	for _, want := range []string{"build", "-var base=" + p.Tart.Upstream, "-var vm_name=ventura-golden", "-var macos_build=22H420", "-var sip=disabled", "-var xcode_build=15C500b", "developer.pkr.hcl"} {
 		if !strings.Contains(args, want) {
@@ -227,7 +231,7 @@ func TestPluginInitializationIsSerialized(t *testing.T) {
 		}(lease)
 	}
 	wg.Wait()
-	if runner.overlap || len(runner.calls) != 2 {
+	if runner.overlap || len(runner.calls) != 4 {
 		t.Fatal("packer init ran concurrently", len(runner.calls))
 	}
 }
@@ -251,10 +255,10 @@ func TestUITestBuildUsesTheUITestRecipeFromThePinnedBase(t *testing.T) {
 	if err := b.Step(context.Background(), l, p, "build", noProgress); err != nil {
 		t.Fatal(err)
 	}
-	if len(runner.calls) != 2 {
+	if len(runner.calls) != 3 {
 		t.Fatal(len(runner.calls), runner.calls)
 	}
-	build := strings.Join(runner.calls[1].args, " ")
+	build := strings.Join(runner.calls[2].args, " ")
 	for _, want := range []string{"-var base=" + p.Tart.Upstream, "-var vm_name=ventura-golden", "-var macos_build=26A428", "uitest.pkr.hcl"} {
 		if !strings.Contains(build, want) {
 			t.Fatalf("uitest build lacks %q: %s", want, build)

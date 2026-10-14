@@ -2,7 +2,7 @@
 
 Current record, reconciled 2026-10-14. Accepted deployment: local Tart plus SSH
 nodes and Podman macOS lab VMs. Virfield switched to Tart on 2026-10-08. On 2026-10-14 the retired separate
-Lume LaunchDaemon was still running; its safe shutdown has not been performed.
+Lume LaunchDaemon was disabled and booted out after verifying empty inventory; its rollback files are preserved and port 7777 is closed.
 [Earlier Lume acceptance and release records](history/VERIFICATION-before-2026-10-14.md)
 are historical evidence, not current gates. Later passing tests do not invalidate
 newly reproduced defects below. Source, installed candidate and published release
@@ -10,8 +10,14 @@ are distinct artifacts.
 
 ## Candidate hardening (2026-10-14)
 
-Source changes are a new candidate; they are not yet installed or live accepted.
-The installed snapshot below remains a distinct older artifact.
+Candidate `09ad696` was installed on 2026-10-14 with the same Developer identity and
+Team ID E3R68ED529, preserving all five image-ready records. Local `make check`
+passed and six successive clones (two per configured Tart profile) passed pinned
+SSH, cross-key rejection, distinct host keys, exact OS/build/SIP, desktop, artifact
+export and confirmed release. Disk reserve correctly prevents two concurrent
+full-size disks on the external SSD; this run used sequential clones.
+The new node quota and source-prefetch changes are not yet installed or live accepted.
+The older service snapshot below is a dated checkpoint.
 
 | Audit defect | Candidate implementation and verification |
 |---|---|
@@ -24,10 +30,12 @@ The installed snapshot below remains a distinct older artifact.
 | Registry | Tart flat/ASIF manifest validation, pinned pull, fresh sanitized portable export and confirmed cleanup; fixtures and live public metadata |
 | Installer | Explicit Tart init, three-binary service generator, separate private state dir and optional browser; Go/Python tests |
 | Orchard readiness | Daemon now always requires per-lease SSH preparer; source-only remote templates fail admission before creation; remote image/access/live-pool acceptance remains absent |
-| Lume retirement | Runtime/factory/wrapper/patch/build/install code removed; implicit legacy runtime and image_tools rejected; old separate service still registered with empty VM inventory |
+| Lume retirement | Runtime/factory/wrapper/patch/build/install code removed; implicit legacy runtime and image_tools rejected; old separate service disabled/unloaded after empty inventory check |
 | Host identity collisions | Config and merged inventory reject overlapping primary/node host IDs; reproduced regression tests |
 | Image resource admission | A pending image build was reproduced bypassing worker CPU/RAM/disk admission; builds/exports now reserve before dispatch, count in quota and refuse unknown macOS 27 disk bounds; regression tests |
 | Node identity backup | Private management keys/probes included, unsupported files abort snapshot; backup fixtures |
+| Node resource/cache admission | Configurable per-node VM budgets, worker/build reservations, qcow2 virtual sizes and storage probes, post-wake clone/start/commit checks; regression tests; live acceptance pending |
+| Cold Tart transfer | First live factory attempt failed with Packer EOF during source transfer; journaled recovery deleted only its own failed record after process/inventory inspection. New candidate prefetches the pinned digest in retryable resolve and disables automatic cache pruning; roundtrip not yet accepted |
 | Go security | Minimum Go 1.26.9; govulncheck finds zero reachable or imported-package vulnerabilities |
 
 Pinned Staticcheck v0.7.0 passes. Govulncheck v1.6.0 has one module-only notice
@@ -64,20 +72,20 @@ revocation alongside SSH, cross-key/image-key rejection, workload and artifacts.
 
 ## Remaining release acceptance
 
-- Obtain exact-source CI and clean source packaging provenance; record resulting
+- Run exact-source local CI and clean source packaging provenance; remote CI is deferred by the operator; record resulting
   binary hashes and revision alongside the local passing gates.
-- Upgrade the installed entrypoint and accept the new candidate with disposable
-  Tart/node clones, pinned SSH, isolation, desktop/artifact export and cleanup.
+- Install the supplemental candidate and accept node resource policy with disposable
+  node clones; preserve the passing `09ad696` Tart clone evidence above.
 - Accept new factory/automation/download and GHCR publication with real rebuild,
-  push/pull-back/clone workload. The installed config has no push registry source;
-  publication acceptance needs an operator-approved repository and credentials.
-- Retire the separate old Lume service, preserving its configuration for rollback.
+  push/pull-back/clone workload. The operator authorized an existing GHCR identity
+  and new private `mallexxx/virfield-hardening-acceptance` package; a dedicated
+  source and temporary internal Tart container are configured. Acceptance is in progress.
 - Broader Orchard, v3, soak/crash/debug/disaster-recovery gates remain below and
   in the roadmap. They are not silently claimed by local unit tests.
 
 The candidate is not release accepted while these gates are outstanding.
 
-## Installed service snapshot (2026-10-14)
+## Service snapshot before upgrade (2026-10-14)
 
 The daemon on 127.0.0.1:7780 answers with Tart inventory, zero worker leases/jobs,
 five image_ready records and local 0/2 VM slots used. MacBook is offline and HTPC

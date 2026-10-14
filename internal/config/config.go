@@ -70,13 +70,15 @@ type Node struct {
 // node. Goldens are read-only qcow2 files in GoldensDir; each lease publishes
 // guest SSH on a port from PortBase, and image builds use the next Max ports.
 type NodeVMs struct {
-	Image      string `json:"image"`
-	GoldensDir string `json:"goldens_dir"`
-	PortBase   int    `json:"port_base"`
-	Max        int    `json:"max"`
-	CPU        int    `json:"cpu"`
-	MemoryGB   int    `json:"memory_gb"`
-	DiskSize   string `json:"disk_size"`
+	Image           string                 `json:"image"`
+	GoldensDir      string                 `json:"goldens_dir"`
+	PortBase        int                    `json:"port_base"`
+	Max             int                    `json:"max"`
+	CPU             int                    `json:"cpu"`
+	MemoryGB        int                    `json:"memory_gb"`
+	DiskSize        string                 `json:"disk_size"`
+	ResourceLimits  *domain.ResourceLimits `json:"resource_limits,omitempty"`
+	CacheLimitBytes int64                  `json:"cache_limit_bytes,omitempty"`
 }
 
 var (
@@ -102,6 +104,13 @@ func validateNodeVMs(n Node) error {
 		return fail("cpu must be at least 1 and memory_gb at least 4")
 	case !diskSize.MatchString(v.DiskSize):
 		return fail("disk_size must look like 100G")
+	}
+	size, err := strconv.ParseInt(strings.TrimSuffix(v.DiskSize, "G"), 10, 64)
+	if err != nil || size > 512 || v.CPU > 64 || v.MemoryGB > 256 || v.CacheLimitBytes < 0 {
+		return fail("CPU, memory, disk or cache limit is out of range")
+	}
+	if l := v.ResourceLimits; l != nil && (l.CPU < 1 || l.CPU > 1024 || l.MemoryBytes < 1 || l.MemoryBytes > 2<<40 || l.DiskReserveBytes < 1 || l.DiskReserveBytes > 512<<30) {
+		return fail("resource_limits requires bounded positive CPU, memory_bytes and disk_reserve_bytes")
 	}
 	return nil
 }

@@ -189,14 +189,15 @@ func (c Capacity) FullError() *Error {
 }
 
 type Status struct {
-	Resources            *ResourceStatus        `json:"resources,omitempty"`
-	ImageReservations    []ImageReservation     `json:"image_reservations,omitempty"`
-	Capacity             Capacity               `json:"capacity"`
-	Observation          Observation            `json:"observation"`
-	Leases               []Lease                `json:"leases"`
-	Jobs                 []Job                  `json:"jobs"`
-	Templates            []Template             `json:"templates"`
-	TemplateAvailability []TemplateAvailability `json:"template_availability,omitempty"`
+	Resources            *ResourceStatus           `json:"resources,omitempty"`
+	NodeResources        map[string]ResourceStatus `json:"node_resources,omitempty"`
+	ImageReservations    []ImageReservation        `json:"image_reservations,omitempty"`
+	Capacity             Capacity                  `json:"capacity"`
+	Observation          Observation               `json:"observation"`
+	Leases               []Lease                   `json:"leases"`
+	Jobs                 []Job                     `json:"jobs"`
+	Templates            []Template                `json:"templates"`
+	TemplateAvailability []TemplateAvailability    `json:"template_availability,omitempty"`
 }
 
 type Host struct {
@@ -234,6 +235,7 @@ type StorageContainer struct {
 	UnavailableReason string    `json:"unavailable_reason,omitempty"`
 	CapacityBytes     int64     `json:"capacity_bytes,omitempty"`
 	AvailableBytes    int64     `json:"available_bytes,omitempty"`
+	CacheBytes        int64     `json:"cache_bytes,omitempty"`
 	LastSeenAt        time.Time `json:"last_seen_at,omitempty"`
 }
 

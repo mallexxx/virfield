@@ -98,7 +98,8 @@ func (c *Controller) admitResources(ls []domain.Lease, t domain.Template, reques
 		if err != nil {
 			return domain.Resources{}, "", err
 		}
-		return domain.Resources{}, candidates[0], nil
+		resources, err := c.admitNodeResources(ls, t, false)
+		return resources, candidates[0], err
 	}
 	request := t.Resources
 	for _, v := range c.observation.VMs {

@@ -8,7 +8,7 @@ queues, commands, runs, approvals and workload artifacts.
 
 `main` in this repository is the only maintained source. The earlier
 `virfield-v3` worktree/branch is obsolete. Virfield switched to Tart on
-2026-10-08; the runtime/factory/wrapper/build/install Lume code is removed from the current candidate. A separate old LaunchDaemon still runs on the host with empty VM inventory. Current release gates are tracked
+2026-10-08; the runtime/factory/wrapper/build/install Lume code is removed. The separate old LaunchDaemon was disabled and booted out on 2026-10-14, with rollback files preserved. Current release gates are tracked
 in [Verification](docs/VERIFICATION.md); old Lume runbooks are archived, not
 installation instructions for the current product.
 

@@ -30,6 +30,7 @@ type Controller struct {
 	// dialDesktop replaces desktop dialing in tests.
 	dialDesktop            func(context.Context, domain.Lease) (net.Conn, error)
 	resourceLimits         *domain.ResourceLimits
+	nodeResourcePolicies   map[string]NodeResourcePolicy
 	resourceProbe          ResourceProbe
 	diskAvailable          map[string]int64
 	resourceError          string
@@ -360,7 +361,29 @@ func (c *Controller) Status(ctx context.Context) (domain.Status, error) {
 		}
 		availability = append(availability, state)
 	}
-	return domain.Status{Resources: resources, ImageReservations: reservations, Capacity: capacity, Observation: o, Leases: ls, Jobs: js, Templates: ts, TemplateAvailability: availability}, nil
+	nodeResources := map[string]domain.ResourceStatus{}
+	o.Hosts = append([]domain.Host(nil), o.Hosts...)
+	for location := range c.nodeResourcePolicies {
+		report, _, err := c.nodeResourceUsage(ls, location)
+		if err != nil {
+			report.Error = err.Error()
+		}
+		nodeResources[location] = report
+		for i, h := range o.Hosts {
+			if h.ID != location {
+				continue
+			}
+			h.Capacity.Allocatable = domain.Resources{CPU: report.Limits.CPU, MemoryBytes: max(0, report.Limits.MemoryBytes)}
+			h.Capacity.Allocated = report.Reserved
+			h.Capacity.MemoryReserveBytes = max(0, h.Capacity.Total.MemoryBytes-report.Limits.MemoryBytes)
+			h.Capacity.Available = domain.Resources{}
+			if h.Availability == "available" && report.Error == "" {
+				h.Capacity.Available = domain.Resources{CPU: max(0, report.Limits.CPU-report.Reserved.CPU), MemoryBytes: max(0, report.Limits.MemoryBytes-report.Reserved.MemoryBytes), DiskBytes: max(0, report.DiskAvailable[location]-report.Reserved.DiskBytes-report.Limits.DiskReserveBytes)}
+			}
+			o.Hosts[i] = h
+		}
+	}
+	return domain.Status{Resources: resources, NodeResources: nodeResources, ImageReservations: reservations, Capacity: capacity, Observation: o, Leases: ls, Jobs: js, Templates: ts, TemplateAvailability: availability}, nil
 }
 func (c *Controller) Acquire(ctx context.Context, key string, r domain.AcquireRequest) (domain.Operation, error) {
 	return c.AcquireAs(ctx, key, r, "")

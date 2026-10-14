@@ -44,13 +44,15 @@ type dialer func(ctx context.Context, n Node) (session, error)
 
 // probe is the last successful observation of one node.
 type probe struct {
-	golden  domain.VM
-	host    domain.Host
-	leases  map[string]string
-	goldens map[string]bool
-	vms     map[string]vmRecord
-	ip      string
-	at      time.Time
+	golden      domain.VM
+	host        domain.Host
+	leases      map[string]string
+	goldens     map[string]bool
+	goldenDisks map[string]int64
+	storage     domain.StorageContainer
+	vms         map[string]vmRecord
+	ip          string
+	at          time.Time
 }
 
 type Runtime struct {
@@ -135,7 +137,7 @@ func (r *Runtime) Observe(ctx context.Context) (domain.Observation, error) {
 				_ = r.remember(n.ID, results[i])
 			}
 			h := results[i].host
-			o.StorageContainers = append(o.StorageContainers, container(n, "available", "", now))
+			o.StorageContainers = append(o.StorageContainers, results[i].storage)
 			o.VMs = append(o.VMs, results[i].golden)
 			o.VMs = append(o.VMs, leaseVMs(n, results[i], true, &h.Capacity.UsedVMs)...)
 			o.VMs = append(o.VMs, vmObservations(n, results[i], true, &h.Capacity.UsedVMs)...)
@@ -156,11 +158,15 @@ func (r *Runtime) Observe(ctx context.Context) (domain.Observation, error) {
 		h := r.host(n, "unavailable", reason, cached.host.Capacity.Total)
 		h.LastSeenAt = cached.at
 		if known && n.WakeMAC != "" {
-			o.StorageContainers = append(o.StorageContainers, container(n, "available", "", cached.at))
-			o.VMs = append(o.VMs, cached.golden)
-			for name := range cached.goldens {
-				o.VMs = append(o.VMs, domain.VM{Name: name, Location: n.ID, Provider: providerName, HostID: n.ID, ContainerID: n.ID, OS: "macOS", State: "stopped", LastSeenAt: cached.at})
+			storage := cached.storage
+			if storage.ID == "" {
+				storage = container(n, "available", "", cached.at)
 			}
+			o.StorageContainers = append(o.StorageContainers, storage)
+			o.VMs = append(o.VMs, cached.golden)
+			goldens := cached
+			goldens.vms = nil
+			o.VMs = append(o.VMs, vmObservations(n, goldens, false, new(int))...)
 		} else {
 			o.StorageContainers = append(o.StorageContainers, container(n, "unavailable", reason, cached.at))
 		}
@@ -186,7 +192,7 @@ func (r *Runtime) probe(ctx context.Context, n Node, now time.Time) (probe, erro
 	defer s.Close()
 	script := command(probeScript)
 	if n.VMs != nil {
-		script = command(probeScript+vmProbeLines, n.VMs.GoldensDir)
+		script = command(probeScript+vmProbeLines, n.VMs.GoldensDir, strconv.Itoa(n.VMs.CPU), strconv.FormatInt(int64(n.VMs.MemoryGB)<<30, 10))
 	}
 	out, err := s.Run(ctx, script, "")
 	if err != nil {
@@ -204,7 +210,9 @@ func (r *Runtime) probe(ctx context.Context, n Node, now time.Time) (probe, erro
 	h := r.host(n, "available", "", resources)
 	h.LastSeenAt = now
 	golden := domain.VM{Name: p.volume, Location: n.ID, Provider: providerName, HostID: n.ID, ContainerID: n.ID, OS: n.OS, State: "stopped", Resources: resources, LastSeenAt: now, UITesting: p.uiTesting}
-	return probe{golden: golden, host: h, leases: p.leases, goldens: p.goldens, vms: p.vms, ip: ip, at: now}, nil
+	storage := container(n, "available", "", now)
+	storage.CapacityBytes, storage.AvailableBytes, storage.CacheBytes = p.diskCapacity, p.diskAvailable, p.cacheBytes
+	return probe{golden: golden, host: h, leases: p.leases, goldens: p.goldens, goldenDisks: p.goldenDisks, storage: storage, vms: p.vms, ip: ip, at: now}, nil
 }
 
 func (r *Runtime) host(n Node, availability, reason string, total domain.Resources) domain.Host {
@@ -283,6 +291,9 @@ func (r *Runtime) Start(ctx context.Context, l domain.Lease) error {
 	}
 	if l.ImageID != "" {
 		if err := vmLeaseName(l); err != nil {
+			return err
+		}
+		if err := r.checkVMResources(ctx, n, l, "", false); err != nil {
 			return err
 		}
 		return r.startVM(ctx, n, "leases", l.VMName, "0.0.0.0", true)
@@ -425,13 +436,15 @@ func command(script string, args ...string) string {
 func quote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'"'"'`) + "'" }
 
 type probeResult struct {
-	volume    string
-	uiTesting string
-	cpu       int
-	memory    int64
-	leases    map[string]string
-	goldens   map[string]bool
-	vms       map[string]vmRecord
+	volume                                  string
+	uiTesting                               string
+	cpu                                     int
+	memory                                  int64
+	leases                                  map[string]string
+	goldens                                 map[string]bool
+	goldenDisks                             map[string]int64
+	diskCapacity, diskAvailable, cacheBytes int64
+	vms                                     map[string]vmRecord
 }
 
 // uiTestingStates are the probe's XCUITest readiness values for a macOS
@@ -447,7 +460,7 @@ func normalizeVolume(v string) string {
 }
 
 func parseProbe(out string) (probeResult, error) {
-	p := probeResult{leases: map[string]string{}, goldens: map[string]bool{}, vms: map[string]vmRecord{}}
+	p := probeResult{leases: map[string]string{}, goldens: map[string]bool{}, goldenDisks: map[string]int64{}, vms: map[string]vmRecord{}}
 	for _, line := range strings.Split(out, "\n") {
 		key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
 		if !ok {
@@ -465,9 +478,19 @@ func parseProbe(out string) (probeResult, error) {
 		case "memory":
 			p.memory, _ = strconv.ParseInt(value, 10, 64)
 		case "golden":
-			if domain.ValidName(value) {
-				p.goldens[value] = true
+			fields := strings.Fields(value)
+			if len(fields) > 0 && domain.ValidName(fields[0]) {
+				p.goldens[fields[0]] = true
+				if len(fields) == 2 {
+					p.goldenDisks[fields[0]], _ = strconv.ParseInt(fields[1], 10, 64)
+				}
 			}
+		case "disk_capacity":
+			p.diskCapacity, _ = strconv.ParseInt(value, 10, 64)
+		case "disk_available":
+			p.diskAvailable, _ = strconv.ParseInt(value, 10, 64)
+		case "cache_bytes":
+			p.cacheBytes, _ = strconv.ParseInt(value, 10, 64)
 		case "vm":
 			if name, rec, ok := parseVMLine(value); ok {
 				p.vms[name] = rec

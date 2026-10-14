@@ -10,7 +10,10 @@ import (
 // Reserve before the resolve/build dispatch, including portable publication.
 func (c *Controller) admitImageResources(ls []domain.Lease, t domain.Template) (domain.Resources, error) {
 	r := t.Resources
-	if c.secondaryProvider(t.Provider) || c.resourceLimits == nil {
+	if c.secondaryProvider(t.Provider) {
+		return c.admitNodeResources(ls, t, true)
+	}
+	if c.resourceLimits == nil {
 		return r, nil
 	}
 	if t.Image != nil && t.Image.Tart != nil {

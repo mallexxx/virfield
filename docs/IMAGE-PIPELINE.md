@@ -47,7 +47,10 @@ the worker quota. A new macOS 27 base requires an operator `disk_bytes` bound in
 that exact upstream. Unknown disk size is rejected before building; there is no
 client-controlled quota bypass.
 
-Tart stages are `resolve → build → qualify → stop`. Qualification rotates private
+Tart stages are `resolve → build → qualify → stop`. Resolve downloads the pinned
+upstream into the selected container before any Packer VM build, with automatic
+cache pruning disabled. A failed source download can retry resolve without replaying
+a VM mutation. Qualification rotates private
 credentials, reboots and verifies exact OS/build, SIP, desktop, disk state,
 password persistence and, for Xcode profiles, signature/version/first launch/Swift
 and DeviceSupport. Base profiles do not require Xcode or host DeviceSupport.

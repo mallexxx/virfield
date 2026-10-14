@@ -13,6 +13,8 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -166,7 +168,7 @@ func run() error {
 				node.WakeMAC, node.WakeBroadcast = n.WakeOnLAN.MAC, n.WakeOnLAN.Broadcast
 			}
 			if v := n.VMs; v != nil {
-				node.VMs = &baremetal.VMConfig{Image: v.Image, GoldensDir: v.GoldensDir, DiskSize: v.DiskSize, PortBase: v.PortBase, Max: v.Max, CPU: v.CPU, MemoryGB: v.MemoryGB}
+				node.VMs = &baremetal.VMConfig{Image: v.Image, GoldensDir: v.GoldensDir, DiskSize: v.DiskSize, PortBase: v.PortBase, Max: v.Max, CPU: v.CPU, MemoryGB: v.MemoryGB, ResourceLimits: v.ResourceLimits, CacheLimitBytes: v.CacheLimitBytes}
 			}
 			configured = append(configured, node)
 		}
@@ -181,6 +183,14 @@ func run() error {
 		return err
 	}
 	remoteRuntime := cfg.Runtime != nil && cfg.Runtime.Provider == "orchard"
+	nodePolicies := map[string]control.NodeResourcePolicy{}
+	for _, node := range cfg.Runtime.Nodes {
+		if v := node.VMs; v != nil {
+			size, _ := strconv.ParseInt(strings.TrimSuffix(v.DiskSize, "G"), 10, 64)
+			nodePolicies[node.ID] = control.NodeResourcePolicy{Limits: v.ResourceLimits, VMResources: domain.Resources{CPU: v.CPU, MemoryBytes: int64(v.MemoryGB) << 30, DiskBytes: size << 30}, CacheLimitBytes: v.CacheLimitBytes}
+		}
+	}
+	manager.SetNodeResources(nodePolicies)
 	if cfg.ResourceLimits == nil && cfg.Runtime != nil && cfg.Runtime.Provider == "tart" {
 		memory, err := hostresources.Memory()
 		if err != nil {

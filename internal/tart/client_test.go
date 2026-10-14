@@ -16,6 +16,20 @@ import (
 	"github.com/mallexxx/virfield/internal/domain"
 )
 
+func TestCLIOutputDrainIsBoundedWhenAChildKeepsPipesOpen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "tart-test")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\nsleep 5 &\nexit 0\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	r := &execRunner{binary: path}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_, err := r.Run(ctx, t.TempDir(), []string{"list", "--format", "json"})
+	if !errors.Is(err, exec.ErrWaitDelay) {
+		t.Fatal("Inherited output pipes were not bounded", err)
+	}
+}
+
 type fakeRunner struct {
 	responses map[string]string
 	calls     []string

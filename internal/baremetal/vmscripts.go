@@ -116,28 +116,50 @@ out="$3/$2.qcow2"
 podman run --rm --entrypoint qemu-img -v "$3:$3:z" -v "$d/storage:/src:ro,Z" "$4" convert -O qcow2 /src/data.qcow2 "$3/.$2.tmp"
 mv "$3/.$2.tmp" "$out"
 cp "$3/$(cat "$d/golden").opencore.plist" "$3/$2.opencore.plist"
-chmod 444 "$out" "$3/$2.opencore.plist"
+chmod 400 "$out" "$3/$2.opencore.plist"
 rm -rf "$d"
 `
 
 // vmProbeLines lists goldens and VM folders with $1 the goldens directory.
 // The port forward accepts TCP before the guest boots, so a running VM's SSH
 // counts only once the guest's banner is read through the node loopback.
-const vmProbeLines = `for f in "$1"/*.qcow2; do
-  [ -f "$f" ] && echo "golden=$(basename "$f" .qcow2)"
+const vmProbeLines = `
+vf_disk_size() {
+  [ -f "$1" ] && [ "$(od -An -tx1 -N4 "$1" | tr -d ' \n')" = 514649fb ] || { echo 0; return; }
+  od -An -tu1 -j24 -N8 "$1" | awk '{for(i=1;i<=NF;i++){n=n*256+$i;c++}} END {printf "%.0f\n",(c==8 && n<=549755813888)?n:0}'
+}
+df -Pk "$HOME/virfield" "$1" | awk 'NR>1 {if(!n || $2<c)c=$2; if(!n || $4<a)a=$4; n++} END {printf "disk_capacity=%.0f\ndisk_available=%.0f\n",c*1024,a*1024}'
+echo "cache_bytes=$(( $(du -sk "$1" | awk '{print $1}') * 1024 ))"
+for f in "$1"/*.qcow2; do
+  [ -f "$f" ] && echo "golden=$(basename "$f" .qcow2) $(vf_disk_size "$f")"
 done
 for s in leases images; do
   for d in "$HOME"/virfield/$s/*/; do
     [ -f "$d/kind" ] || continue
     n=$(basename "$d")
     st=stopped
-    podman inspect -f '{{.State.Running}}' "virfield-$n" 2>/dev/null | grep -qx true && st=running
+    exists=0
+    podman container exists "virfield-$n" || exists=$?
+    case "$exists" in
+      0) running=$(podman inspect -f '{{.State.Running}}' "virfield-$n")
+         case "$running" in true) st=running;; false) ;; *) echo 'Invalid container state' >&2; exit 3;; esac ;;
+      1) ;;
+      *) echo 'Container observation failed' >&2; exit "$exists" ;;
+    esac
     p=$(cat "$d/port")
+    cpu=${2:-0}
+    memory=${3:-0}
+    if [ "$st" = running ]; then
+      env=$(podman inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "virfield-$n")
+      cpu=$(printf '%s\n' "$env" | awk -F= '$1=="CPU_CORES" {print $2}')
+      gb=$(printf '%s\n' "$env" | awk -F= '$1=="RAM_SIZE" {sub(/G$/,"",$2); print $2}')
+      case "$gb" in ''|*[!0-9]*) memory=0;; *) memory=$((gb * 1024 * 1024 * 1024));; esac
+    fi
     ssh=0
     if [ "$st" = running ] && timeout 3 bash -c "exec 3<>/dev/tcp/127.0.0.1/$p && head -c 4 <&3" 2>/dev/null | grep -q '^SSH-'; then
       ssh=1
     fi
-    echo "vm=$s $n $st $p $(cat "$d/golden") $ssh"
+    echo "vm=$s $n $st $p $(cat "$d/golden") $ssh ${cpu:-0} $memory $(vf_disk_size "$d/storage/data.qcow2")"
   done
 done
 true

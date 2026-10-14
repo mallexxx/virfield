@@ -1,9 +1,9 @@
 # Virfield 3.0 implementation plan
 
 Delivery state reconciled 2026-10-14. `main` is the maintained source. The live
-runtime is Tart plus SSH nodes; Virfield switched away from Lume on 2026-10-08; a separate retired Lume
-LaunchDaemon remains running. Source/factory/wrapper/build/install retirement is implemented in the candidate;
-only the separate host service still needs retirement. This roadmap does not claim
+runtime is Tart plus SSH nodes; Virfield switched away from Lume on 2026-10-08.
+Source/factory/wrapper/build/install retirement is implemented; the separate old
+LaunchDaemon was disabled and booted out on 2026-10-14. This roadmap does not claim
 that all 3.0 components are implemented or required as independent processes.
 [Verification](VERIFICATION.md) owns defects and actual release acceptance.
 The [original detailed design](history/VIRFIELD-3-PLAN-before-2026-10-14.md)
@@ -31,8 +31,9 @@ Screen Sharing for VM leases are implemented and have dated live acceptance.
 The R1–R3 specs describe these completed slices, not the full Phase 2 target.
 
 Host exclusivity, shared sleep holds and node cleanup are fixed with regression tests.
-Remaining: configurable node resource admission,
-node-agent with signed inventory/heartbeats, same-L2 WoL relay, durable power
+Configurable node CPU/RAM/disk admission and image-cache quotas are implemented in
+the new candidate, with durable reservations and post-wake resource checks; live acceptance pending.
+Remaining: node-agent with signed inventory/heartbeats, same-L2 WoL relay, durable power
 intents and connection grants/connectors. Browser noVNC and physical-host desktop
 are not implemented. The Intel Mac has no accepted WoL capability; the original
 sleeping-Intel-Mac desktop/debug exit gate is not met.
@@ -57,10 +58,10 @@ Generated VS Code workspaces and v1 Broker remain current contracts.
 
 Required: exact-SHA CI/security/clean archive; current-client and production
 entrypoint acceptance; provider/Control restart matrix; host loss, partition,
-full disk, drain and soak; node resource/cache quotas; metrics/alerts; signed
+full disk, drain and soak; node resource/cache quota live acceptance; metrics/alerts; signed
 artifact evidence, promotion/revocation; backup/restore and upgrade/rollback.
 Lume runtime/factory/wrapper/patch/build paths are removed; retiring the separate
-old host service remains an operational gate. Do not fabricate acceptance or weaken readiness to complete a gate.
+old host service is disabled. Do not fabricate acceptance or weaken readiness to complete a gate.
 
 ## Execution records
 

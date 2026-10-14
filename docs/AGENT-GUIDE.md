@@ -52,7 +52,7 @@ letters, digits, `_`, `.` or `-`. `ID` placeholders below are not interchangeabl
 | `image_build` | `{"id":"TEMPLATE_ID","idempotency_key":"NEW_KEY"}` | Build an absent VM from its registered profile; poll `job.id` |
 | `vm_acquire` | `{"template":"TEMPLATE_ID","ttl_seconds":3600,"ssh_public_key":"ssh-ed25519 PUBLIC_KEY","destination_location":"fast","idempotency_key":"NEW_KEY"}` | Durable operation; `destination_location` is optional and strict; omission uses configured clone storage fallback order |
 | `virfield_job` | `{"id":"JOB_ID"}` | Job state, phase, progress, deadline and error |
-| `image_apple_auth` | `{"id":"JOB_ID"}` | Legacy download authorization; not yet connected to the Tart builder |
+| `image_apple_auth` | `{"id":"JOB_ID"}` | Local Apple sign-in for the exact failed Tart Xcode resolve job; no credentials in tool arguments |
 | `vm_lease` | `{"id":"LEASE_OR_IMAGE_RECORD_ID"}` | Durable record; a ready worker includes `ip`, `ssh`, `expires_at` |
 | `virfield_events` | `{"after":0,"lease_id":"LEASE_OR_IMAGE_RECORD_ID"}`; both optional | Ordered events and `next_cursor`; persist cursor after processing |
 | `vm_renew` | `{"id":"LEASE_ID","expires_at":"ABSOLUTE_RFC3339_TIMESTAMP"}` | Updated lease; deadline must be in the future, at most 24 hours ahead |
@@ -73,11 +73,13 @@ policy to a configured Tart or node profile. Use `image_build` only for an absen
 configured golden, preserving its idempotency key, and require job succeeded plus
 image_ready before leasing. Do not run work on the golden itself.
 
-The catalog is metadata/inventory, not proof that image_create works on the current
-runtime. Its IPSW resolver and legacy registry/auth tools are not yet a Tart
-factory. Report an unmatched profile to the operator; never silently substitute
-versions, copy a private golden to a registry, or invoke a runtime around the
-journal. Image construction and recovery contracts are in the images topic.
+`image_create` resolves exact macOS/build/SIP from operator-approved digest-pinned
+Tart bases, with optional exact Xcode. Resolve verifies the XIP and pulls the pinned
+source into the configured cache before Packer builds. A catalog entry alone
+does not establish live acceptance. Report an unmatched profile to the operator;
+never silently substitute versions, copy a private golden to a registry, or
+invoke a runtime around the journal. Image construction, native Apple sign-in,
+sanitized publication and recovery contracts are in the images topic.
 
 ## Acquire, execute and collect results
 

@@ -12,8 +12,10 @@ type ResourceLimits struct {
 	DiskReserveBytes int64 `json:"disk_reserve_bytes"`
 }
 type ResourceStatus struct {
-	Limits        ResourceLimits   `json:"limits"`
-	Reserved      Resources        `json:"reserved"`
-	DiskAvailable map[string]int64 `json:"disk_available_bytes"`
-	Error         string           `json:"error,omitempty"`
+	Limits          ResourceLimits   `json:"limits"`
+	Reserved        Resources        `json:"reserved"`
+	DiskAvailable   map[string]int64 `json:"disk_available_bytes"`
+	Error           string           `json:"error,omitempty"`
+	CacheBytes      int64            `json:"cache_bytes,omitempty"`
+	CacheLimitBytes int64            `json:"cache_limit_bytes,omitempty"`
 }

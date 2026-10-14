@@ -121,6 +121,19 @@ func (b *Builder) resolve(ctx context.Context, l domain.Lease, p domain.ImagePro
 	if err != nil {
 		return domain.Err("image_command_failed", "Packer plugin initialization failed; inspect the private packer-init log")
 	}
+	// Keep remote transfer in the replayable resolve stage. Packer receives a
+	// digest already present in this container and only performs the VM build.
+	credentials, err := b.registryEnvFor(p)
+	if err != nil {
+		return err
+	}
+	if err := progress("Pulling the pinned Tart source into the configured cache"); err != nil {
+		return err
+	}
+	env := append([]string{"TART_HOME=" + b.config.Homes[l.Location], "TART_NO_AUTO_PRUNE=1"}, credentials...)
+	if err := b.run.Run(ctx, folder, env, filepath.Join(folder, "tart-pull.log"), b.config.TartBinary, "pull", p.Tart.Upstream); err != nil {
+		return domain.Err("image_download_failed", "Pinned Tart source download failed; inspect private tart-pull.log and retry this resolve job")
+	}
 	return nil
 }
 
@@ -227,7 +240,7 @@ func (b *Builder) registryEnv(ref string) []string {
 }
 
 func (b *Builder) packer(ctx context.Context, l domain.Lease, env []string, log string, args ...string) error {
-	base := []string{"CHECKPOINT_DISABLE=1", "PACKER_PLUGIN_PATH=" + filepath.Join(b.config.StateDir, "packer-plugins")}
+	base := []string{"CHECKPOINT_DISABLE=1", "TART_NO_AUTO_PRUNE=1", "PACKER_PLUGIN_PATH=" + filepath.Join(b.config.StateDir, "packer-plugins")}
 	if b.config.TartBinary != "" {
 		base = append(base, "PATH="+filepath.Dir(b.config.TartBinary)+":"+os.Getenv("PATH"))
 	}

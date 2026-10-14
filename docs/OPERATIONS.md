@@ -1,7 +1,8 @@
 # Operations
 
-This runbook describes current Tart + SSH nodes. Virfield does not use Lume, but a leftover separate Lume LaunchDaemon still
-runs on the host; [historical Lume operations](history/OPERATIONS-before-2026-10-14.md)
+This runbook describes current Tart + SSH nodes. Virfield does not use Lume; the
+separate old LaunchDaemon was disabled and booted out on 2026-10-14, its rollback files preserved.
+[Historical Lume operations](history/OPERATIONS-before-2026-10-14.md)
 are archived. Current defects and acceptance limits are in
 [Verification](VERIFICATION.md). Orchard is not deployment-ready.
 
@@ -145,7 +146,7 @@ and `/dev/net/tun`.
   its SSH on the node loopback only, rotates the password, installs the
   management key, turns password SSH off and sets auto-login, verifies
   version, SIP, desktop and password after a reboot, and commits the clone as
-  `<goldens_dir>/<template>.qcow2` (mode 0444). Rebuilding needs a new
+  `<goldens_dir>/<template>.qcow2` (owner-only read mode 0400). Rebuilding needs a new
   template name. Unused node goldens are deleted through the exact-name image operation,
   retaining provider routing; an existing backing overlay blocks deletion.
 - **Leases** of that template clone a qcow2 overlay into
@@ -332,9 +333,19 @@ operator/user authorization and exact-name confirmation.
 
 Tart resource admission counts external VMs and reservations, including full
 potential disk growth. A strict explicit clone destination never falls back.
-Nodes have separate slots and exclusive host reservations. VM slots and shared
-sleep holds are enforced; configurable node CPU/memory/disk reserve policy and
-cache quotas remain roadmap work.
+Nodes have separate slots and exclusive host reservations. Node VM budgets reserve
+CPU/RAM and full potential disk growth for workers and unfinished image builds.
+The default budget is the observed CPU count, RAM minus 4 GiB and a 20 GiB disk
+reserve. Override it through `runtime.nodes[].vms.resource_limits` with positive
+`cpu`, `memory_bytes` (allocatable budget), `disk_reserve_bytes`; limits are bounded
+by observed hardware. `vms.cache_limit_bytes` optionally caps the physical golden
+cache plus full potential sizes of pending image builds; zero leaves it uncapped.
+No images are pruned automatically. The probe reads qcow2 virtual sizes and free
+space on both golden and overlay storage; unavailable metrics refuse admission.
+Clone/start/commit recheck after wake. Status exposes separate `node_resources`.
+Existing probe records need a successful new observation before VM admission.
+These are VM reservations; physical-account workloads are not CPU/RAM sandboxed.
+The implementation is in the new source candidate; live node acceptance is pending.
 
 Backup snapshots SQLite, config, the owner-token hash and image credentials into
 an owner-only directory; five complete snapshots are retained. VM disks are not
