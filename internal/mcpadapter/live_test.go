@@ -35,9 +35,19 @@ func TestLiveInstalledMCP(t *testing.T) {
 			t.Fatal(err)
 		}
 		list, err := session.ListTools(ctx, nil)
-		if err != nil || len(list.Tools) != 17 {
+		if err != nil {
 			session.Close()
 			t.Fatal("MCP tool discovery failed", err)
+		}
+		available := map[string]bool{}
+		for _, tool := range list.Tools {
+			available[tool.Name] = true
+		}
+		for _, name := range []string{"virfield_help", "virfield_status", "vm_acquire", "vm_lease", "vm_release", "vm_tunnel", "virfield_job", "image_create", "image_pull", "image_publish"} {
+			if !available[name] {
+				session.Close()
+				t.Fatalf("Required MCP tool missing: %s", name)
+			}
 		}
 		help, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "virfield_help", Arguments: map[string]any{}})
 		if err != nil || help.IsError || len(help.Content) == 0 {

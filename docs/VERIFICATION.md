@@ -16,8 +16,12 @@ passed and six successive clones (two per configured Tart profile) passed pinned
 SSH, cross-key rejection, distinct host keys, exact OS/build/SIP, desktop, artifact
 export and confirmed release. Disk reserve correctly prevents two concurrent
 full-size disks on the external SSD; this run used sequential clones.
-Supplemental candidate `aee89c1` is now installed. A fresh stdio MCP smoke passed
-help/status/tool discovery, and a Ventura live SSH suite passed exact Xcode/Swift
+Supplemental candidate `aee89c1` is now installed. HTTP and fresh stdio MCP passed
+help/status/tool discovery, including HTTP 401 without authentication. Two fresh
+stdio MCP factory-clone cycles passed acquire/replay, pinned SSH workload,
+artifact export, desktop and confirmed release. The live discovery check now
+requires named workflow tools rather than the obsolete hardcoded count of 17.
+A Ventura live SSH suite passed exact Xcode/Swift
 workload, artifacts, desktop revocation and restart with the same lease SSH identity.
 The new automation factory rebuilt and qualified image
 `image-5387f340da4ae093162383c18449c592`; two sequential clones on its explicit
