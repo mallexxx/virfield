@@ -16,7 +16,16 @@ passed and six successive clones (two per configured Tart profile) passed pinned
 SSH, cross-key rejection, distinct host keys, exact OS/build/SIP, desktop, artifact
 export and confirmed release. Disk reserve correctly prevents two concurrent
 full-size disks on the external SSD; this run used sequential clones.
-The new node quota and source-prefetch changes are not yet installed or live accepted.
+Supplemental candidate `aee89c1` is now installed. A fresh stdio MCP smoke passed
+help/status/tool discovery, and a Ventura live SSH suite passed exact Xcode/Swift
+workload, artifacts, desktop revocation and restart with the same lease SSH identity.
+The new automation factory rebuilt and qualified image
+`image-5387f340da4ae093162383c18449c592`; two sequential clones on its explicit
+internal container passed pinned SSH, cross-key rejection, distinct host keys,
+OS/build/SIP, desktop, artifact export and confirmed cleanup.
+The published `d2daf4e` storage-routing candidate is packaged but not installed:
+the operator elected to wait for the unrelated active macos27 lease to be released.
+Node clone acceptance and the private GHCR roundtrip are still outstanding.
 The older service snapshot below is a dated checkpoint.
 
 | Audit defect | Candidate implementation and verification |
@@ -25,7 +34,7 @@ The older service snapshot below is a dated checkpoint.
 | Shared node sleep holds | Node-level reference set, foreign-hold preservation, last-reference cleanup; two-VM/failure fixtures |
 | Node image cleanup | Provider/guest preserved, golden backing protected, failed Podman cleanup retains overlay/hold; regression tests |
 | Tart image creation | Approved digest-pinned base catalog, correct default location, base/developer/automation recipes; profile/catalog/build tests |
-| Generic automation | Guest apply + post-reboot signed TCC/AMFI/Gatekeeper verification; recipe/qualifier tests; new live acceptance pending |
+| Generic automation | Guest apply + post-reboot signed TCC/AMFI/Gatekeeper verification; new live factory qualification and two sequential clone workloads passed |
 | Xcode authorization | Shared resumable verified archive store and exact-job Tart resolve sign-in recovery; download/auth tests |
 | Registry | Tart flat/ASIF manifest validation, pinned pull, fresh sanitized portable export and confirmed cleanup; fixtures and live public metadata |
 | Installer | Explicit Tart init, three-binary service generator, separate private state dir and optional browser; Go/Python tests |
@@ -37,6 +46,7 @@ The older service snapshot below is a dated checkpoint.
 | Node resource/cache admission | Configurable per-node VM budgets, worker/build reservations, qcow2 virtual sizes and storage probes, post-wake clone/start/commit checks; regression tests; live acceptance pending |
 | Node overlay storage | Live quota probe exposed only 99 GiB free on HTPC home NVMe; dedicated `vms.storage_dir` supports new VM overlays on data storage, keeps physical workspaces separate and blocks changing roots with overlays; live acceptance pending |
 | Tart clone routing | A factory golden on internal storage selected the deployment's external default; source-container compatibility is now checked before reservation, and the acceptance runner selects each golden's own container |
+| Interrupted Tart inventory | Regression tests reproduced canceled address/container probes returning partial healthy snapshots; refresh now fails on cancellation and Control preserves the last complete inventory while pausing admission; supplemental installation pending |
 | Cold Tart transfer | First live factory attempt failed with Packer EOF during source transfer; journaled recovery deleted only its own failed record after process/inventory inspection. New candidate prefetches the pinned digest in retryable resolve and disables automatic cache pruning; roundtrip not yet accepted |
 | Go security | Minimum Go 1.26.9; govulncheck finds zero reachable or imported-package vulnerabilities |
 
@@ -63,7 +73,22 @@ formatting, `go vet` and the full Go race suite. Three Go binaries and the nativ
 Apple browser built; the browser signature verified. The existing installed
 configuration passes the candidate CLI `config-check`. Pinned Staticcheck, module
 integrity and current-tree Gitleaks pass; govulncheck results are recorded above.
-Live mutation tests remain opt-in and were not run by this local suite.
+Live mutation tests remain opt-in and were run separately as recorded above.
+
+Clean local package provenance:
+
+| Source revision | Archive SHA-256 | Deployment |
+|---|---|---|
+| `aee89c1ffafb01faccc750b60d0e3470bf14fc97` | `2313602b2c380e5e74640c47ee6ad50d9c10d750f856a0949833a4489803cf35` | Installed; signed binary hashes retained in the private upgrade record |
+| `d2daf4ee613739686e2227a29e513d3e1a592c9b` | `6d4a01acb5baddf3d441f5c6f5e557125046ce45f74d4ccf03b37c1c46039c2b` | Packaged; installation waits for lease release |
+
+The supplemental interrupted-inventory fix is newer than both packages.
+
+Offline restoration of `backup-5cdef526c555f6a53ed5f565c6e2edaf` passed into a
+separate private directory: 18 copied files, SQLite integrity, all five active
+image identities and their credentials/verification, unchanged node management
+key, rotated owner token and configuration validation. No restored daemon was
+started; live restore/upgrade/rollback acceptance remains outstanding.
 
 [Live acceptance runner](../tools/live-acceptance.py) persists request keys before
 dispatch, retains a private journal, and deletes only its own accepted disposable
@@ -74,12 +99,13 @@ revocation alongside SSH, cross-key/image-key rejection, workload and artifacts.
 
 ## Remaining release acceptance
 
-- Run exact-source local CI and clean source packaging provenance; remote CI is deferred by the operator; record resulting
-  binary hashes and revision alongside the local passing gates.
-- Install the supplemental candidate and accept node resource policy with disposable
+- Repeat exact-source local CI and clean packaging for subsequent code changes;
+  remote CI is deferred by the operator. Existing package provenance is recorded above.
+- Install the latest supplemental candidate after the unrelated lease is released and accept node resource policy with disposable
   node clones; preserve the passing `09ad696` Tart clone evidence above.
-- Accept new factory/automation/download and GHCR publication with real rebuild,
-  push/pull-back/clone workload. The operator authorized an existing GHCR identity
+- Complete GHCR publication with real portable rebuild, push/pull-back/clone
+  workload; the factory/automation rebuild and clone workloads already passed.
+  The operator authorized an existing GHCR identity
   and new private `mallexxx/virfield-hardening-acceptance` package; a dedicated
   source and temporary internal Tart container are configured. Acceptance is in progress.
 - Broader Orchard, v3, soak/crash/debug/disaster-recovery gates remain below and

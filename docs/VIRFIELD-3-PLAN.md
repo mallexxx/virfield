@@ -1,6 +1,7 @@
 # Virfield 3.0 implementation plan
 
-Delivery state reconciled 2026-10-14. `main` is the maintained source. The live
+Delivery state reconciled 2026-10-14. The maintained repository's hardening
+candidate is on `codex/retire-lume-release-hardening`; `main` is not yet promoted. The live
 runtime is Tart plus SSH nodes; Virfield switched away from Lume on 2026-10-08.
 Source/factory/wrapper/build/install retirement is implemented; the separate old
 LaunchDaemon was disabled and booted out on 2026-10-14. This roadmap does not claim
@@ -17,7 +18,7 @@ is archived; its future contracts remain reference designs, not current APIs.
 | Guest account parameterization and per-lease SSH | Implemented; Tart two-clone acceptance |
 | Cirrus/Packer adoption and qualification | Implemented for configured profiles; Ventura/Monterey/macOS 27 accepted |
 | Broker v1 smoke | Passed 2026-10-08 on Tart |
-| Tart dynamic factory and GHCR publication | Implemented in current candidate; live acceptance pending |
+| Tart dynamic factory and GHCR publication | Factory rebuild, qualification and two sequential clones passed 2026-10-14; private GHCR roundtrip pending |
 | VS Code debug | Generated workspaces implemented; Tart live acceptance pending |
 | Orchard | Adapter only; isolated access and live pool acceptance incomplete |
 
@@ -60,8 +61,8 @@ Required: exact-SHA CI/security/clean archive; current-client and production
 entrypoint acceptance; provider/Control restart matrix; host loss, partition,
 full disk, drain and soak; node resource/cache quota live acceptance; metrics/alerts; signed
 artifact evidence, promotion/revocation; backup/restore and upgrade/rollback.
-Lume runtime/factory/wrapper/patch/build paths are removed; retiring the separate
-old host service is disabled. Do not fabricate acceptance or weaken readiness to complete a gate.
+Lume runtime/factory/wrapper/patch/build paths are removed; the separate
+old host service is disabled and unloaded. Do not fabricate acceptance or weaken readiness to complete a gate.
 
 ## Execution records
 

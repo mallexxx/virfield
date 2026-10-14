@@ -26,7 +26,8 @@ VIRFIELD_URL="http://127.0.0.1:7780"
 ## Configuration and prerequisites
 
 Local VM hosts require Apple Silicon macOS, Tart and private storage. Image
-construction additionally requires Packer and a verified Xcode XIP cache.
+construction additionally requires Packer; developer recipes also require a
+verified Xcode XIP cache unless the approved base already provides that Xcode.
 `runtime.provider` selects Tart; `runtime.nodes` adds pinned SSH nodes.
 Containers have stable IDs, absolute paths, local/external kind and, for removable
 storage, a pinned volume UUID. CPU/RAM/disk reserve and VM slots are explicit.
@@ -143,7 +144,7 @@ and `/dev/net/tun`.
 - **Secured goldens** are built by Virfield from a template whose image is
   `{"node": {"golden": "<bootstrap name>"}, "macos": …, "build": …,
   "disable_sip": true}` (`POST /api/v1/images/<template>/build`). The job
-  clones the bootstrap golden into `~/virfield/images/<template>`, publishes
+  clones the bootstrap golden into `<VM storage root>/images/<template>`, publishes
   its SSH on the node loopback only, rotates the password, installs the
   management key, turns password SSH off and sets auto-login, verifies
   version, SIP, desktop and password after a reboot, and commits the clone as
@@ -151,7 +152,7 @@ and `/dev/net/tun`.
   template name. Unused node goldens are deleted through the exact-name image operation,
   retaining provider routing; an existing backing overlay blocks deletion.
 - **Leases** of that template clone a qcow2 overlay into
-  `~/virfield/leases/<vm>/storage` (copy-on-write off) and start container
+  `<VM storage root>/leases/<vm>/storage` (copy-on-write off) and start container
   `virfield-<vm>` with guest SSH published on `0.0.0.0:<port>` (ports
   `port_base … port_base+max-1`; image builds use the next `max`). The lease's
   `ip` is the node address and `ssh.port` its port; `virfield ssh-config`
@@ -362,7 +363,8 @@ an owner-only directory; five complete snapshots are retained. VM disks are not
 included. Node management keys and cached probes are included; symlinks and oversized
 identity files abort the snapshot. External registry/Orchard/principal credentials
 referenced by the config need separate operator backup. Restore must preserve image identities, use a new
-operator token and start exactly one manager; a fresh restore drill is pending.
+operator token and start exactly one manager. The 2026-10-14 offline copy/integrity/
+identity/token/configuration drill passed; a live restored-daemon drill is pending.
 Journal retention removes completed released history after 30 days; unfinished
 jobs and active leases retain their request keys. Retired idempotency keys may
 become new requests after pruning. Migration snapshots are retained separately.

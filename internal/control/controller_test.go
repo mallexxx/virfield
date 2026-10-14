@@ -623,6 +623,46 @@ func TestReadyDriftDoesNotClaimSuccess(t *testing.T) {
 		t.Fatal(l)
 	}
 }
+
+type interruptedObserver struct {
+	*fakeBackend
+	cancel context.CancelFunc
+}
+
+func (b interruptedObserver) Observe(context.Context) (domain.Observation, error) {
+	b.cancel()
+	return domain.Observation{VMs: []domain.VM{}, HostMax: 2, At: time.Now().UTC()}, nil
+}
+
+func TestInterruptedObservationPreservesInventoryAndReadyLease(t *testing.T) {
+	c, _, b := setup(t)
+	op := acquire(t, c, "interrupted-observation")
+	ready(t, c, op)
+	for range 2 {
+		ctx, cancel := context.WithCancel(context.Background())
+		c.backend = interruptedObserver{fakeBackend: b, cancel: cancel}
+		err := c.Tick(ctx)
+		cancel()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	l, err := c.Lease(context.Background(), op.Lease.ID)
+	if err != nil || l.State != "ready" {
+		t.Fatal("Interrupted observations changed the durable lease", l.State, err)
+	}
+	s, err := c.Status(context.Background())
+	if err != nil || s.Observation.Error == nil || s.Capacity.Available != 0 {
+		t.Fatal("Admission did not pause", s, err)
+	}
+	found := false
+	for _, vm := range s.Observation.VMs {
+		found = found || vm.Key() == op.Lease.Key()
+	}
+	if !found {
+		t.Fatal("Interrupted refresh discarded the last complete inventory")
+	}
+}
 func TestReadyDriftCounterResetsAfterHealthyObservation(t *testing.T) {
 	c, _, b := setup(t)
 	op := acquire(t, c, "drift-reset")

@@ -50,6 +50,52 @@ func (r *fakeRunner) StartDetached(home string, args []string) error {
 	return nil
 }
 
+type interruptedIPRunner struct{ cancel context.CancelFunc }
+
+func (r interruptedIPRunner) Run(ctx context.Context, _ string, args []string) ([]byte, error) {
+	if args[0] == "get" {
+		return []byte(`{"OS":"darwin","CPU":4,"Memory":8192,"Disk":80}`), nil
+	}
+	r.cancel()
+	return nil, ctx.Err()
+}
+
+func (interruptedIPRunner) StartDetached(string, []string) error { return nil }
+
+func TestInspectRejectsInterruptedAddressDiscovery(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	client := &Client{runner: interruptedIPRunner{cancel: cancel}}
+	_, err := client.inspect(ctx, ContainerConfig{ID: "local", Path: t.TempDir()}, listRow{Name: "vm", State: "running"}, time.Now())
+	if !errors.Is(err, context.Canceled) {
+		t.Fatal("Interrupted address discovery was reported as a healthy VM with no address", err)
+	}
+}
+
+func TestObserveRejectsInterruptedContainerProbe(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	local := tartHome(t)
+	client := &Client{
+		config: Config{HostID: "macbook", MaxVMs: 2, Containers: []ContainerConfig{
+			{ID: "local", Path: local, Kind: "local"},
+			{ID: "external", Path: "/external", Kind: "external"},
+		}},
+		probe: func(ctx context.Context, path string) (volume, error) {
+			if path == "/external" {
+				cancel()
+				return volume{}, ctx.Err()
+			}
+			return volume{Identity: "local", Total: 1 << 40, Free: 500 << 30}, nil
+		},
+		now: time.Now,
+	}
+	o, err := client.Observe(ctx)
+	if !errors.Is(err, context.Canceled) || len(o.Hosts) != 0 || len(o.StorageContainers) != 0 {
+		t.Fatal("Interrupted refresh returned a partial healthy inventory", o, err)
+	}
+}
+
 // tartHome creates a TART_HOME with one stopped VM directory per name.
 func tartHome(t *testing.T, names ...string) string {
 	t.Helper()

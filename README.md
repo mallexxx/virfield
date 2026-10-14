@@ -6,8 +6,9 @@ through rootless Podman/QEMU/OpenCore. It owns images, leases, capacity, pinned
 SSH, desktop tunnels, durable jobs and confirmed cleanup. Execution Broker owns
 queues, commands, runs, approvals and workload artifacts.
 
-`main` in this repository is the only maintained source. The earlier
-`virfield-v3` worktree/branch is obsolete. Virfield switched to Tart on
+The maintained checkout is this repository. Current release hardening is
+published on `codex/retire-lume-release-hardening`; `main` has not been promoted
+to that candidate. The earlier `virfield-v3` worktree/branch is obsolete. Virfield switched to Tart on
 2026-10-08; the runtime/factory/wrapper/build/install Lume code is removed. The separate old LaunchDaemon was disabled and booted out on 2026-10-14, with rollback files preserved. Current release gates are tracked
 in [Verification](docs/VERIFICATION.md); old Lume runbooks are archived, not
 installation instructions for the current product.

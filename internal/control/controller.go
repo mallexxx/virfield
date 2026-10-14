@@ -165,8 +165,8 @@ func mergeTemplateDefinition(a, b domain.Template) (domain.Template, bool) {
 	return a, true
 }
 
-// observeTimeout bounds one inventory refresh. Tart inventory runs tart list
-// plus tart get per VM; each ASIF disk costs about a second to size.
+// observeTimeout bounds one inventory refresh. Tart caches static VM specs;
+// uncached ASIF sizing and address discovery can still be slow.
 const observeTimeout = 30 * time.Second
 
 func fingerprint(v any) string {
@@ -728,6 +728,9 @@ func (c *Controller) Tick(ctx context.Context) error {
 	}
 	readCtx, cancel := context.WithTimeout(ctx, observeTimeout)
 	o, obsErr := c.backend.Observe(readCtx)
+	if obsErr == nil {
+		obsErr = readCtx.Err()
+	}
 	cancel()
 	c.mu.Lock()
 	defer c.mu.Unlock()

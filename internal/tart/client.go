@@ -151,6 +151,9 @@ func (c *Client) ConfiguredInventory() domain.Observation {
 }
 
 func (c *Client) Observe(ctx context.Context) (domain.Observation, error) {
+	if err := ctx.Err(); err != nil {
+		return domain.Observation{}, err
+	}
 	now := c.now()
 	o := domain.Observation{
 		VMs:      []domain.VM{},
@@ -167,6 +170,9 @@ func (c *Client) Observe(ctx context.Context) (domain.Observation, error) {
 	for _, configured := range c.config.Containers {
 		container := domain.StorageContainer{ID: configured.ID, HostID: c.config.HostID, Provider: c.ProviderName(), Kind: configured.Kind, Path: configured.Path}
 		info, err := c.probe(ctx, configured.Path)
+		if err := ctx.Err(); err != nil {
+			return domain.Observation{}, err
+		}
 		if err != nil {
 			container.Availability = "unavailable"
 			container.UnavailableReason = volumeReason(err)
@@ -192,6 +198,9 @@ func (c *Client) Observe(ctx context.Context) (domain.Observation, error) {
 			return domain.Observation{}, fmt.Errorf("tart inventory for %s: %w", configured.ID, err)
 		}
 		vms, err := c.inspectAll(ctx, configured, rows, now)
+		if err := ctx.Err(); err != nil {
+			return domain.Observation{}, err
+		}
 		if err != nil {
 			return domain.Observation{}, err
 		}
@@ -374,6 +383,12 @@ func (c *Client) inspect(ctx context.Context, container ContainerConfig, row lis
 	}
 	if state == "running" {
 		ip, ipErr := c.runner.Run(ctx, container.Path, []string{"ip", row.Name, "--wait", "0"})
+		// An interrupted lookup says nothing about the VM's current address.
+		// Reject the whole refresh so reconciliation keeps the last inventory
+		// instead of recording a false address change or missing VM.
+		if err := ctx.Err(); err != nil {
+			return domain.VM{}, err
+		}
 		if ipErr == nil {
 			candidate := strings.TrimSpace(string(ip))
 			if net.ParseIP(candidate) != nil {
