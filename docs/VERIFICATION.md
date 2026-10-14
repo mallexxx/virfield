@@ -49,6 +49,7 @@ The older service snapshot below is a dated checkpoint.
 | Node identity backup | Private management keys/probes included, unsupported files abort snapshot; backup fixtures |
 | Node resource/cache admission | Configurable per-node VM budgets, worker/build reservations, qcow2 virtual sizes and storage probes, post-wake clone/start/commit checks; regression tests; live acceptance pending |
 | Node overlay storage | Live quota probe exposed only 99 GiB free on HTPC home NVMe; dedicated `vms.storage_dir` supports new VM overlays on data storage, keeps physical workspaces separate and blocks changing roots with overlays; live acceptance pending |
+| Existing node golden permissions | New commits use owner-only mode 0400; the two older secured HTPC qcow2/OpenCore goldens still have mode 0444 under traversable directories. Their permission migration awaits separate operator approval; files are unchanged |
 | Tart clone routing | A factory golden on internal storage selected the deployment's external default; source-container compatibility is now checked before reservation, and the acceptance runner selects each golden's own container |
 | Interrupted Tart inventory | Regression tests reproduced canceled address/container probes returning partial healthy snapshots; refresh now fails on cancellation and Control preserves the last complete inventory while pausing admission; supplemental installation pending |
 | Cold Tart transfer | First live factory attempt failed with Packer EOF during source transfer; journaled recovery deleted only its own failed record after process/inventory inspection. New candidate prefetches the pinned digest in retryable resolve and disables automatic cache pruning; roundtrip not yet accepted |
@@ -107,6 +108,8 @@ revocation alongside SSH, cross-key/image-key rejection, workload and artifacts.
   remote CI is deferred by the operator. Existing package provenance is recorded above.
 - Install the latest supplemental candidate after the unrelated lease is released and accept node resource policy with disposable
   node clones; preserve the passing `09ad696` Tart clone evidence above.
+- Complete permission migration for existing HTPC secured goldens after approval;
+  separate authorization is still pending, and read-only inspection confirmed mode 0444.
 - Complete GHCR publication with real portable rebuild, push/pull-back/clone
   workload; the factory/automation rebuild and clone workloads already passed.
   The operator authorized an existing GHCR identity
