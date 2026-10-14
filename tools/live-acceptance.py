@@ -95,8 +95,8 @@ class Acceptance:
         profiles = {t['id']: t for t in self.api('status')['templates']}
         selected = profiles[template]
         profile = selected['image']
-        if 'tart' not in profile or selected.get('provider') not in (None, '', 'tart'):
-            raise ValueError('This acceptance runner requires a configured Tart image')
+        if not ('tart' in profile or 'node' in profile) or selected.get('provider') not in (None, '', 'tart', 'baremetal'):
+            raise ValueError('This acceptance runner requires a configured Tart or node VM image')
         pair = []
         identities = []
         host_keys = []
@@ -108,7 +108,7 @@ class Acceptance:
         def acquire(i):
             identity = identities[i]
             request = dict(template=template, ttl_seconds=3600,
-                           ssh_public_key=(identity / 'id_ed25519.pub').read_text())
+                           ssh_public_key=(identity / 'id_ed25519.pub').read_text(), destination_location=selected['location'])
             result = self.api('leases', request, template + '-acquire-' + str(i))
             lease = result['lease']
             if not lease['vm_name'].startswith('vf-') or lease.get('purpose') == 'image':

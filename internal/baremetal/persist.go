@@ -47,6 +47,9 @@ func (r *Runtime) Persist(dir string) error {
 		if err := json.Unmarshal(b, &m); err != nil {
 			return errors.New("node " + n.ID + " probe record is corrupt")
 		}
+		if len(m.VMs) > 0 && m.Storage.Path != n.VMsStorageDir() {
+			return errors.New("node " + n.ID + " cannot change VM storage_dir while remembered overlays exist")
+		}
 		r.last[n.ID] = probe{golden: m.Golden, host: m.Host, leases: m.Leases, goldens: m.Goldens, goldenDisks: m.GoldenDisks, storage: m.Storage, vms: m.VMs, ip: m.IP, at: m.At}
 		r.changed[n.ID] = true
 	}

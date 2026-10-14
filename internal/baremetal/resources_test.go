@@ -6,10 +6,56 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mallexxx/virfield/internal/domain"
 )
+
+func TestNodeVMStorageRootRoutesWorkspacesAndBlocksChangingActiveRoots(t *testing.T) {
+	r, local, _ := vmRuntime(t, "secured")
+	root := filepath.Join(t.TempDir(), "runtime")
+	r.nodes[0].VMs.StorageDir = root
+	persist := t.TempDir()
+	if err := r.Persist(persist); err != nil {
+		t.Fatal(err)
+	}
+	o, err := r.Observe(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o.StorageContainers[0].Path != root {
+		t.Fatal("Storage inventory lost configured root", o.StorageContainers)
+	}
+	l := domain.Lease{ID: "lease-storage-test", VMName: "vf-storage-test", Location: "htpc", ImageID: "image-ready"}
+	if err := r.Clone(context.Background(), domain.Template{Name: "secured"}, l); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(filepath.Join(root, "leases", l.VMName))
+	if err != nil || info.Mode().Perm() != 0700 {
+		t.Fatal("VM workspace not private in configured root", err)
+	}
+	if _, err := os.Stat(filepath.Join(local.homes["htpc"], "virfield/leases", l.VMName)); !os.IsNotExist(err) {
+		t.Fatal("VM workspace created in old home", err)
+	}
+	if _, err := r.Observe(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	other := r.nodes[0]
+	copied := *other.VMs
+	copied.StorageDir = t.TempDir()
+	other.VMs = &copied
+	restarted := New([]Node{other}, local.dial)
+	if err := restarted.Persist(persist); err == nil || !strings.Contains(err.Error(), "cannot change") {
+		t.Fatal("Root change hid existing overlay", err)
+	}
+	if err := r.Delete(context.Background(), l); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "leases", l.VMName)); !os.IsNotExist(err) {
+		t.Fatal("VM cleanup used wrong root", err)
+	}
+}
 
 func writeQCOWHeader(t *testing.T, path string, size uint64) {
 	t.Helper()

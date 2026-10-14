@@ -131,7 +131,8 @@ and `/dev/net/tun`.
 ```json
 "vms": {"image": "docker.io/dockurr/macos@sha256:08d1bcaac74ad44d548b7ce683b3dded083512d2a0d26416f9a620b763f8ea3d",
         "goldens_dir": "/run/media/system/Data/virfield/goldens",
-        "port_base": 22100, "max": 2, "cpu": 4, "memory_gb": 8, "disk_size": "100G"}
+        "port_base": 22100, "max": 2, "cpu": 4, "memory_gb": 8, "disk_size": "100G",
+        "storage_dir": "/run/media/system/Data/virfield/runtime"}
 ```
 
 - **Bootstrap goldens** are installed once by hand (see the
@@ -164,6 +165,15 @@ and `/dev/net/tun`.
   the physical-host slot. A fresh post-wake probe must match the requested boot volume. Two VMs booting
   together off a 5400 rpm HDD took about nine minutes to become ready;
   one boots in about two.
+
+`vms.storage_dir` selects a private root for new VM `leases/` and `images/`; omission
+uses `~/virfield`. Physical-host workspaces and shared sleep holds stay in the
+node account's home. Set or change it only with no active jobs/VM overlays:
+remembered overlays and legacy VM folders block a root change. No files migrate
+automatically. Probes measure this root's filesystem together with golden storage.
+The HTPC home NVMe currently has 99 GiB free, insufficient for a 100 GiB VM plus
+20 GiB reserve; its data HDD has 2.7 TiB free. The new storage-path implementation
+and configured HDD root are undergoing acceptance.
 
 ### Tart image adoption
 

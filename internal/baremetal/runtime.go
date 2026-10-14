@@ -194,7 +194,7 @@ func (r *Runtime) probe(ctx context.Context, n Node, now time.Time) (probe, erro
 	if n.VMs != nil {
 		script = command(probeScript+vmProbeLines, n.VMs.GoldensDir, strconv.Itoa(n.VMs.CPU), strconv.FormatInt(int64(n.VMs.MemoryGB)<<30, 10))
 	}
-	out, err := s.Run(ctx, script, "")
+	out, err := s.Run(ctx, nodeCommand(n, script), "")
 	if err != nil {
 		return probe{}, err
 	}
@@ -211,6 +211,7 @@ func (r *Runtime) probe(ctx context.Context, n Node, now time.Time) (probe, erro
 	h.LastSeenAt = now
 	golden := domain.VM{Name: p.volume, Location: n.ID, Provider: providerName, HostID: n.ID, ContainerID: n.ID, OS: n.OS, State: "stopped", Resources: resources, LastSeenAt: now, UITesting: p.uiTesting}
 	storage := container(n, "available", "", now)
+	storage.Path = n.VMsStorageDir()
 	storage.CapacityBytes, storage.AvailableBytes, storage.CacheBytes = p.diskCapacity, p.diskAvailable, p.cacheBytes
 	return probe{golden: golden, host: h, leases: p.leases, goldens: p.goldens, goldenDisks: p.goldenDisks, storage: storage, vms: p.vms, ip: ip, at: now}, nil
 }
@@ -412,7 +413,21 @@ func (r *Runtime) runOn(ctx context.Context, n Node, cmd string) (string, error)
 	}
 	defer s.Close()
 	r.reached(n)
-	return s.Run(ctx, cmd, "")
+	return s.Run(ctx, nodeCommand(n, cmd), "")
+}
+
+func (n Node) VMsStorageDir() string {
+	if n.VMs != nil {
+		return n.VMs.StorageDir
+	}
+	return ""
+}
+
+func nodeCommand(n Node, cmd string) string {
+	if path := n.VMsStorageDir(); path != "" {
+		return "export VF_VM_HOME=" + quote(path) + "; " + cmd
+	}
+	return cmd
 }
 
 func (r *Runtime) node(id string) (Node, error) {

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/mallexxx/virfield/internal/domain"
+	"github.com/mallexxx/virfield/internal/provider"
 )
 
 type ResourceProbe func() (map[string]int64, error)
@@ -158,6 +159,9 @@ func (c *Controller) cloneLocationCandidates(t domain.Template, requestedLocatio
 		if len(c.storageLocations) == 0 && requestedLocation != t.Location {
 			return nil, domain.Err("invalid_request", "destination_location is not configured")
 		}
+		if provider.Name(c.backend) == "tart" && t.Source == "" && requestedLocation != t.Location {
+			return nil, domain.Err("invalid_request", "A local Tart golden must be cloned in its source container: "+t.Location)
+		}
 		return []string{requestedLocation}, nil
 	}
 	first := c.defaultCloneLocation
@@ -169,6 +173,18 @@ func (c *Controller) cloneLocationCandidates(t domain.Template, requestedLocatio
 		if location != first {
 			candidates = append(candidates, location)
 		}
+	}
+	if provider.Name(c.backend) == "tart" && t.Source == "" {
+		eligible := []string{}
+		for _, location := range candidates {
+			if location == t.Location {
+				eligible = append(eligible, location)
+			}
+		}
+		if len(eligible) == 0 {
+			return nil, domain.Err("invalid_request", "Configured clone destinations cannot clone this local Tart golden; select its source container: "+t.Location)
+		}
+		candidates = eligible
 	}
 	return candidates, nil
 }

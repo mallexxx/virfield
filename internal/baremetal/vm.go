@@ -13,6 +13,7 @@ import (
 // node; it mirrors config.NodeVMs.
 type VMConfig struct {
 	Image, GoldensDir, DiskSize  string
+	StorageDir                   string
 	PortBase, Max, CPU, MemoryGB int
 	ResourceLimits               *domain.ResourceLimits
 	CacheLimitBytes              int64
@@ -95,7 +96,7 @@ func (r *Runtime) startVM(ctx context.Context, n Node, scope, name, publish stri
 
 // vmPort reads a clone's SSH port from the node.
 func (r *Runtime) vmPort(ctx context.Context, n Node, scope, name string) (int, error) {
-	out, err := r.runOn(ctx, n, command(`cat "$HOME/virfield/$1/$2/port"`, scope, name))
+	out, err := r.runOn(ctx, n, command(`cat "${VF_VM_HOME:-$HOME/virfield}/$1/$2/port"`, scope, name))
 	if err != nil {
 		return 0, err
 	}

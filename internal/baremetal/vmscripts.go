@@ -8,7 +8,8 @@ package baremetal
 // one new file in the goldens directory, and each is idempotent.
 
 const vmDirs = `set -eu
-d="$HOME/virfield/$1/$2"
+vf_vm_root="${VF_VM_HOME:-$HOME/virfield}"
+d="$vf_vm_root/$1/$2"
 c="virfield-$2"
 `
 
@@ -16,8 +17,9 @@ c="virfield-$2"
 // Ports are allocated under a lock so concurrent clones never share one.
 const vmCloneScript = vmDirs + `g="$4/$3.qcow2"
 [ -f "$g" ] || { echo "golden $3 not found" >&2; exit 3; }
-mkdir -p "$HOME/virfield/$1"
-lock="$HOME/virfield/$1/.ports.lock"
+umask 077
+mkdir -p "$vf_vm_root/$1"
+lock="$vf_vm_root/$1/.ports.lock"
 tries=0
 until mkdir "$lock" 2>/dev/null; do
   tries=$((tries + 1))
@@ -29,7 +31,7 @@ if [ ! -f "$d/port" ]; then
   i=0
   while [ "$i" -lt "$7" ]; do
     p=$(($6 + i))
-    grep -qxs "$p" "$HOME"/virfield/"$1"/*/port || break
+    grep -qxs "$p" "$vf_vm_root/$1"/*/port || break
     i=$((i + 1))
   done
   [ "$i" -lt "$7" ] || { echo "no free VM port" >&2; exit 3; }
@@ -97,7 +99,7 @@ const vmDeleteScript = vmStopScript + `rm -rf "$d"
 // files and an interrupted image clone are removed, never a backing image.
 const vmImageDeleteScript = sleepHoldFunctions + vmContainerFunctions + vmDirs + `
 for scope in leases images; do
-  for other in "$HOME"/virfield/$scope/*/; do
+  for other in "$vf_vm_root/$scope"/*/; do
     [ -f "$other/golden" ] || continue
     [ "$(cat "$other/golden")" != "$2" ] || { echo "golden has an overlay" >&2; exit 3; }
   done
@@ -124,17 +126,27 @@ rm -rf "$d"
 // The port forward accepts TCP before the guest boots, so a running VM's SSH
 // counts only once the guest's banner is read through the node loopback.
 const vmProbeLines = `
+vf_vm_root="${VF_VM_HOME:-$HOME/virfield}"
+if [ "$vf_vm_root" != "$HOME/virfield" ]; then
+  for vf_scope in leases images; do
+    for vf_old in "$HOME/virfield/$vf_scope"/*/; do
+      [ ! -f "$vf_old/kind" ] || { echo 'Legacy VM overlays must be resolved before changing storage_dir' >&2; exit 3; }
+    done
+  done
+fi
+umask 077
+mkdir -p "$vf_vm_root/leases" "$vf_vm_root/images"
 vf_disk_size() {
   [ -f "$1" ] && [ "$(od -An -tx1 -N4 "$1" | tr -d ' \n')" = 514649fb ] || { echo 0; return; }
   od -An -tu1 -j24 -N8 "$1" | awk '{for(i=1;i<=NF;i++){n=n*256+$i;c++}} END {printf "%.0f\n",(c==8 && n<=549755813888)?n:0}'
 }
-df -Pk "$HOME/virfield" "$1" | awk 'NR>1 {if(!n || $2<c)c=$2; if(!n || $4<a)a=$4; n++} END {printf "disk_capacity=%.0f\ndisk_available=%.0f\n",c*1024,a*1024}'
+df -Pk "$vf_vm_root/leases" "$1" | awk 'NR>1 {if(!n || $2<c)c=$2; if(!n || $4<a)a=$4; n++} END {printf "disk_capacity=%.0f\ndisk_available=%.0f\n",c*1024,a*1024}'
 echo "cache_bytes=$(( $(du -sk "$1" | awk '{print $1}') * 1024 ))"
 for f in "$1"/*.qcow2; do
   [ -f "$f" ] && echo "golden=$(basename "$f" .qcow2) $(vf_disk_size "$f")"
 done
 for s in leases images; do
-  for d in "$HOME"/virfield/$s/*/; do
+  for d in "$vf_vm_root/$s"/*/; do
     [ -f "$d/kind" ] || continue
     n=$(basename "$d")
     st=stopped

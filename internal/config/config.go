@@ -77,6 +77,7 @@ type NodeVMs struct {
 	CPU             int                    `json:"cpu"`
 	MemoryGB        int                    `json:"memory_gb"`
 	DiskSize        string                 `json:"disk_size"`
+	StorageDir      string                 `json:"storage_dir,omitempty"`
 	ResourceLimits  *domain.ResourceLimits `json:"resource_limits,omitempty"`
 	CacheLimitBytes int64                  `json:"cache_limit_bytes,omitempty"`
 }
@@ -104,6 +105,9 @@ func validateNodeVMs(n Node) error {
 		return fail("cpu must be at least 1 and memory_gb at least 4")
 	case !diskSize.MatchString(v.DiskSize):
 		return fail("disk_size must look like 100G")
+	}
+	if v.StorageDir != "" && (!filepath.IsAbs(v.StorageDir) || filepath.Clean(v.StorageDir) != v.StorageDir || v.StorageDir == "/" || strings.ContainsAny(v.StorageDir, "'\"\n\r\t ")) {
+		return fail("storage_dir must be a clean absolute private VM workspace path without quotes or spaces")
 	}
 	size, err := strconv.ParseInt(strings.TrimSuffix(v.DiskSize, "G"), 10, 64)
 	if err != nil || size > 512 || v.CPU > 64 || v.MemoryGB > 256 || v.CacheLimitBytes < 0 {

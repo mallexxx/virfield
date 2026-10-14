@@ -8,6 +8,28 @@ import (
 	"github.com/mallexxx/virfield/internal/domain"
 )
 
+type tartNamedBackend struct{ Backend }
+
+func (tartNamedBackend) ProviderName() string { return "tart" }
+
+func TestLocalTartGoldenRejectsWrongStorageBeforeReservation(t *testing.T) {
+	c, _, b := setup(t)
+	c.backend = tartNamedBackend{b}
+	if err := c.SetCloneLocations(map[string]string{"home": "/home", "other": "/other"}, "other", nil); err != nil {
+		t.Fatal(err)
+	}
+	_, err := c.Acquire(context.Background(), "wrong-tart-storage", domain.AcquireRequest{Template: "test", TTLSeconds: 3600})
+	code(t, err, "invalid_request")
+	leases, err := c.store.Leases(context.Background())
+	if err != nil || len(leases) != 0 {
+		t.Fatal("Wrong storage reserved a lease", leases, err)
+	}
+	_, err = c.Acquire(context.Background(), "explicit-tart-storage", domain.AcquireRequest{Template: "test", TTLSeconds: 3600, DestinationLocation: "home"})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestResourceAdmissionIsReservedAndFailsClosed(t *testing.T) {
 	c, _, b := setup(t)
 	v := b.vms["home/golden"]

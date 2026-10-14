@@ -168,7 +168,7 @@ func run() error {
 				node.WakeMAC, node.WakeBroadcast = n.WakeOnLAN.MAC, n.WakeOnLAN.Broadcast
 			}
 			if v := n.VMs; v != nil {
-				node.VMs = &baremetal.VMConfig{Image: v.Image, GoldensDir: v.GoldensDir, DiskSize: v.DiskSize, PortBase: v.PortBase, Max: v.Max, CPU: v.CPU, MemoryGB: v.MemoryGB, ResourceLimits: v.ResourceLimits, CacheLimitBytes: v.CacheLimitBytes}
+				node.VMs = &baremetal.VMConfig{Image: v.Image, GoldensDir: v.GoldensDir, DiskSize: v.DiskSize, StorageDir: v.StorageDir, PortBase: v.PortBase, Max: v.Max, CPU: v.CPU, MemoryGB: v.MemoryGB, ResourceLimits: v.ResourceLimits, CacheLimitBytes: v.CacheLimitBytes}
 			}
 			configured = append(configured, node)
 		}
