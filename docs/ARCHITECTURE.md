@@ -30,7 +30,9 @@ of the candidate and tracked in [Verification](VERIFICATION.md).
 
 Acceptance commits reservations before returning. Capacity includes active
 observed targets and unreleased durable reservations without double-counting.
-Local Tart slots and secondary node slots are separate. An unreachable node
+Local Tart slots and secondary node slots are separate. Primary image builds and
+portable exports reserve CPU/RAM/disk before dispatch, in the same budget as
+workers; stopped ready goldens are excluded from active reservations. An unreachable node
 remains visible; WoL-capable nodes may retain cached image inventory for waking.
 A cached image is not proof of a currently reachable guest.
 

@@ -429,13 +429,13 @@ func validateNodes(r *Runtime) error {
 	if r.Provider != "tart" || r.Tart == nil {
 		return errors.New("runtime nodes are supported beside the tart runtime")
 	}
-	ids := map[string]bool{}
+	ids := map[string]bool{r.Tart.HostID: true}
 	for _, container := range r.Tart.Containers {
 		ids[container.ID] = true
 	}
 	for _, n := range r.Nodes {
 		if !domain.ValidName(n.ID) || ids[n.ID] {
-			return errors.New("runtime nodes need unique IDs distinct from storage containers")
+			return errors.New("runtime nodes need unique IDs distinct from the primary host and storage containers")
 		}
 		ids[n.ID] = true
 		if n.Address == "" || strings.ContainsAny(n.Address, "@/ \\") || !domain.ValidName(n.User) {

@@ -63,6 +63,9 @@ one `known_hosts` line per identity for the address (OpenSSH accepts any
 matching line); `ssh-keyscan -t ed25519 <address>` while the new volume is
 booted gives the key, which you compare out of band before trusting it.
 
+Node IDs must differ from the primary Tart host ID and all storage-container IDs.
+Ambiguous runtime host ownership blocks admission instead of changing routing.
+
 A node reports its booted environment as a pseudo-golden named after the boot
 volume (`Monterey`, `Big-Sur`, `bazzite`). A template with
 `"provider": "baremetal"`, `"location": "<node id>"`, `"name": "<volume>"` and

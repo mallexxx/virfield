@@ -10,18 +10,19 @@ import (
 // ImageProfile is a resolved immutable manifest, never a free-form client command.
 // The digest and size identify one immutable Apple restore image.
 type ImageProfile struct {
-	Tart       *TartSource        `json:"tart,omitempty"`
-	Node       *NodeSource        `json:"node,omitempty"`
-	Registry   *RegistryReference `json:"registry,omitempty"`
-	MacOS      string             `json:"macos,omitempty"`
-	Xcode      *XcodeRelease      `json:"xcode,omitempty"`
-	Security   string             `json:"security,omitempty"`
-	Provision  string             `json:"provision,omitempty"`
-	URL        string             `json:"url"`
-	SHA256     string             `json:"sha256"`
-	Size       int64              `json:"size"`
-	Build      string             `json:"build"`
-	DisableSIP bool               `json:"disable_sip"`
+	BuildDiskBytes int64              `json:"build_disk_bytes,omitempty"`
+	Tart           *TartSource        `json:"tart,omitempty"`
+	Node           *NodeSource        `json:"node,omitempty"`
+	Registry       *RegistryReference `json:"registry,omitempty"`
+	MacOS          string             `json:"macos,omitempty"`
+	Xcode          *XcodeRelease      `json:"xcode,omitempty"`
+	Security       string             `json:"security,omitempty"`
+	Provision      string             `json:"provision,omitempty"`
+	URL            string             `json:"url"`
+	SHA256         string             `json:"sha256"`
+	Size           int64              `json:"size"`
+	Build          string             `json:"build"`
+	DisableSIP     bool               `json:"disable_sip"`
 }
 
 // NodeSource names a bootstrap golden in a node's goldens directory: a
@@ -47,6 +48,9 @@ func (s TartSource) Validate() error {
 }
 
 func (p ImageProfile) Validate() error {
+	if p.BuildDiskBytes < 0 || p.BuildDiskBytes > 512<<30 || p.BuildDiskBytes != 0 && p.Tart == nil {
+		return Err("invalid_profile", "Build disk bound is supported only for Tart and must be at most 512 GiB")
+	}
 	switch p.Provision {
 	case "", "base-v1":
 		if p.Xcode != nil {

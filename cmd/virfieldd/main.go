@@ -218,7 +218,7 @@ func run() error {
 		bases := append([]domain.TartBase(nil), cfg.Runtime.Tart.Bases...)
 		for _, t := range cfg.Templates {
 			if t.Image != nil && t.Image.Tart != nil {
-				bases = append(bases, domain.TartBase{MacOS: t.Image.MacOS, Build: t.Image.Build, Upstream: t.Image.Tart.Upstream, DisableSIP: t.Image.DisableSIP})
+				bases = append(bases, domain.TartBase{MacOS: t.Image.MacOS, Build: t.Image.Build, Upstream: t.Image.Tart.Upstream, DisableSIP: t.Image.DisableSIP, DiskBytes: max(t.Resources.DiskBytes, t.Image.BuildDiskBytes)})
 			}
 		}
 		imageCatalog, err = catalog.NewTart(catalog.New(), bases)

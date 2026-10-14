@@ -222,3 +222,11 @@ func TestServiceDialAndPasswordRouteByProvider(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestObserveRejectsDuplicateHostOwnership(t *testing.T) {
+	primary := &fakeRuntime{name: "tart", obs: observation("tart", "same-host", 0, 2)}
+	secondary := &fakeRuntime{name: "baremetal", obs: observation("baremetal", "same-host", 0, 1)}
+	if _, err := New(primary, secondary).Observe(context.Background()); err == nil {
+		t.Fatal("ambiguous host ownership accepted")
+	}
+}

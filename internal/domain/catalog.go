@@ -69,6 +69,7 @@ type ImageCatalog struct {
 
 // TartBase pins an operator-approved upstream and its exact OS/build/SIP.
 type TartBase struct {
+	DiskBytes  int64  `json:"disk_bytes,omitempty"`
 	MacOS      string `json:"macos"`
 	Build      string `json:"build"`
 	Upstream   string `json:"upstream"`
@@ -76,7 +77,7 @@ type TartBase struct {
 }
 
 func (b TartBase) Validate() error {
-	if !ValidVersion(b.MacOS) || !ValidName(b.Build) {
+	if !ValidVersion(b.MacOS) || !ValidName(b.Build) || b.DiskBytes < 0 || b.DiskBytes > 512<<30 {
 		return Err("invalid_profile", "Tart base requires exact macOS and build")
 	}
 	return (TartSource{Upstream: b.Upstream}).Validate()

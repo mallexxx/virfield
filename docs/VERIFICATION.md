@@ -25,6 +25,8 @@ The installed snapshot below remains a distinct older artifact.
 | Installer | Explicit Tart init, three-binary service generator, separate private state dir and optional browser; Go/Python tests |
 | Orchard readiness | Daemon now always requires per-lease SSH preparer; source-only remote templates fail admission before creation; remote image/access/live-pool acceptance remains absent |
 | Lume retirement | Runtime/factory/wrapper/patch/build/install code removed; implicit legacy runtime and image_tools rejected; old separate service still registered with empty VM inventory |
+| Host identity collisions | Config and merged inventory reject overlapping primary/node host IDs; reproduced regression tests |
+| Image resource admission | A pending image build was reproduced bypassing worker CPU/RAM/disk admission; builds/exports now reserve before dispatch, count in quota and refuse unknown macOS 27 disk bounds; regression tests |
 | Node identity backup | Private management keys/probes included, unsupported files abort snapshot; backup fixtures |
 | Go security | Minimum Go 1.26.9; govulncheck finds zero reachable or imported-package vulnerabilities |
 

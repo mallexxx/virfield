@@ -67,7 +67,7 @@ func (c *Controller) resources(ls []domain.Lease) (domain.Resources, map[string]
 	// Physical nodes are bounded by their own lease slot, not this Mac's budget.
 	nodeLocations, _ := c.nodeHosts()
 	for _, l := range ls {
-		if l.Purpose == "image" || nodeLocations[l.Location] != "" {
+		if nodeLocations[l.Location] != "" || l.Purpose == "image" && (l.State == "image_ready" || l.State == "released") {
 			continue
 		}
 		r := l.Resources
@@ -110,6 +110,10 @@ func (c *Controller) admitResources(ls []domain.Lease, t domain.Template, reques
 	if err != nil {
 		return request, "", err
 	}
+	return c.admitResourceBudget(ls, request, candidates)
+}
+
+func (c *Controller) admitResourceBudget(ls []domain.Lease, request domain.Resources, candidates []string) (domain.Resources, string, error) {
 	if c.resourceLimits == nil {
 		return request, candidates[0], nil
 	}

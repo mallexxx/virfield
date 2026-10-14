@@ -16,18 +16,21 @@ type TartCatalog struct {
 }
 
 func NewTart(metadata Metadata, bases []domain.TartBase) (*TartCatalog, error) {
-	seen := map[string]domain.TartBase{}
+	seen := map[string]int{}
 	valid := []domain.TartBase{}
 	for _, b := range bases {
 		if err := b.Validate(); err != nil {
 			return nil, err
 		}
 		key := b.Upstream
-		if previous, exists := seen[key]; exists && previous != b {
-			return nil, domain.Err("invalid_profile", "A pinned Tart upstream has conflicting OS or SIP metadata")
-		}
-		if _, exists := seen[key]; !exists {
-			seen[key] = b
+		if index, exists := seen[key]; exists {
+			previous := valid[index]
+			if previous.MacOS != b.MacOS || previous.Build != b.Build || previous.DisableSIP != b.DisableSIP || previous.DiskBytes != 0 && b.DiskBytes != 0 && previous.DiskBytes != b.DiskBytes {
+				return nil, domain.Err("invalid_profile", "A pinned Tart upstream has conflicting OS, SIP or disk metadata")
+			}
+			valid[index].DiskBytes = max(previous.DiskBytes, b.DiskBytes)
+		} else {
+			seen[key] = len(valid)
 			valid = append(valid, b)
 		}
 	}
@@ -76,7 +79,7 @@ func (c *TartCatalog) Resolve(ctx context.Context, r domain.ImageCreateRequest) 
 		}
 		return domain.ImageProfile{}, domain.Err("version_not_found", "Requested macOS/build is not in the operator-approved Tart base catalog")
 	}
-	p := domain.ImageProfile{Tart: &domain.TartSource{Upstream: selected.Upstream}, MacOS: selected.MacOS, Build: selected.Build, DisableSIP: selected.DisableSIP, Security: security, Provision: "base-v1"}
+	p := domain.ImageProfile{BuildDiskBytes: selected.DiskBytes, Tart: &domain.TartSource{Upstream: selected.Upstream}, MacOS: selected.MacOS, Build: selected.Build, DisableSIP: selected.DisableSIP, Security: security, Provision: "base-v1"}
 	if security == "automation" {
 		p.Provision = "security-v1"
 	}

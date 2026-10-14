@@ -146,6 +146,7 @@ func TestRuntimeNodesValidate(t *testing.T) {
 		"bad os":           strings.Replace(valid, `"os":"linux"`, `"os":"windows"`, 1),
 		"bad mac":          strings.Replace(valid, "B0:6E:BF:60:6D:64", "zz", 1),
 		"container id":     strings.Replace(valid, `"id":"htpc"`, `"id":"samsung"`, 1),
+		"primary host id":  strings.Replace(valid, `"id":"htpc"`, `"id":"macbook"`, 1),
 		"user@address":     strings.Replace(valid, `"address":"192.168.1.86"`, `"address":"x@192.168.1.86"`, 1),
 		"duplicate ids":    valid + "," + valid,
 		"relative hold":    strings.Replace(valid, `"/tmp/rsync-active"`, `"tmp/x"`, 1),

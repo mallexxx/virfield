@@ -78,6 +78,9 @@ func (f *Fleet) Observe(ctx context.Context) (domain.Observation, error) {
 			merged.At = o.At
 		}
 		for _, h := range o.Hosts {
+			if _, exists := owners[h.ID]; exists {
+				return domain.Observation{}, domain.Err("backend_unavailable", "Host identity overlaps across runtime inventories: "+h.ID)
+			}
 			owners[h.ID] = r
 		}
 	}

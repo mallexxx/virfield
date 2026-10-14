@@ -40,7 +40,12 @@ is not yet implemented. Developer profiles download/resume and checksum-verify a
 ones are quarantined. A failed Apple-authorized download in `resolve` supports
 the native sign-in flow and resumes that exact job before any VM build. Install
 the browser alongside virfieldd to enable this flow. UI-test profiles adopt
-upstream Xcode. macOS 27 recipes omit unsupported Recovery relocation.
+upstream Xcode. macOS 27 recipes keep the upstream disk and omit unsupported Recovery relocation/resize.
+Image builds and portable exports reserve CPU/RAM/disk before dispatch and share
+the worker quota. A new macOS 27 base requires an operator `disk_bytes` bound in
+`runtime.tart.bases` (pinned profile: `build_disk_bytes`) or an observed golden of
+that exact upstream. Unknown disk size is rejected before building; there is no
+client-controlled quota bypass.
 
 Tart stages are `resolve → build → qualify → stop`. Qualification rotates private
 credentials, reboots and verifies exact OS/build, SIP, desktop, disk state,

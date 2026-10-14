@@ -66,8 +66,12 @@ func (c *Controller) buildImageLocked(ctx context.Context, t domain.Template, ke
 			return domain.Operation{}, domain.Err("image_exists", "image already exists; build never overwrites a VM")
 		}
 	}
+	resources, err := c.admitImageResources(ls, t)
+	if err != nil {
+		return domain.Operation{}, err
+	}
 	now := c.now()
-	l := domain.Lease{ID: domain.NewID("image-"), Purpose: "image", Template: t.ID, VMName: t.Name, Location: t.Location, LegacyUUID: t.LegacyUUID, GuestUser: t.GuestUser, GuestHome: t.GuestHome, State: "image_building", CreatedAt: now, UpdatedAt: now}
+	l := domain.Lease{Resources: resources, ID: domain.NewID("image-"), Purpose: "image", Template: t.ID, VMName: t.Name, Location: t.Location, LegacyUUID: t.LegacyUUID, GuestUser: t.GuestUser, GuestHome: t.GuestHome, State: "image_building", CreatedAt: now, UpdatedAt: now}
 	if c.secondaryProvider(t.Provider) {
 		l.Provider = t.Provider
 	}

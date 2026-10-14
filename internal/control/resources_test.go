@@ -94,3 +94,48 @@ func TestDiskReservationIsScopedToDestinationLocation(t *testing.T) {
 		t.Fatalf("location=%q; want home", second.Lease.Location)
 	}
 }
+
+func TestPendingImageBuildReservesResourcesBeforeWorkerAdmission(t *testing.T) {
+	c, b := imageController(t)
+	image := c.templates["test"]
+	image.Resources = domain.Resources{CPU: 4, MemoryBytes: 8 << 30, DiskBytes: 120 << 30}
+	c.templates["test"] = image
+	c.templates["worker"] = domain.Template{ID: "worker", Name: "worker-golden", Location: "home"}
+	b.backend.vms["home/worker-golden"] = domain.VM{Name: "worker-golden", Location: "home", State: "stopped", OS: "macOS", Resources: domain.Resources{CPU: 4, MemoryBytes: 8 << 30, DiskBytes: 80 << 30}}
+	c.SetResources(domain.ResourceLimits{CPU: 4, MemoryBytes: 16 << 30, DiskReserveBytes: 20 << 30}, func() (map[string]int64, error) { return map[string]int64{"home": 500 << 30}, nil })
+	tick(t, c)
+	if _, err := c.BuildImage(context.Background(), "test", "resource-image-build"); err != nil {
+		t.Fatal(err)
+	}
+	_, err := c.Acquire(context.Background(), "resource-worker-over-image", domain.AcquireRequest{Template: "worker", TTLSeconds: 3600})
+	code(t, err, "resource_exhausted")
+}
+
+func TestImageBuildRefusesQuotaOverflowBeforeSavingJob(t *testing.T) {
+	c, _ := imageController(t)
+	image := c.templates["test"]
+	image.Resources = domain.Resources{CPU: 4, MemoryBytes: 8 << 30, DiskBytes: 120 << 30}
+	c.templates["test"] = image
+	c.SetResources(domain.ResourceLimits{CPU: 4, MemoryBytes: 16 << 30, DiskReserveBytes: 20 << 30}, func() (map[string]int64, error) { return map[string]int64{"home": 130 << 30}, nil })
+	tick(t, c)
+	_, err := c.BuildImage(context.Background(), "test", "image-disk-exhausted")
+	code(t, err, "resource_exhausted")
+	leases, err := c.Leases(context.Background())
+	if err != nil || len(leases) != 0 {
+		t.Fatal("refused build retained a reservation", leases, err)
+	}
+}
+
+func TestNewMacOS27BuildRequiresKnownDiskBound(t *testing.T) {
+	c, _, _ := setup(t)
+	c.SetResources(domain.ResourceLimits{CPU: 8, MemoryBytes: 32 << 30, DiskReserveBytes: 20 << 30}, func() (map[string]int64, error) { return map[string]int64{"home": 500 << 30}, nil })
+	tick(t, c)
+	template := domain.Template{ID: "new-base", Name: "new-base", Location: "home", Image: &domain.ImageProfile{MacOS: "27.0", Tart: &domain.TartSource{Upstream: "ghcr.io/team/base@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}}
+	_, err := c.admitImageResources(nil, template)
+	code(t, err, "resource_unknown")
+	template.Image.BuildDiskBytes = 200 << 30
+	resources, err := c.admitImageResources(nil, template)
+	if err != nil || resources.CPU != 4 || resources.MemoryBytes != 8<<30 || resources.DiskBytes != 200<<30 {
+		t.Fatal(resources, err)
+	}
+}
