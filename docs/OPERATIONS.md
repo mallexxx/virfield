@@ -390,7 +390,7 @@ an Aqua LaunchAgent (`ai.virfield.guest-keychain`) and a VM-only SSH command bri
 (`/etc/ssh/sshd_config.d/001-virfield-keychain.conf`). Guest state is private under
 `~/.virfield-keychain`. Automatic login unlocks GUI access after reboot; every SSH
 command unlocks in its own Security audit session before executing the original
-command. The inherited login keychain's items are retained and its password is rotated to match the VM; this prevents OS services from leaving old login-keychain password dialogs on screen. Its native access is verified after lock/unlock with the new password. Tart desktop mode is selected and verified inside Aqua, since a host-side display hint alone can leave the guest at 1024×768. Shared physical nodes are not
+command. The inherited login keychain's items are retained and its password is rotated to match the VM; this prevents OS services from leaving old login-keychain password dialogs on screen. Its native access is verified after lock/unlock with the new password. Tart clones and factory recipes request `1920x1080px` (72 PPI), independent of the host Retina scale. Point units, including an omitted unit, can leave Monterey at 3840×2160 without a 1920×1080 mode. The actual 1920×1080 desktop is selected and verified inside Aqua before native keychain acceptance. Shared physical nodes are not
 modified by this VM preparation policy.
 
 If `guest_keychain_failed` occurs, preserve the operation/lease ID and inspect the

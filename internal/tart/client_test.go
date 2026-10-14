@@ -149,7 +149,7 @@ func TestObserveKeepsUnmountedExternalContainer(t *testing.T) {
 }
 
 func TestCommandsUseSelectedTartHome(t *testing.T) {
-	runner := &fakeRunner{responses: map[string]string{"/samsung|clone ghcr.io/cirrus/image@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa vf-test": "", "/samsung|set vf-test --display 1920x1080pt --no-display-refit": ""}}
+	runner := &fakeRunner{responses: map[string]string{"/samsung|clone ghcr.io/cirrus/image@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa vf-test": "", "/samsung|set vf-test --display 1920x1080px --no-display-refit": ""}}
 	client := &Client{config: Config{Containers: []ContainerConfig{{ID: "samsung", Path: "/samsung", Kind: "external"}}}, runner: runner}
 	template := domain.Template{Source: "ghcr.io/cirrus/image@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
 	lease := domain.Lease{VMName: "vf-test", Location: "samsung"}
@@ -161,7 +161,7 @@ func TestCommandsUseSelectedTartHome(t *testing.T) {
 	}
 	want := []string{
 		"/samsung|clone ghcr.io/cirrus/image@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa vf-test",
-		"/samsung|set vf-test --display 1920x1080pt --no-display-refit",
+		"/samsung|set vf-test --display 1920x1080px --no-display-refit",
 		"/samsung|run --no-graphics vf-test",
 	}
 	if !reflect.DeepEqual(runner.calls, want) {

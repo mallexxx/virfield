@@ -83,8 +83,20 @@ func TestMacOS27RecipesKeepASIFRecoveryAndLargeDesktop(t *testing.T) {
 			t.Fatal(err)
 		}
 		text := compact(string(b))
-		if !strings.Contains(text, `recovery_partition = "keep"`) || !strings.Contains(text, `display = "1920x1080"`) || strings.Contains(text, "disk_size_gb") {
+		if !strings.Contains(text, `recovery_partition = "keep"`) || strings.Contains(text, "disk_size_gb") {
 			t.Fatal("ASIF recovery/default desktop regression", name)
+		}
+	}
+}
+
+func TestAllRecipesUseHostIndependentPixelDisplay(t *testing.T) {
+	for _, name := range []string{"base.pkr.hcl", "developer.pkr.hcl", "base27.pkr.hcl", "developer27.pkr.hcl", "uitest.pkr.hcl"} {
+		b, err := recipe.ReadFile("recipe/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(compact(string(b)), `display = "1920x1080px"`) {
+			t.Fatal("host Retina scaling must not change the guest desktop", name)
 		}
 	}
 }

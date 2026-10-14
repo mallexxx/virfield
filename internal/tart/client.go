@@ -427,9 +427,10 @@ func (c *Client) Clone(ctx context.Context, template domain.Template, lease doma
 	if err != nil {
 		return err
 	}
-	// Set logical desktop size before boot: inherited 1024x768 clips UI-test
-	// controls. Disallow window refitting so desktop clients cannot shrink it.
-	_, err = c.runner.Run(ctx, container.Path, []string{"set", lease.VMName, "--display", "1920x1080pt", "--no-display-refit"})
+	// Pixel units use a 72-PPI display independently of the host's Retina scale.
+	// Point units can leave Monterey at 3840x2160 without a 1920x1080 mode.
+	// Disallow window refitting so desktop clients cannot shrink the GUI.
+	_, err = c.runner.Run(ctx, container.Path, []string{"set", lease.VMName, "--display", "1920x1080px", "--no-display-refit"})
 	return err
 }
 
