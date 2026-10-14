@@ -20,6 +20,9 @@ links by requesting the corresponding topic; they are not local filesystem paths
 on the client. Help is read-only and does not contact the daemon. Check
 `virfield_status` separately for actual host health. Documentation belongs to the
 installed server build; updating a checkout does not update an installed server.
+Replacing the adapter binary also does not update an already-running stdio
+process. Reconnect its owning client after an upgrade and verify the new runbook
+and runtime status before continuing mutations.
 
 Virfield builds golden images and leases disposable VMs. It does not execute
 arbitrary shell commands through MCP. Run work over pinned SSH from your agent's

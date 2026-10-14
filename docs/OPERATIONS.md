@@ -251,6 +251,11 @@ mutations, replace the configured binaries and gracefully restart only the exact
 Verify health, runtime inventory, preserved leases and installed hashes after
 restart. New signatures may need privacy grants before external storage works.
 Do not claim the upgrade complete from a successful file copy alone.
+Existing stdio MCP processes retain their old version, tool metadata and embedded
+runbooks even after their executable is replaced. Reconnect each owning client
+after the upgrade, preserving unrelated clients and active work. A daemon restart
+does not replace a client's stdio adapter. Verify the MCP initialize version and
+all help topics/resources against the exact packaged source before accepting it.
 
 ## CLI and SSH
 
@@ -325,6 +330,15 @@ Register an accepted installed candidate; reconnect after upgrades. Each client
 needs help/status discovery plus an authorized acquire → ready → pinned SSH
 workload → artifact export → release run. Registration alone is not acceptance.
 Claude Desktop configuration is separate from Claude Code.
+
+The read-only installed smoke runs from the exact candidate source. Set
+`VIRFIELD_LIVE_MCP=1`, `VIRFIELD_LIVE_TOKEN_FILE` to the existing private API token
+file, `VIRFIELD_LIVE_MCP_BINARY` to the installed adapter, and
+`VIRFIELD_LIVE_MCP_VERSION` to `release.json.version` without its leading `v`, then
+run `go test ./internal/mcpadapter -run '^TestLiveInstalledMCP$' -count=1 -v`.
+It checks both HTTP and a newly started stdio adapter. Separately inspect
+help/status in the actual already-connected client: a fresh process passing does
+not attest an older process still serving a different session.
 
 ## Recovery
 

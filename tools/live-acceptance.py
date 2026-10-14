@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import socket
 import subprocess
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -51,7 +52,11 @@ class Acceptance:
             headers={'Authorization': 'Bearer ' + self.token, 'Content-Type': 'application/json'})
         if key:
             request.add_header('Idempotency-Key', self.run_id + '-' + key)
-            self.requests[key] = dict(path=path, body=body)
+            # Keep the actual wire body, independent of later caller mutations.
+            replay = dict(path=path, body=None if request.data is None else json.loads(request.data))
+            if key in self.requests and self.requests[key] != replay:
+                raise ValueError('Replay must preserve the original path and body')
+            self.requests[key] = replay
             self.save()  # Persist the replay key/body BEFORE dispatch.
         for attempt in range(3):
             try:
@@ -66,9 +71,23 @@ class Acceptance:
         path = self.destination / 'journal.json'
         # Contains only this run's IDs/results, never API tokens or desktop URLs.
         content = dict(run_id=self.run_id, requests=self.requests, accepted=self.accepted, results=self.results)
-        with path.open('w') as file:
-            os.fchmod(file.fileno(), 0o600)
-            json.dump(content, file, indent=2)
+        # An interrupted write must not truncate the only durable replay record.
+        descriptor, temporary = tempfile.mkstemp(prefix='.journal-', dir=self.destination)
+        try:
+            with os.fdopen(descriptor, 'w') as file:
+                os.fchmod(file.fileno(), 0o600)
+                json.dump(content, file, indent=2)
+                file.flush()
+                os.fsync(file.fileno())
+            os.replace(temporary, path)
+            directory = os.open(self.destination, os.O_RDONLY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
 
     def command(self, *arguments, success=True):
         result = subprocess.run(arguments, capture_output=True, text=True, timeout=90)

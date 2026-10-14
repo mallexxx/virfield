@@ -27,7 +27,7 @@ The new automation factory rebuilt and qualified image
 `image-5387f340da4ae093162383c18449c592`; two sequential clones on its explicit
 internal container passed pinned SSH, cross-key rejection, distinct host keys,
 OS/build/SIP, desktop, artifact export and confirmed cleanup.
-The published `d2daf4e` storage-routing candidate is packaged but not installed:
+The supplemental storage-routing, inventory and keychain/UI candidate is packaged but not installed:
 the operator elected to wait for the unrelated active macos27 lease to be released.
 Node clone acceptance and the private GHCR roundtrip are still outstanding.
 The older service snapshot below is a dated checkpoint.
@@ -57,6 +57,8 @@ The older service snapshot below is a dated checkpoint.
 | UI desktop | Native persistent 1920×1080 logical mode in Aqua, host-side Tart configuration and no window refit; real Settings/General UI-test smoke passed |
 | macOS 27 ASIF factory | Explicit Recovery keep bypasses default deletion/file lock; full isolated source factory build/qualification passed |
 | SSH boot banner | 45-second banner budget, timeout classified as retryable connection failure before commands; real local SSH banner regression test |
+| Stale MCP process | A connected process still returned historical Lume instructions after binary replacement; installed smoke now checks exact package version and all four runbooks/resources against candidate source. Owning-client reconnection and acceptance remain pending |
+| Acceptance replay journal | Atomic private file replacement and fsync preserve the last complete replay record on interrupted writes; changed replay bodies are rejected before dispatch; regression tests |
 | Go security | Minimum Go 1.26.9; govulncheck finds zero reachable or imported-package vulnerabilities |
 
 Pinned Staticcheck v0.7.0 passes. Govulncheck v1.6.0 has one module-only notice
@@ -122,7 +124,7 @@ exit status alone is never the new readiness gate.
 
 ## Automated candidate results
 
-The complete `make check` passed: documentation links, seven Python tests,
+The complete `make check` passed: documentation links, nine Python tests,
 formatting, `go vet` and the full Go race suite. Three Go binaries and the native
 Apple browser built; the browser signature verified. The existing installed
 configuration passes the candidate CLI `config-check`. Pinned Staticcheck, module
@@ -135,8 +137,10 @@ Clean local package provenance:
 |---|---|---|
 | `aee89c1ffafb01faccc750b60d0e3470bf14fc97` | `2313602b2c380e5e74640c47ee6ad50d9c10d750f856a0949833a4489803cf35` | Installed; signed binary hashes retained in the private upgrade record |
 | `d2daf4ee613739686e2227a29e513d3e1a592c9b` | `6d4a01acb5baddf3d441f5c6f5e557125046ce45f74d4ccf03b37c1c46039c2b` | Packaged; installation waits for lease release |
+| `624bdfa7a88738809729e6889c679eaf0241eb78` | `be29654ef02f4ab6cd747b1815c2a72532717aaf2d423a2a4d8a93e4013634bb` | Keychain/UI fixes packaged; not installed; later acceptance-runner/doc changes require a new exact-source package |
 
-The supplemental interrupted-inventory fix is newer than both packages.
+These rows are dated package snapshots. The keychain package includes the
+interrupted-inventory fix; subsequent source changes must be packaged again.
 
 Offline restoration of `backup-5cdef526c555f6a53ed5f565c6e2edaf` passed into a
 separate private directory: 18 copied files, SQLite integrity, all five active
@@ -147,7 +151,8 @@ started; live restore/upgrade/rollback acceptance remains outstanding.
 [Live acceptance runner](../tools/live-acceptance.py) persists request keys before
 dispatch, retains a private journal, and deletes only its own accepted disposable
 leases after explicit cleanup approval. Its no-approval and lost-reply behavior
-are tested. The Go `TestLiveLeaseSSH` also uses the actual guest user/port, accepts
+are tested, along with interrupted journal replacement and changed-replay refusal.
+The Go `TestLiveLeaseSSH` also uses the actual guest user/port, accepts
 Tart APFS encryption at rest with FileVault off/unlocked, and checks desktop
 revocation alongside SSH, cross-key/image-key rejection, workload and artifacts.
 
@@ -157,6 +162,8 @@ revocation alongside SSH, cross-key/image-key rejection, workload and artifacts.
   remote CI is deferred by the operator. Existing package provenance is recorded above.
 - Install the latest supplemental candidate after the unrelated lease is released and accept node resource policy with disposable
   node clones; preserve the passing `09ad696` Tart clone evidence above.
+- Reconnect the actual owning MCP clients after installation and verify their
+  version, runbooks and workflow; a fresh adapter alone cannot attest old sessions.
 - Complete permission migration for existing HTPC secured goldens after approval;
   separate authorization is still pending, and read-only inspection confirmed mode 0444.
 - Complete GHCR publication with real portable rebuild, push/pull-back/clone
