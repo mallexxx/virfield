@@ -71,7 +71,7 @@ func run(ctx context.Context, g Guest, mode, user, scope, password, previous str
 	input := strings.Join([]string{mode, user, scope, password, nonce, previous}, "\n") + "\n"
 	out, err := g.RunReader(ctx, 3*time.Minute, command, strings.NewReader(input))
 	if err != nil || json.Unmarshal([]byte(out), &proof) != nil || proof.Version != 1 || proof.Scope != scope || proof.Nonce != nonce || !domain.ValidName(proof.Boot) || proof.SessionID < 1 || !proof.Aqua || !proof.Unlocked || !proof.ValueEqual || !proof.Ready || proof.AddStatus != 0 || proof.ReadStatus != 0 || proof.DeleteStatus != 0 || proof.DisplayManaged && (proof.DisplayWidth != 1920 || proof.DisplayHeight != 1080) {
-		return Proof{}, failure()
+		return reject(ctx, g, "gui", out)
 	}
 	// A GUI unlock does not unlock a new SSH Security audit session. The fixed
 	// sshd bridge unlocks before each command; prove native access in that session
@@ -88,10 +88,21 @@ exec /bin/bash "$HOME/.virfield-keychain/ssh-session.sh"'`
 	out, err = g.RunReader(ctx, time.Minute, sshCommand, strings.NewReader(scope+"\n"+sshNonce+"\n"))
 	var sshProof Proof
 	if err != nil || json.Unmarshal([]byte(out), &sshProof) != nil || sshProof.Version != 1 || sshProof.Scope != scope || sshProof.Nonce != sshNonce || sshProof.Boot != proof.Boot || sshProof.SessionID < 1 || !sshProof.Unlocked || !sshProof.ValueEqual || !sshProof.Ready || sshProof.AddStatus != 0 || sshProof.ReadStatus != 0 || sshProof.DeleteStatus != 0 {
-		return Proof{}, failure()
+		return reject(ctx, g, "ssh", out)
 	}
 	proof.SSHSessionID, proof.SSHVerified = sshProof.SessionID, true
 	return proof, nil
+}
+
+func reject(ctx context.Context, g Guest, stage, output string) (Proof, error) {
+	// Collect before the provisioning connection closes: a failed GUI setup may
+	// leave the new SSH bridge unavailable, even though its host key is pinned.
+	if reporter, ok := g.(interface {
+		ReportKeychainFailure(context.Context, string, string)
+	}); ok {
+		reporter.ReportKeychainFailure(ctx, stage, output)
+	}
+	return Proof{}, failure()
 }
 
 func failure() error {

@@ -395,6 +395,12 @@ modified by this VM preparation policy.
 
 If `guest_keychain_failed` occurs, preserve the operation/lease ID and inspect the
 owner-only guest `~/.virfield-keychain/agent.log` and host provisioning diagnostics.
+The SSH preparer now captures bounded GUI/SSH results and agent/display logs into
+private `state_dir/leases/LEASE_ID/keychain.log` (or `images/IMAGE_ID/keychain.log`)
+before closing its provisioning connection. It omits the identity/password file
+and keychain contents. A failed GUI installation can make the new SSH bridge
+unavailable, so collect this host log before releasing the owned fixture: cleanup
+removes its private directory. Public API errors/events never contain these logs.
 Do not mark ready on a CLI unlock exit code: native application-style key storage
 must work in both contexts. Do not replace a keychain on an active user's lease or
 reset application databases; prepare a new disposable lease after deployment.

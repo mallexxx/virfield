@@ -88,8 +88,9 @@ type Credentials struct {
 	Secured     bool   `json:"secured"`
 }
 type Client struct {
-	client *ssh.Client
-	raw    net.Conn
+	client        *ssh.Client
+	raw           net.Conn
+	diagnosticDir string
 }
 
 var handshakeTimeout = 45 * time.Second
@@ -278,7 +279,7 @@ func (e *Manager) connectCredentials(ctx context.Context, l domain.Lease, ip str
 		return nil, domain.Err("guest_ssh_failed", "Guest authentication or pinned host key verification failed")
 	}
 	_ = raw.SetDeadline(time.Time{})
-	g := &Client{client: ssh.NewClient(conn, chans, reqs), raw: raw}
+	g := &Client{client: ssh.NewClient(conn, chans, reqs), raw: raw, diagnosticDir: e.Directory(l)}
 	model, err := g.Run(ctx, "/usr/sbin/sysctl -n hw.model", "")
 	if err != nil || !e.acceptedModel(model) {
 		g.Close()

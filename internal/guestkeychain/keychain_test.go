@@ -20,6 +20,32 @@ type fakeGuest struct {
 	err              error
 }
 
+type reportingGuest struct {
+	*fakeGuest
+	stages []string
+}
+
+func (g *reportingGuest) ReportKeychainFailure(_ context.Context, stage, _ string) {
+	g.stages = append(g.stages, stage)
+}
+
+func TestFailedReadinessCollectsDiagnosticsBeforeClosingTheSession(t *testing.T) {
+	for _, stage := range []string{"gui", "ssh"} {
+		t.Run(stage, func(t *testing.T) {
+			g := &reportingGuest{fakeGuest: &fakeGuest{}}
+			if stage == "gui" {
+				g.change = func(p *Proof) { p.Aqua = false }
+			} else {
+				g.sshChange = func(p *Proof) { p.AddStatus = -25308 }
+			}
+			_, err := Ensure(context.Background(), g, "admin", "lease-fixture", "private-fixture-password")
+			if err == nil || strings.Contains(err.Error(), "private-fixture-password") || len(g.stages) != 1 || g.stages[0] != stage {
+				t.Fatal("Failure lost private diagnostics or leaked a credential", g.stages, err)
+			}
+		})
+	}
+}
+
 func (g *fakeGuest) RunReader(_ context.Context, _ time.Duration, command string, input io.Reader) (string, error) {
 	b, _ := io.ReadAll(input)
 	g.command, g.input = command, string(b)
