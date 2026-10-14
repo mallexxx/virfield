@@ -93,7 +93,7 @@ func sshConnectionFiles(dir string, l domain.Lease) (string, string, string, err
 	}
 	knownPath := filepath.Join(dir, "known_hosts")
 	knownContent := l.ID + " " + host + "\n"
-	configContent := fmt.Sprintf("Host virfield\n  HostName %s\n  User %s\n  Port %d\n  HostKeyAlias %s\n  IdentityFile \"%s\"\n  UserKnownHostsFile \"%s\"\n  GlobalKnownHostsFile /dev/null\n  StrictHostKeyChecking yes\n  IdentitiesOnly yes\n  IdentityAgent none\n  ForwardAgent no\n  PasswordAuthentication no\n  KbdInteractiveAuthentication no\n  ControlMaster no\n  ControlPath none\n  ConnectTimeout 10\n", l.IP, l.SSH.User, l.SSH.Port, l.ID, keyPath, knownPath)
+	configContent := fmt.Sprintf("Host virfield\n  HostName %s\n  User %s\n  Port %d\n  HostKeyAlias %s\n  IdentityFile \"%s\"\n  UserKnownHostsFile \"%s\"\n  GlobalKnownHostsFile /dev/null\n  StrictHostKeyChecking yes\n  IdentitiesOnly yes\n  IdentityAgent none\n  ForwardAgent no\n  PasswordAuthentication no\n  KbdInteractiveAuthentication no\n  ControlMaster no\n  ControlPath none\n  ConnectTimeout 45\n", l.IP, l.SSH.User, l.SSH.Port, l.ID, keyPath, knownPath)
 	return dir, knownContent, configContent, nil
 }
 

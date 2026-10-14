@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/mallexxx/virfield/internal/domain"
+	"github.com/mallexxx/virfield/internal/guestkeychain"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -90,6 +91,8 @@ type Client struct {
 	client *ssh.Client
 	raw    net.Conn
 }
+
+var handshakeTimeout = 45 * time.Second
 
 func (g *Client) Close() { _ = g.client.Close(); _ = g.raw.Close() }
 func (e *Manager) CredentialPath(l domain.Lease) string {
@@ -248,7 +251,7 @@ func (e *Manager) connectCredentials(ctx context.Context, l domain.Lease, ip str
 		_ = os.WriteFile(filepath.Join(e.Directory(l), "ssh-connect.log"), []byte(err.Error()+"\n"), 0600)
 		return nil, domain.Err("guest_connect_failed", "Cannot connect to the guest SSH endpoint; inspect private ssh-connect.log")
 	}
-	handshakeDeadline := time.Now().Add(15 * time.Second)
+	handshakeDeadline := time.Now().Add(handshakeTimeout)
 	if d, ok := ctx.Deadline(); ok && d.Before(handshakeDeadline) {
 		handshakeDeadline = d
 	}
@@ -266,6 +269,11 @@ func (e *Manager) connectCredentials(ctx context.Context, l domain.Lease, ip str
 		if errors.Is(err, io.EOF) || errors.Is(err, syscall.ECONNRESET) {
 			_ = os.WriteFile(filepath.Join(e.Directory(l), "ssh-connect.log"), []byte(err.Error()+"\n"), 0600)
 			return nil, domain.Err("guest_connect_failed", "Guest SSH is not accepting connections yet; inspect private ssh-connect.log")
+		}
+		var timeout net.Error
+		if errors.As(err, &timeout) && timeout.Timeout() {
+			_ = os.WriteFile(filepath.Join(e.Directory(l), "ssh-connect.log"), []byte(err.Error()+"\n"), 0600)
+			return nil, domain.Err("guest_connect_failed", "Guest SSH handshake timed out before readiness; inspect private ssh-connect.log")
 		}
 		return nil, domain.Err("guest_ssh_failed", "Guest authentication or pinned host key verification failed")
 	}
@@ -387,6 +395,9 @@ IFS= read -r kcpassword
 		return err
 	}
 	if err := VerifyAutoLogin(ctx, g, user, c.Password); err != nil {
+		return err
+	}
+	if _, err := guestkeychain.Ensure(ctx, g, user, l.ID, c.Password); err != nil {
 		return err
 	}
 	harden := `IFS= read -r new

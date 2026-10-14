@@ -25,6 +25,7 @@ source "tart-cli" "base" {
   memory_gb          = 8
   disk_size_gb       = 120
   recovery_partition = "relocate"
+  display = "1920x1080"
   headless           = true
   ssh_username       = "admin"
   ssh_password       = "admin"

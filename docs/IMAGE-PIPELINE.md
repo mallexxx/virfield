@@ -40,7 +40,7 @@ is not yet implemented. Developer profiles download/resume and checksum-verify a
 ones are quarantined. A failed Apple-authorized download in `resolve` supports
 the native sign-in flow and resumes that exact job before any VM build. Install
 the browser alongside virfieldd to enable this flow. UI-test profiles adopt
-upstream Xcode. macOS 27 recipes keep the upstream disk and omit unsupported Recovery relocation/resize.
+upstream Xcode. macOS 27 recipes keep the upstream disk and explicitly set `recovery_partition = "keep"`. Omitting it selects Packer's default deletion, which opens an ASIF file and can retain a lock that prevents Virtualization.framework startup. They do not resize or relocate Recovery. All Tart recipes set a 1920×1080 logical desktop; worker clones repeat this before boot and disable display refitting. Tart's value is a hint: a cached 1024×768 guest mode can remain active. The VM's Aqua agent selects and verifies the native CoreGraphics 1920×1080 logical mode on every login/preparation.
 Image builds and portable exports reserve CPU/RAM/disk before dispatch and share
 the worker quota. A new macOS 27 base requires an operator `disk_bytes` bound in
 `runtime.tart.bases` (pinned profile: `build_disk_bytes`) or an observed golden of
@@ -73,6 +73,24 @@ This is different from the retired Lume portable-disk contract.
 Per-lease password, management key, caller key and SSH host-key rotation apply
 before VM readiness. Inherited image and cross-lease keys must be rejected.
 Physical host leases add only one caller key to the configured shared account.
+
+VM qualification and lease preparation also install a private per-image/per-lease
+default keychain and an Aqua login LaunchAgent. It preserves and rekeys the inherited login keychain to the current private VM password, verifies native access with that new password, and keeps it searchable for OS services such as ScopedBookmarkAgent. It unlocks before applying the
+no-sleep/no-timeout-lock settings, and repeats at each GUI login. Passwords travel
+on encrypted SSH stdin and live only in owner-only guest files; inherited keychain
+files are preserved. A fresh native `WhenUnlocked` generic-password add/read/data
+comparison/delete probe must succeed in the current GUI audit session and boot.
+A successful `security unlock-keychain` or an unlocked status flag alone is not
+proof that an application can store its encryption key.
+
+SSH has a separate Security audit session. A fixed VM-only `sshd` ForceCommand
+bridge unlocks that same private keychain immediately before each original client
+command. It preserves command arguments/stdin, interactive shells and SFTP/SCP.
+Readiness independently requires native key access from an SSH command session.
+Failure is `guest_keychain_failed`; the image/lease does not become ready. This
+policy applies to VMs, including node VM qualification, and does not alter shared
+physical-host keychains. Existing ready images are historical evidence: new
+qualification or new lease preparation is needed to obtain these gates.
 
 `security: automation` applies the version-aware Gatekeeper, AMFI and TCC
 policy inside the guest, then verifies its signed identities, grants, canonical

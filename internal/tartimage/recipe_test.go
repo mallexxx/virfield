@@ -33,7 +33,7 @@ func TestRecipeScriptsParseAndMaterializePrivately(t *testing.T) {
 	if err := writeRecipe(dir); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"check-guest.sh", "install-xcode.sh", "xcode-post.sh", "reset-host-keys.sh", "grow-disk.sh", "security.sh", "provision27.sh"} {
+	for _, name := range []string{"check-guest.sh", "install-xcode.sh", "xcode-post.sh", "reset-host-keys.sh", "grow-disk.sh", "security.sh", "provision27.sh", "keychain.sh"} {
 		path := filepath.Join(dir, "scripts", name)
 		if out, err := exec.Command("/bin/bash", "-n", path).CombinedOutput(); err != nil {
 			t.Fatalf("%s: %s %v", name, out, err)
@@ -58,8 +58,8 @@ func TestUITestRecipeAdoptsUpstreamXcodeAndRunsSharedRecipe(t *testing.T) {
 			t.Fatalf("uitest recipe lacks %s", want)
 		}
 	}
-	if strings.Contains(string(uitest), "recovery_partition") {
-		t.Fatal("the plugin cannot relocate the macOS 27 recovery partition")
+	if !strings.Contains(compact(string(uitest)), `recovery_partition = "keep"`) {
+		t.Fatal("ASIF must bypass the plugin's default Recovery deletion and file lock")
 	}
 	if _, err := recipe.ReadFile("recipe/disable-sip.pkr.hcl"); err == nil {
 		t.Fatal("Recovery SIP stage is not used: the pinned upstream ships SIP disabled")
@@ -73,5 +73,18 @@ func TestUITestRecipeAdoptsUpstreamXcodeAndRunsSharedRecipe(t *testing.T) {
 	}
 	if out, err := exec.Command("/bin/bash", "-n", filepath.Join(dir, "scripts", "adopt-xcode.sh")).CombinedOutput(); err != nil {
 		t.Fatal(string(out), err)
+	}
+}
+
+func TestMacOS27RecipesKeepASIFRecoveryAndLargeDesktop(t *testing.T) {
+	for _, name := range []string{"base27.pkr.hcl", "developer27.pkr.hcl", "uitest.pkr.hcl"} {
+		b, err := recipe.ReadFile("recipe/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := compact(string(b))
+		if !strings.Contains(text, `recovery_partition = "keep"`) || !strings.Contains(text, `display = "1920x1080"`) || strings.Contains(text, "disk_size_gb") {
+			t.Fatal("ASIF recovery/default desktop regression", name)
+		}
 	}
 }

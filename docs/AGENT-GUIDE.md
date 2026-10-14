@@ -136,10 +136,22 @@ scp -F "$IDENTITY_DIR/config" virfield:workspace/results.tar ./results.tar
 
 `keygen` requires a new directory; `ssh-config` is generated once for that ready
 lease and refuses to overwrite files. It verifies the private key matches the
-lease, writes the host pin, and disables agent forwarding and password fallback.
+lease, writes the host pin, allows 45 seconds for the macOS SSH banner, and disables agent forwarding and password fallback.
 Keep the private key/config available through export and cleanup. Do not reuse
 an active lease's key for another lease. No generic workload, artifact uploader,
 Xcode project scheme or repository checkout is inferred by the VM manager.
+
+New VM preparation verifies GUI and SSH keychain access. The VM unlocks its own
+private default keychain in the Aqua login session and before each SSH command;
+ordinary `ssh`, `scp` and `xcodebuild` commands need no public CI password or
+manual Terminal/AppleScript unlock. Old installed goldens/leases can lack this
+mechanism; inspect [Verification](VERIFICATION.md) before assuming it is deployed.
+
+Tart workers use a fixed 1920×1080 logical desktop. Workspace sharing is not
+configured: copy the selected checkout and DerivedData over pinned SSH. For the
+DuckDuckGo `macOS UI Tests CI` scheme, supply the Review application and tests-server
+artifacts separately, as that CI scheme expects prebuilt products. Preserve paths
+required by its pre-actions. A passing browser startup is not full UI-suite acceptance.
 
 For an explicitly selected SwiftPM worktree, the host CLI command
 `vscode-config LEASE_ID IDENTITY_DIRECTORY WORKTREE [LEASE_ID IDENTITY_DIRECTORY ...]`

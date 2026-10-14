@@ -21,6 +21,8 @@ source "tart-cli" "uitest" {
   vm_name      = var.vm_name
   cpu_count    = 4
   memory_gb    = 8
+  display = "1920x1080"
+  recovery_partition = "keep"
   headless     = true
   ssh_username = "admin"
   ssh_password = "admin"

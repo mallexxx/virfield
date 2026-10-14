@@ -53,6 +53,10 @@ The older service snapshot below is a dated checkpoint.
 | Tart clone routing | A factory golden on internal storage selected the deployment's external default; source-container compatibility is now checked before reservation, and the acceptance runner selects each golden's own container |
 | Interrupted Tart inventory | Regression tests reproduced canceled address/container probes returning partial healthy snapshots; refresh now fails on cancellation and Control preserves the last complete inventory while pausing admission; supplemental installation pending |
 | Cold Tart transfer | First live factory attempt failed with Packer EOF during source transfer; journaled recovery deleted only its own failed record after process/inventory inspection. New candidate prefetches the pinned digest in retryable resolve and disables automatic cache pruning; roundtrip not yet accepted |
+| GUI/SSH keychain | Private Aqua/SSH session preparation, retained/rekeyed login items, native WhenUnlocked add/read/delete and fresh boot evidence; Ventura/macOS 27 live fixtures and real DDG CI Downloads smoke passed |
+| UI desktop | Native persistent 1920×1080 logical mode in Aqua, host-side Tart configuration and no window refit; real Settings/General UI-test smoke passed |
+| macOS 27 ASIF factory | Explicit Recovery keep bypasses default deletion/file lock; full isolated source factory build/qualification passed |
+| SSH boot banner | 45-second banner budget, timeout classified as retryable connection failure before commands; real local SSH banner regression test |
 | Go security | Minimum Go 1.26.9; govulncheck finds zero reachable or imported-package vulnerabilities |
 
 Pinned Staticcheck v0.7.0 passes. Govulncheck v1.6.0 has one module-only notice
@@ -70,6 +74,51 @@ digest `sha256:9fb387bb987cdda942fbc27118296ed8e16a3359a672c95c6d5ac960165ef1c5`
 compressed descriptors 22,617,320,232 bytes. It downloads no disk and uploads
 nothing. Packer syntax-only validation passes for base/developer variants,
 including macOS 27 variants without Recovery relocation.
+
+## DDG keychain and desktop regression (2026-10-14)
+
+The DDG `apple-browsers.git` CI runner creates `DefaultKeychain` with password
+`default`, sets it as default, unlocks it and disables sleep locking before
+running UI tests (`macOS/fastlane/Fastfile`, `create_keychain_ui_tests`). Its
+`EncryptionKeyStore` writes a native generic password with `WhenUnlocked` and
+reads it by service/account. An SSH unlock does not establish GUI audit-session
+access, and a GUI unlock does not establish access for each new SSH session.
+The old preparer rotated account/autologin credentials without a keychain gate.
+
+The candidate adds an Aqua login agent, private per-image/lease default keychain,
+content-preserving login-keychain rekey, and an SSH ForceCommand bridge that
+unlocks immediately before each command. Native add/read/data comparison/delete
+must pass in both contexts; qualification checks a fresh post-reboot proof.
+The login keychain remains searchable so ScopedBookmarkAgent cannot leave an old
+password dialog over the browser. Passwords are not made blank or public.
+
+Tart recipes/clones configure a 1920×1080 logical desktop. Cached guest modes
+ignore a host display hint, and `CGDisplaySetDisplayMode` reverts when its process
+exits. The Aqua agent uses a permanent CoreGraphics configuration transaction and
+checks the actual frame. macOS 27 recipes also explicitly keep Recovery: the
+Packer 1.21.0 default deletion opens an ASIF file and retains its lock, reproducing
+Virtualization.framework startup failure. A new source factory build with `keep`
+completed its Packer build and post-reboot qualification.
+
+Live evidence uses separately journaled disposable fixtures; production leases
+were untouched. Ventura native GUI key I/O and reboot passed. On macOS 27.0 /
+26A428, native GUI and SSH key I/O passed before/after actual reboot, as did the
+new source `resolve → build → qualify → stop` factory. Source per-lease preparation on its own clone also passed caller/management/host-key isolation, private login-keychain rekey, native GUI/SSH access and real worker reboot; its guest identity file retained only the new credential. Two successive runs of the
+real DDG CI `DownloadsUITests.testDownloadFinishesThenPopupIsShown` passed
+(1 test / 0 failures each), including browser launch and Settings/General clicks.
+Host products built with Xcode 27.1 ran with guest Xcode 27.0 / 27A266a. The second
+run used the candidate guest agent after reboot and no manual unlock. This is a
+single-test smoke, not acceptance of the entire DDG UI suite or all Xcode minor
+version combinations. SCP upload/download worked with the SSH bridge.
+
+Private journals and result bundles are retained under
+`/private/tmp/virfield-keychain-macos27-standalone-20261014`;
+`factory-journal.json` identifies the exact source recipe digest and owned image.
+Two failed old-daemon factory attempts were deleted through exact-name journaled
+recovery after confirming no VM/process remained. No existing golden was replaced.
+These fixes are not installed in the production daemon yet: installation still
+waits for the operator-selected release of unrelated active leases. Native tool
+exit status alone is never the new readiness gate.
 
 ## Automated candidate results
 

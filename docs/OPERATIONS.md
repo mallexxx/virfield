@@ -368,3 +368,20 @@ identity/token/configuration drill passed; a live restored-daemon drill is pendi
 Journal retention removes completed released history after 30 days; unfinished
 jobs and active leases retain their request keys. Retired idempotency keys may
 become new requests after pruning. Migration snapshots are retained separately.
+
+## VM keychain readiness
+
+The candidate prepares an owner-only default keychain named for each image/lease,
+an Aqua LaunchAgent (`ai.virfield.guest-keychain`) and a VM-only SSH command bridge
+(`/etc/ssh/sshd_config.d/001-virfield-keychain.conf`). Guest state is private under
+`~/.virfield-keychain`. Automatic login unlocks GUI access after reboot; every SSH
+command unlocks in its own Security audit session before executing the original
+command. The inherited login keychain's items are retained and its password is rotated to match the VM; this prevents OS services from leaving old login-keychain password dialogs on screen. Its native access is verified after lock/unlock with the new password. Tart desktop mode is selected and verified inside Aqua, since a host-side display hint alone can leave the guest at 1024×768. Shared physical nodes are not
+modified by this VM preparation policy.
+
+If `guest_keychain_failed` occurs, preserve the operation/lease ID and inspect the
+owner-only guest `~/.virfield-keychain/agent.log` and host provisioning diagnostics.
+Do not mark ready on a CLI unlock exit code: native application-style key storage
+must work in both contexts. Do not replace a keychain on an active user's lease or
+reset application databases; prepare a new disposable lease after deployment.
+The existing daemon remains installed until the operator-approved lease wait ends.

@@ -12,3 +12,6 @@ var Provision27 string
 
 //go:embed security.sh
 var Security string
+
+//go:embed keychain.sh
+var Keychain string

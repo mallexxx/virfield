@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/mallexxx/virfield/internal/domain"
+	"github.com/mallexxx/virfield/internal/guestkeychain"
 	"github.com/mallexxx/virfield/internal/guestssh"
 	"github.com/mallexxx/virfield/internal/qualify"
 )
@@ -75,6 +76,11 @@ func (b *Builder) qualify(ctx context.Context, l domain.Lease, p domain.ImagePro
 			bootstrap.Close()
 			return err
 		}
+	} else {
+		if _, err := guestkeychain.Ensure(ctx, bootstrap, l.GuestUser, l.ID, "admin"); err != nil {
+			bootstrap.Close()
+			return err
+		}
 	}
 	if err := b.shutdown(ctx, l, bootstrap); err != nil {
 		return err
@@ -132,6 +138,10 @@ func (b *Builder) verify(ctx context.Context, l domain.Lease, p domain.ImageProf
 	if err := qualify.Password(ctx, g, user, password); err != nil {
 		return nil, err
 	}
+	keychain, err := guestkeychain.Verify(ctx, g, user, l.ID)
+	if err != nil {
+		return nil, err
+	}
 	logXcode := func(out string) error {
 		return os.WriteFile(filepath.Join(b.folder(l), "xcode-verify.log"), []byte(out), 0600)
 	}
@@ -171,7 +181,7 @@ func (b *Builder) verify(ctx context.Context, l domain.Lease, p domain.ImageProf
 			return nil, err
 		}
 	}
-	return map[string]any{"macos": version, "build": p.Build, "xcode": xcode, "sip": sip, "desktop": true, "disk": disk, "scoped_image_ssh": !l.Portable, "portable": l.Portable, "guest_user": user, "device_support": support, "provision": p.Provision, "security": p.Security, "verified_at": time.Now().UTC()}, nil
+	return map[string]any{"macos": version, "build": p.Build, "xcode": xcode, "sip": sip, "desktop": true, "disk": disk, "gui_keychain": keychain, "scoped_image_ssh": !l.Portable, "portable": l.Portable, "guest_user": user, "device_support": support, "provision": p.Provision, "security": p.Security, "verified_at": time.Now().UTC()}, nil
 }
 
 func (b *Builder) boot(ctx context.Context, l domain.Lease) (string, error) {

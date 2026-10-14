@@ -424,6 +424,12 @@ func (c *Client) Clone(ctx context.Context, template domain.Template, lease doma
 		source = template.Name
 	}
 	_, err = c.runner.Run(ctx, container.Path, []string{"clone", source, lease.VMName})
+	if err != nil {
+		return err
+	}
+	// Set logical desktop size before boot: inherited 1024x768 clips UI-test
+	// controls. Disallow window refitting so desktop clients cannot shrink it.
+	_, err = c.runner.Run(ctx, container.Path, []string{"set", lease.VMName, "--display", "1920x1080pt", "--no-display-refit"})
 	return err
 }
 

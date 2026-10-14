@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/mallexxx/virfield/internal/domain"
+	"github.com/mallexxx/virfield/internal/guestkeychain"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -99,6 +100,9 @@ func (e *Manager) Prepare(ctx context.Context, l domain.Lease) (domain.SSHConnec
 	if err := VerifyAutoLogin(ctx, verified, user, c.Password); err != nil {
 		return result, err
 	}
+	if _, err := guestkeychain.Ensure(ctx, verified, user, l.ID, c.Password, inherited.Password); err != nil {
+		return result, err
+	}
 	keys, err := verified.Run(ctx, "/bin/cat ~/.ssh/authorized_keys", "")
 	if err != nil {
 		return result, err
@@ -153,10 +157,12 @@ chmod 700 ~/.ssh ~/workspace
 /usr/sbin/sysadminctl -newPassword "$new" -oldPassword "$old"
 /usr/bin/dscl . -authonly "$user" "$new" >/dev/null 2>&1
 ` + autologinScript + `
+# Retire only the inherited image bridge while rotating identities; the new
+# GUI preparer installs its lease bridge before readiness.
 printf '%s' "$hostkey" | /usr/bin/base64 -D > ~/.ssh/virfield-host-key
 printf '%s\n' "$new" | sudo -S -p '' /usr/bin/install -m 600 ~/.ssh/virfield-host-key /etc/ssh/ssh_host_ed25519_key
 /bin/rm ~/.ssh/virfield-host-key
-printf '%s\n' "$new" | sudo -S -p '' /bin/sh -c '/bin/rm -f /etc/ssh/ssh_host_rsa_key /etc/ssh/ssh_host_rsa_key.pub /etc/ssh/ssh_host_ecdsa_key /etc/ssh/ssh_host_ecdsa_key.pub; /usr/bin/ssh-keygen -y -f /etc/ssh/ssh_host_ed25519_key > /etc/ssh/ssh_host_ed25519_key.pub; printf "HostKey /etc/ssh/ssh_host_ed25519_key\nPasswordAuthentication no\nKbdInteractiveAuthentication no\nChallengeResponseAuthentication no\nPermitRootLogin no\nAllowAgentForwarding no\n" > /etc/ssh/sshd_config.d/000-virfield.conf; chmod 600 /etc/ssh/sshd_config.d/000-virfield.conf; /usr/sbin/sshd -t'
+printf '%s\n' "$new" | sudo -S -p '' /bin/sh -c '/bin/rm -f /etc/ssh/sshd_config.d/001-virfield-keychain.conf /etc/ssh/ssh_host_rsa_key /etc/ssh/ssh_host_rsa_key.pub /etc/ssh/ssh_host_ecdsa_key /etc/ssh/ssh_host_ecdsa_key.pub; /usr/bin/ssh-keygen -y -f /etc/ssh/ssh_host_ed25519_key > /etc/ssh/ssh_host_ed25519_key.pub; printf "HostKey /etc/ssh/ssh_host_ed25519_key\nPasswordAuthentication no\nKbdInteractiveAuthentication no\nChallengeResponseAuthentication no\nPermitRootLogin no\nAllowAgentForwarding no\n" > /etc/ssh/sshd_config.d/000-virfield.conf; chmod 600 /etc/ssh/sshd_config.d/000-virfield.conf; /usr/sbin/sshd -t'
 printf '%s\n' "$new" | sudo -S -p '' /bin/launchctl enable system/com.apple.screensharing
 # Already loaded is fine; Prepare verifies the listener.
 printf '%s\n' "$new" | sudo -S -p '' /bin/launchctl bootstrap system /System/Library/LaunchDaemons/com.apple.screensharing.plist 2>/dev/null || true

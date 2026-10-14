@@ -41,6 +41,8 @@ func RecipeDigest() string {
 	h.Write([]byte(guestscripts.Provision27))
 	fmt.Fprintf(h, "scripts/security.sh\x00%d\x00", len(guestscripts.Security))
 	h.Write([]byte(guestscripts.Security))
+	fmt.Fprintf(h, "scripts/keychain.sh\x00%d\x00", len(guestscripts.Keychain))
+	h.Write([]byte(guestscripts.Keychain))
 	return hex.EncodeToString(h.Sum(nil))
 }
 
@@ -69,5 +71,8 @@ func writeRecipe(dir string) error {
 	if err := os.WriteFile(filepath.Join(dir, sharedProvision), []byte(guestscripts.Provision27), 0600); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, "scripts/security.sh"), []byte(guestscripts.Security), 0600)
+	if err := os.WriteFile(filepath.Join(dir, "scripts/security.sh"), []byte(guestscripts.Security), 0600); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, "scripts/keychain.sh"), []byte(guestscripts.Keychain), 0600)
 }

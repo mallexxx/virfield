@@ -2,6 +2,7 @@ package nodeimage
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/mallexxx/virfield/internal/domain"
+	"github.com/mallexxx/virfield/internal/guestkeychain"
 )
 
 type fakeRuntime struct {
@@ -82,7 +84,17 @@ func (s *fakeSession) Run(_ context.Context, command, _ string) (string, error) 
 	return "", nil
 }
 
-func (s *fakeSession) RunReader(ctx context.Context, _ time.Duration, command string, _ io.Reader) (string, error) {
+func (s *fakeSession) RunReader(ctx context.Context, _ time.Duration, command string, input io.Reader) (string, error) {
+	if strings.Contains(command, "ai.virfield.guest-keychain") {
+		b, _ := io.ReadAll(input)
+		fields := strings.Split(string(b), "\n")
+		scope, nonce := fields[0], fields[1]
+		if len(fields) > 3 {
+			scope, nonce = fields[2], fields[4]
+		}
+		out, _ := json.Marshal(guestkeychain.Proof{Version: 1, Scope: scope, Nonce: nonce, Boot: "boot-fixture", SessionID: 123, Aqua: true, Unlocked: true, ValueEqual: true, Ready: true})
+		return string(out), nil
+	}
 	return s.Run(ctx, command, "")
 }
 

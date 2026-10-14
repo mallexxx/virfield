@@ -290,6 +290,21 @@ func TestDroppedHandshakeIsRetryable(t *testing.T) {
 	}
 }
 
+func TestBannerTimeoutIsRetryableWithoutAuthenticationFallback(t *testing.T) {
+	previous := handshakeTimeout
+	handshakeTimeout = 30 * time.Millisecond
+	defer func() { handshakeTimeout = previous }()
+	client, server := net.Pipe()
+	defer server.Close()
+	e, l := testImageGuest(t, "22")
+	e.Dial = func(context.Context, domain.Lease, string) (net.Conn, error) { return client, nil }
+	_, err := e.Connect(context.Background(), l, "127.0.0.1", true)
+	var failure *domain.Error
+	if !errors.As(err, &failure) || failure.Code != "guest_connect_failed" {
+		t.Fatal("A cold guest's banner timeout was treated as a credential failure", err)
+	}
+}
+
 // Credential and SSH-policy scripts can take minutes on a slow guest; probes
 // keep their short bound.
 func TestMutationsOutliveTheProbeTimeout(t *testing.T) {

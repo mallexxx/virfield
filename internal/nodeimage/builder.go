@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/mallexxx/virfield/internal/domain"
+	"github.com/mallexxx/virfield/internal/guestkeychain"
 	"github.com/mallexxx/virfield/internal/guestssh"
 	"github.com/mallexxx/virfield/internal/qualify"
 )
@@ -152,7 +153,11 @@ func (b *Builder) verify(ctx context.Context, l domain.Lease, p domain.ImageProf
 	if err := qualify.Password(ctx, g, l.GuestUser, password); err != nil {
 		return nil, err
 	}
-	return map[string]any{"golden": p.Node.Golden, "macos": version, "build": p.Build, "sip": sip}, nil
+	keychain, err := guestkeychain.Verify(ctx, g, l.GuestUser, l.ID)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"golden": p.Node.Golden, "macos": version, "build": p.Build, "sip": sip, "gui_keychain": keychain}, nil
 }
 
 // boot starts the image VM and returns the lease with its guest address.

@@ -3,6 +3,7 @@ package tartimage
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -11,13 +12,15 @@ import (
 	"time"
 
 	"github.com/mallexxx/virfield/internal/domain"
+	"github.com/mallexxx/virfield/internal/guestkeychain"
 )
 
 type fakeSession struct {
-	runtime    *fakeRuntime
-	commands   *[]string
-	build      string
-	noShutdown bool
+	runtime        *fakeRuntime
+	commands       *[]string
+	build          string
+	noShutdown     bool
+	keychainLocked bool
 }
 
 func (s fakeSession) Run(_ context.Context, command, _ string) (string, error) {
@@ -55,24 +58,54 @@ func (s fakeSession) Run(_ context.Context, command, _ string) (string, error) {
 	return "", nil
 }
 
-func (s fakeSession) RunReader(ctx context.Context, _ time.Duration, command string, _ io.Reader) (string, error) {
+func (s fakeSession) RunReader(ctx context.Context, _ time.Duration, command string, input io.Reader) (string, error) {
+	if strings.Contains(command, "ai.virfield.guest-keychain") {
+		*s.commands = append(*s.commands, "gui-keychain")
+		b, _ := io.ReadAll(input)
+		fields := strings.Split(string(b), "\n")
+		scope, nonce := fields[0], fields[1]
+		if len(fields) > 3 {
+			scope, nonce = fields[2], fields[4]
+		}
+		out, _ := json.Marshal(guestkeychain.Proof{Version: 1, Scope: scope, Nonce: nonce, Boot: "boot-fixture", SessionID: 123, Aqua: true, Unlocked: !s.keychainLocked, ValueEqual: true, Ready: true})
+		return string(out), nil
+	}
 	return s.Run(ctx, command, "")
 }
 
 func (fakeSession) Close() {}
 
 type fakeGuests struct {
-	runtime    *fakeRuntime
-	commands   []string
-	connects   []bool
-	secured    int
-	build      string
-	noShutdown bool
+	runtime        *fakeRuntime
+	commands       []string
+	connects       []bool
+	secured        int
+	build          string
+	noShutdown     bool
+	keychainLocked bool
 }
 
 func (g *fakeGuests) Connect(_ context.Context, _ domain.Lease, _ string, bootstrap bool) (session, error) {
 	g.connects = append(g.connects, bootstrap)
-	return fakeSession{runtime: g.runtime, commands: &g.commands, build: g.build, noShutdown: g.noShutdown}, nil
+	return fakeSession{runtime: g.runtime, commands: &g.commands, build: g.build, noShutdown: g.noShutdown, keychainLocked: g.keychainLocked}, nil
+}
+
+func TestQualifyRefusesLockedGUIKeychainAfterReboot(t *testing.T) {
+	b, rt, guests, l, p := qualifyBuilder(t)
+	guests.keychainLocked = true
+	err := b.Step(context.Background(), l, p, "qualify", func(string) error { return nil })
+	var failure *domain.Error
+	if !errors.As(err, &failure) || failure.Code != "guest_keychain_failed" {
+		t.Fatal("Locked GUI keychain was accepted", err)
+	}
+	if _, err := os.Stat(filepath.Join(b.folder(l), "verification.json")); !os.IsNotExist(err) {
+		t.Fatal("Failed keychain verification published evidence", err)
+	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if rt.state != "stopped" {
+		t.Fatal("Failed image qualification left the VM running")
+	}
 }
 
 func (g *fakeGuests) Secure(context.Context, domain.Lease, string, session) error {
