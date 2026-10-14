@@ -228,6 +228,10 @@ and register its URL scheme through LaunchServices. The browser is optional for
 cached/public artifacts. A stable signing identity and `ai.virfield.virfieldd`
 identifier retain Full Disk Access across rebuilds on external storage.
 
+The native browser reads the private deployment `config.json` to pin its loopback
+origin. A separate private `state_dir` is supported. Deployment/config/state must
+be owned by the VM user, with no group/other access; config/state symlinks are rejected.
+
 ```sh
 virfield config-check /absolute/deployment/config.json
 python3 deploy/prepare-services.py /absolute/deployment

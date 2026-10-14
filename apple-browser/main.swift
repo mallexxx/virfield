@@ -147,15 +147,7 @@ final class AppleBrowser: NSObject, NSApplicationDelegate, NSWindowDelegate, WKN
 
     private func trustedOrigin() -> URL? {
         let root = Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent()
-        let config = root.appendingPathComponent("config.json")
-        guard let data = try? Data(contentsOf: config),
-              let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              value["state_dir"] as? String == root.path,
-              let listen = value["listen"] as? String,
-              let origin = URL(string: "http://\(listen)"),
-              origin.host == "127.0.0.1", origin.port != nil,
-              origin.path.isEmpty || origin.path == "/" else { return nil }
-        return origin
+        return trustedAppleOrigin(deployment: root)
     }
 
     private func openLink(_ url: URL) {
