@@ -242,3 +242,41 @@ func (b *routedImageBuilder) Step(ctx context.Context, l domain.Lease, p domain.
 	}
 	return b.primary.Step(ctx, l, p, step, progress)
 }
+
+// ExportStep preserves the primary builder's portable-export capability when
+// a node builder is composed beside it. Node publication remains unsupported.
+func (b *routedImageBuilder) ExportStep(ctx context.Context, l domain.Lease, target domain.RegistryExport, step string) (string, error) {
+	if l.Provider != "" || l.Source != nil && l.Source.Image != nil && l.Source.Image.Node != nil {
+		return "", domain.Err("registry_push_disabled", "Node images do not support portable Tart publication")
+	}
+	exporter, ok := b.primary.(interface {
+		ExportStep(context.Context, domain.Lease, domain.RegistryExport, string) (string, error)
+	})
+	if !ok {
+		return "", domain.Err("registry_push_disabled", "Primary image builder does not support publication")
+	}
+	return exporter.ExportStep(ctx, l, target, step)
+}
+
+func (b *routedImageBuilder) CachedXcode(x domain.XcodeRelease) bool {
+	if cache, ok := b.primary.(interface {
+		CachedXcode(domain.XcodeRelease) bool
+	}); ok {
+		return cache.CachedXcode(x)
+	}
+	return false
+}
+
+func (b *routedImageBuilder) ValidateTemplate(t domain.Template) error {
+	builder := b.primary
+	if routed, ok := b.byProvider[t.Provider]; ok {
+		builder = routed
+	}
+	if builder == nil {
+		return domain.Err("image_dependency", "No builder is configured for the image runtime")
+	}
+	if v, ok := builder.(interface{ ValidateTemplate(domain.Template) error }); ok {
+		return v.ValidateTemplate(t)
+	}
+	return nil
+}

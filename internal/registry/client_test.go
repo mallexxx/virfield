@@ -10,48 +10,39 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/mallexxx/virfield/internal/domain"
 )
 
-func manifestFixture(modern bool) []byte {
+func manifestFixture(stacked bool) []byte {
 	d := "sha256:" + strings.Repeat("a", 64)
-	config, disk, nvram := "application/vnd.oci.image.config.v1+json", "application/octet-stream+lz4", "application/octet-stream"
-	if modern {
-		config, disk, nvram = "application/vnd.trycua.lume.config.v1+json", "application/vnd.trycua.lume.disk.v1", "application/vnd.trycua.lume.nvram.v1"
+	base := descriptor{MediaType: tartDisk, Digest: d, Size: 100, Annotations: map[string]string{chunkSize: "8", chunkDigest: d}}
+	layers := []descriptor{{MediaType: tartConfig, Digest: d, Size: 10}, base}
+	if stacked {
+		layers[1].Annotations[fileDigest] = d
+		layers = append(layers, descriptor{MediaType: tartOverlay, Digest: d, Size: 30, Annotations: map[string]string{chunkSize: "4", chunkDigest: d, fileDigest: d, chunkCount: "1"}})
 	}
-	layers := []descriptor{{MediaType: disk, Digest: d, Size: 100}, {MediaType: nvram, Digest: d, Size: 50}}
-	if !modern {
-		layers = append(layers, descriptor{MediaType: config, Digest: d, Size: 10})
-	}
-	b, _ := json.Marshal(map[string]any{"schemaVersion": 2, "mediaType": "application/vnd.oci.image.manifest.v1+json", "config": descriptor{MediaType: config, Digest: d, Size: 10}, "layers": layers})
+	layers = append(layers, descriptor{MediaType: tartNVRAM, Digest: d, Size: 50})
+	b, _ := json.Marshal(map[string]any{"schemaVersion": 2, "mediaType": "application/vnd.oci.image.manifest.v1+json", "config": descriptor{MediaType: "application/vnd.oci.image.config.v1+json", Digest: d, Size: 10}, "layers": layers, "annotations": map[string]string{diskSize: "8"}})
 	return b
 }
-func chunkedManifestFixture(declaredSize uint64, parts []map[string]string) string {
-	d := "sha256:" + strings.Repeat("a", 64)
-	layers := []descriptor{{MediaType: "application/vnd.trycua.lume.nvram.v1", Digest: d, Size: 50}}
-	for _, annotations := range parts {
-		layers = append(layers, descriptor{MediaType: "application/vnd.trycua.lume.disk.v1", Digest: d, Size: 100, Annotations: annotations})
+func malformedFixture(kind string) string {
+	var m map[string]any
+	_ = json.Unmarshal(manifestFixture(kind == "missing part"), &m)
+	layers := m["layers"].([]any)
+	annotations := layers[1].(map[string]any)["annotations"].(map[string]any)
+	switch kind {
+	case "truncated disk":
+		annotations[chunkSize] = "7"
+	case "disk gap":
+		delete(annotations, chunkDigest)
+	case "missing part":
+		layers[2].(map[string]any)["annotations"].(map[string]any)[chunkCount] = "2"
 	}
-	b, _ := json.Marshal(map[string]any{
-		"schemaVersion": 2,
-		"mediaType":     "application/vnd.oci.image.manifest.v1+json",
-		"config":        descriptor{MediaType: "application/vnd.trycua.lume.config.v1+json", Digest: d, Size: 10},
-		"layers":        layers,
-		"annotations":   map[string]string{"org.trycua.lume.total-uncompressed-size": strconv.FormatUint(declaredSize, 10)},
-	})
+	b, _ := json.Marshal(m)
 	return string(b)
-}
-func diskPart(number, total, offset, size string) map[string]string {
-	return map[string]string{
-		"org.trycua.lume.part.number":               number,
-		"org.trycua.lume.part.total":                total,
-		"org.trycua.lume.part.offset":               offset,
-		"org.trycua.lume.content.uncompressed-size": size,
-	}
 }
 func assertCode(t *testing.T, err error, want string) {
 	t.Helper()
@@ -62,7 +53,7 @@ func assertCode(t *testing.T, err error, want string) {
 }
 func TestResolvePinsManifestAndKeepsCredentialsPrivate(t *testing.T) {
 	for _, modern := range []bool{false, true} {
-		t.Run(map[bool]string{false: "legacy", true: "oci"}[modern], func(t *testing.T) {
+		t.Run(map[bool]string{false: "flat", true: "ASIF stack"}[modern], func(t *testing.T) {
 			tokenFile := filepath.Join(t.TempDir(), "token")
 			if err := os.WriteFile(tokenFile, []byte("test-private-secret\n"), 0600); err != nil {
 				t.Fatal(err)
@@ -114,9 +105,9 @@ func TestResolveRejectsUntrustedMetadata(t *testing.T) {
 		{name: "digest", body: string(manifestFixture(true)), digest: "sha256:" + strings.Repeat("b", 64), want: "registry_digest_mismatch"},
 		{name: "index", body: `{"schemaVersion":2,"manifests":[]}`, want: "registry_invalid"},
 		{name: "container", body: `{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json","layers":[{"mediaType":"application/vnd.oci.image.layer.v1.tar","size":1,"digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}`, want: "registry_format_unsupported"},
-		{name: "truncated disk", body: chunkedManifestFixture(80, []map[string]string{diskPart("0", "1", "0", "7")}), want: "registry_invalid"},
-		{name: "disk gap", body: chunkedManifestFixture(8, []map[string]string{diskPart("0", "2", "0", "4"), diskPart("1", "2", "5", "4")}), want: "registry_invalid"},
-		{name: "missing part", body: chunkedManifestFixture(8, []map[string]string{diskPart("0", "2", "0", "4")}), want: "registry_invalid"},
+		{name: "truncated disk", body: malformedFixture("truncated disk"), want: "registry_invalid"},
+		{name: "disk gap", body: malformedFixture("disk gap"), want: "registry_invalid"},
+		{name: "missing part", body: malformedFixture("missing part"), want: "registry_invalid"},
 		{name: "oversized", body: strings.Repeat("x", (4<<20)+1), want: "registry_invalid"},
 		{name: "denied", body: "secret upstream message", status: 403, want: "registry_auth_required"},
 		{name: "absent", status: 404, want: "registry_not_found"},
@@ -149,20 +140,28 @@ func TestResolveRejectsUntrustedMetadata(t *testing.T) {
 		})
 	}
 }
-func TestChunkedDiskCoverageAcceptsCompleteManifest(t *testing.T) {
-	body := chunkedManifestFixture(8, []map[string]string{diskPart("1", "2", "4", "4"), diskPart("0", "2", "0", "4")})
-	var manifest struct {
-		Annotations map[string]string `json:"annotations"`
-		Layers      []descriptor      `json:"layers"`
+func TestTartMetadataAndOrderAreRequired(t *testing.T) {
+	for _, stacked := range []bool{false, true} {
+		var m struct {
+			MediaType   string            `json:"mediaType"`
+			Config      *descriptor       `json:"config"`
+			Annotations map[string]string `json:"annotations"`
+			Layers      []descriptor      `json:"layers"`
+		}
+		if err := json.Unmarshal(manifestFixture(stacked), &m); err != nil {
+			t.Fatal(err)
+		}
+		if err := validateDiskCoverage(m.Annotations, m.Layers); err != nil {
+			t.Fatal(err)
+		}
+		if err := validateMediaTypes(m.MediaType, m.Config, m.Layers); err != nil {
+			t.Fatal(err)
+		}
+		delete(m.Layers[1].Annotations, chunkDigest)
+		assertCode(t, validateDiskCoverage(m.Annotations, m.Layers), "registry_invalid")
+		m.Layers[0], m.Layers[1] = m.Layers[1], m.Layers[0]
+		assertCode(t, validateMediaTypes(m.MediaType, m.Config, m.Layers), "registry_format_unsupported")
 	}
-	if err := json.Unmarshal([]byte(body), &manifest); err != nil {
-		t.Fatal(err)
-	}
-	if err := validateDiskCoverage(manifest.Annotations, manifest.Layers); err != nil {
-		t.Fatal(err)
-	}
-	delete(manifest.Annotations, "org.trycua.lume.total-uncompressed-size")
-	assertCode(t, validateDiskCoverage(manifest.Annotations, manifest.Layers), "registry_invalid")
 }
 func TestCredentialsAndSourceValidation(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "token")

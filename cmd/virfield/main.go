@@ -47,10 +47,10 @@ Registry: registry-sources | registry-resolve SOURCE REPOSITORY TAG
           image-pull ID SOURCE REPOSITORY TAG MACOS [XCODE]
           image-publish TEMPLATE_ID SOURCE REPOSITORY NEW_TAG
 Images:  image-catalog | image-create ID MACOS [XCODE]
-         image-build TEMPLATE_ID | image-provision TEMPLATE_ID EXACT_VM_NAME | image-delete TEMPLATE_ID EXACT_VM_NAME
+         image-build TEMPLATE_ID | image-delete TEMPLATE_ID EXACT_VM_NAME
 Recover: resolve LEASE_ID VM_NAME CONFIRM-NO-OPERATION-IN-FLIGHT
-         image-recover IMAGE_RECORD_ID EXACT_VM_NAME retry|reprovision|setup-online|delete CONFIRM-NO-OPERATION-IN-FLIGHT
-Host:    backup | init DIRECTORY TEMPLATE VM LOCATION
+         image-recover IMAGE_RECORD_ID EXACT_VM_NAME retry|delete CONFIRM-NO-OPERATION-IN-FLIGHT
+Host:    backup | config-check ABSOLUTE_CONFIG | init DIRECTORY TEMPLATE VM LOCATION
 
 release, image-delete and recovery cleanup permanently delete their VM.
 Recovery requires prior inspection that no operation remains in flight.
@@ -78,6 +78,17 @@ Recovery requires prior inspection that no operation remains in flight.
 			return errors.New("usage: virfield init DIRECTORY TEMPLATE VM LOCATION")
 		}
 		return initialize(args[1], args[2], args[3], args[4])
+	}
+	if args[0] == "config-check" {
+		if len(args) != 2 || !filepath.IsAbs(args[1]) {
+			return errors.New("usage: config-check ABSOLUTE_CONFIG")
+		}
+		cfg, err := config.Load(args[1])
+		if err != nil {
+			return err
+		}
+		fmt.Println("Configuration valid:", cfg.Runtime.Provider)
+		return nil
 	}
 	token, err := config.Token(*tokenFile)
 	if err != nil {
@@ -152,7 +163,7 @@ Recovery requires prior inspection that no operation remains in flight.
 		body = req
 	case "image-recover":
 		if len(args) != 5 || !domain.ValidName(args[1]) || !domain.ValidName(args[2]) || args[4] != "CONFIRM-NO-OPERATION-IN-FLIGHT" || *key == "" {
-			return errors.New("usage: -key STABLE_KEY image-recover IMAGE_RECORD_ID EXACT_VM_NAME retry|reprovision|setup-online|delete CONFIRM-NO-OPERATION-IN-FLIGHT")
+			return errors.New("usage: -key STABLE_KEY image-recover IMAGE_RECORD_ID EXACT_VM_NAME retry|delete CONFIRM-NO-OPERATION-IN-FLIGHT")
 		}
 		method = "POST"
 		path = "images/" + args[1] + "/recover"
@@ -316,7 +327,7 @@ Recovery requires prior inspection that no operation remains in flight.
 		path = "leases/" + args[1] + "/release"
 	case "resolve":
 		if len(args) != 4 || !domain.ValidName(args[1]) || !domain.ValidName(args[2]) || args[3] != "CONFIRM-NO-OPERATION-IN-FLIGHT" || *key == "" {
-			return errors.New("usage: -key STABLE_KEY resolve LEASE_ID VM_NAME CONFIRM-NO-OPERATION-IN-FLIGHT; inspect Lume first, cleanup permanently deletes the VM")
+			return errors.New("usage: -key STABLE_KEY resolve LEASE_ID VM_NAME CONFIRM-NO-OPERATION-IN-FLIGHT; inspect the runtime first, cleanup permanently deletes the VM")
 		}
 		method = "POST"
 		path = "leases/" + args[1] + "/resolve"
@@ -363,7 +374,21 @@ func initialize(dir, id, name, location string) error {
 	if err := os.WriteFile(tokenPath, []byte(hex.EncodeToString(raw[:])+"\n"), 0600); err != nil {
 		return err
 	}
-	cfg := config.Config{Listen: "127.0.0.1:7780", LumeURL: "http://127.0.0.1:7777", StateDir: dir, TokenFile: tokenPath, MaxVMs: 2, Templates: []domain.Template{{ID: id, Name: name, Location: location}}}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	tartBinary, err := exec.LookPath("tart")
+	if err != nil {
+		tartBinary = "/opt/homebrew/bin/tart"
+	}
+	tartBinary, err = filepath.Abs(tartBinary)
+	if err != nil {
+		return err
+	}
+	cfg := config.Config{Listen: "127.0.0.1:7780", StateDir: dir, TokenFile: tokenPath, MaxVMs: 2,
+		Runtime:              &config.Runtime{Provider: "tart", Tart: &config.Tart{Binary: tartBinary, HostID: "local-mac", Containers: []config.TartContainer{{ID: location, Path: filepath.Join(home, ".tart"), Kind: "local"}}}},
+		DefaultCloneLocation: location, Templates: []domain.Template{{ID: id, Name: name, Location: location, GuestUser: "admin", GuestHome: "/Users/admin"}}}
 	b, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return err
@@ -373,7 +398,7 @@ func initialize(dir, id, name, location string) error {
 		return err
 	}
 	fmt.Println("Created", path)
-	fmt.Println("Configure a pinned image profile and image tools before acquiring leases; see docs/IMAGE-PIPELINE.md")
+	fmt.Println("Configure a pinned Tart image profile and runtime.tart.image before acquiring leases; see docs/IMAGE-PIPELINE.md")
 	fmt.Println("Start: virfieldd -config", path)
 	return nil
 }

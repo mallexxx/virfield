@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/mallexxx/virfield/internal/domain"
-	"github.com/mallexxx/virfield/internal/lume"
+	"github.com/mallexxx/virfield/internal/orchard"
 	"github.com/mallexxx/virfield/internal/store"
 )
 
@@ -420,7 +420,7 @@ func TestLostStartResponseCanBecomeReady(t *testing.T) {
 func TestDefinitiveStartRejectionAutomaticallyReleasesSlot(t *testing.T) {
 	c, _, b := setup(t)
 	b.delayedStart = true
-	b.startErr = &lume.RejectedMutation{Status: 400}
+	b.startErr = &orchard.RejectedMutation{Status: 400}
 	op := acquire(t, c, "rejected-start")
 	for range 8 {
 		tick(t, c)

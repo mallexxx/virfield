@@ -1,5 +1,5 @@
 #!/bin/bash
-# Port of the Lume developer-v1 post-install; the user is the SSH session's.
+# Developer post-install; the user is the SSH session's.
 set -euo pipefail
 user="$(id -un)"
 sudo -n /usr/bin/xcode-select -s /Applications/Xcode.app

@@ -18,8 +18,8 @@ import (
 //go:embed recipe
 var recipe embed.FS
 
-// sharedProvision is materialized from guestscripts so Lume and Tart run the
-// same uitest-27-v1 recipe.
+// sharedProvision is materialized from guestscripts for all guest image builders with the
+// same versioned uitest-27-v1 recipe.
 const sharedProvision = "scripts/provision27.sh"
 
 // RecipeDigest identifies the exact embedded recipe for image evidence.
@@ -39,6 +39,8 @@ func RecipeDigest() string {
 	})
 	fmt.Fprintf(h, "%s\x00%d\x00", sharedProvision, len(guestscripts.Provision27))
 	h.Write([]byte(guestscripts.Provision27))
+	fmt.Fprintf(h, "scripts/security.sh\x00%d\x00", len(guestscripts.Security))
+	h.Write([]byte(guestscripts.Security))
 	return hex.EncodeToString(h.Sum(nil))
 }
 
@@ -64,5 +66,8 @@ func writeRecipe(dir string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, sharedProvision), []byte(guestscripts.Provision27), 0600)
+	if err := os.WriteFile(filepath.Join(dir, sharedProvision), []byte(guestscripts.Provision27), 0600); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, "scripts/security.sh"), []byte(guestscripts.Security), 0600)
 }

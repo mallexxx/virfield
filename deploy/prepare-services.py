@@ -36,8 +36,12 @@ def render(directory, account, group):
     config_path = directory / "config.json"
     private_file(config_path, account.pw_uid)
     config = json.loads(config_path.read_text())
-    if Path(config["state_dir"]).resolve() != directory:
-        raise ValueError("config.state_dir must identify this deployment")
+    state = Path(config["state_dir"])
+    if not state.is_absolute():
+        raise ValueError("state_dir must be absolute")
+    state_info = state.lstat()
+    if not stat.S_ISDIR(state_info.st_mode) or state_info.st_uid != account.pw_uid or state_info.st_mode & 0o077:
+        raise ValueError("state_dir must be an existing private directory owned by the VM user")
     token = Path(config["token_file"])
     if not token.is_absolute():
         raise ValueError("token_file must be absolute")
@@ -45,22 +49,27 @@ def render(directory, account, group):
     listen = urlsplit("http://" + config["listen"])
     if not ipaddress.ip_address(listen.hostname).is_loopback or not listen.port:
         raise ValueError("listen must specify a loopback IP and a nonzero port")
-    lume = urlsplit(config["lume_url"])
-    if (lume.scheme != "http" or lume.hostname != "127.0.0.1" or not lume.port
-            or lume.username or lume.password or lume.path or lume.query or lume.fragment):
-        raise ValueError("Managed Lume requires http://127.0.0.1:PORT without credentials or path")
-    tools = config["image_tools"]
-    for name in ("lume", "python", "tesseract"):
-        executable(tools[name])
-    executable(str(Path(tools["vnc_bin"]) / "vncdotool"))
-    for binary in ("virfield", "virfieldd", "virfield-mcp", "virfield-lume"):
+    runtime = config.get("runtime", {})
+    if runtime.get("provider") == "tart":
+        tart = runtime["tart"]
+        executable(tart["binary"])
+        if tart.get("image"):
+            executable(tart["image"]["packer"])
+            archives = Path(tart["image"]["xcode_archives"])
+            if not archives.is_absolute():
+                raise ValueError("xcode_archives must be absolute")
+    elif runtime.get("provider") == "orchard":
+        private_file(Path(runtime["orchard"]["token_file"]), account.pw_uid)
+    else:
+        raise ValueError("An explicit Tart or Orchard runtime is required; Lume is retired")
+    if config.get("image_tools"):
+        raise ValueError("image_tools is retired; configure runtime.tart.image")
+    for binary in ("virfield", "virfieldd", "virfield-mcp"):
         executable(str(directory / "bin" / binary))
-    executable(str(directory / "bin" / "VirfieldAppleBrowser.app" / "Contents" / "MacOS" / "VirfieldAppleBrowser"))
-    args = {
-        "virfieldd": [str(directory / "bin/virfieldd"), "-config", str(config_path)],
-        "lume": [str(directory / "bin/virfield-lume"), "-config", str(config_path),
-                 "-log", str(directory / "lume.log"), "-port", str(lume.port)],
-    }
+    browser = directory / "bin" / "VirfieldAppleBrowser.app" / "Contents" / "MacOS" / "VirfieldAppleBrowser"
+    if browser.exists():
+        executable(str(browser))
+    args = {"virfieldd": [str(directory / "bin/virfieldd"), "-config", str(config_path)]}
     artifacts = {}
     for service, arguments in args.items():
         template = Path(__file__).parent / f"ai.virfield.{service}.plist.example"

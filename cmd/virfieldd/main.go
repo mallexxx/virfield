@@ -28,9 +28,7 @@ import (
 	"github.com/mallexxx/virfield/internal/hostlock"
 	"github.com/mallexxx/virfield/internal/hostresources"
 	"github.com/mallexxx/virfield/internal/httpapi"
-	"github.com/mallexxx/virfield/internal/images"
 	"github.com/mallexxx/virfield/internal/logging"
-	"github.com/mallexxx/virfield/internal/lume"
 	"github.com/mallexxx/virfield/internal/mcpadapter"
 	"github.com/mallexxx/virfield/internal/nodeimage"
 	"github.com/mallexxx/virfield/internal/orchard"
@@ -39,6 +37,7 @@ import (
 	"github.com/mallexxx/virfield/internal/store"
 	"github.com/mallexxx/virfield/internal/tart"
 	"github.com/mallexxx/virfield/internal/tartimage"
+	"github.com/mallexxx/virfield/internal/xcodearchive"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -115,13 +114,9 @@ func run() error {
 	}
 	defer db.Close()
 	var backend provider.Runtime
-	var lumeBackend *lume.Client
 	var tartBackend *tart.Client
 	var tartCredentials []tart.RegistryCredential
 	switch {
-	case cfg.Runtime == nil:
-		lumeBackend, err = lume.New(cfg.LumeURL)
-		backend = lumeBackend
 	case cfg.Runtime.Provider == "tart":
 		containers := make([]tart.ContainerConfig, 0, len(cfg.Runtime.Tart.Containers))
 		for _, container := range cfg.Runtime.Tart.Containers {
@@ -206,16 +201,6 @@ func run() error {
 		}
 		cfg.ResourceLimits = &domain.ResourceLimits{CPU: max(1, runtime.NumCPU()*3/4), MemoryBytes: memory * 3 / 4, DiskReserveBytes: 20 << 30}
 	}
-	if cfg.StoragePaths == nil && cfg.Runtime == nil {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return err
-		}
-		cfg.StoragePaths = map[string]string{"home": filepath.Join(home, ".lume")}
-	}
-	if lumeBackend != nil {
-		lumeBackend.StoragePaths = cfg.StoragePaths
-	}
 	cloneLocations := cfg.StoragePaths
 	if remoteRuntime {
 		cloneLocations = map[string]string{cfg.Runtime.Orchard.PoolID: "remote"}
@@ -223,27 +208,35 @@ func run() error {
 	if err := manager.SetCloneLocations(cloneLocations, cfg.DefaultCloneLocation, cfg.FallbackCloneLocations); err != nil {
 		return err
 	}
-	// Image catalog metadata and installed-image inventory are also consumed by
-	// remote clients (notably Execution Broker) when images are built by Tart or
-	// a node provider. Keep the catalog available independently of Lume's
-	// optional image_tools builder.
+	// The catalog exposes public metadata, approved Tart bases and installed inventory.
 	imageLocations := make([]string, 0, len(cloneLocations))
 	for name := range cloneLocations {
 		imageLocations = append(imageLocations, name)
 	}
-	manager.SetImageCatalog(catalog.New(), imageLocations)
+	var imageCatalog control.ImageCatalog = catalog.New()
+	if tartBackend != nil {
+		bases := append([]domain.TartBase(nil), cfg.Runtime.Tart.Bases...)
+		for _, t := range cfg.Templates {
+			if t.Image != nil && t.Image.Tart != nil {
+				bases = append(bases, domain.TartBase{MacOS: t.Image.MacOS, Build: t.Image.Build, Upstream: t.Image.Tart.Upstream, DisableSIP: t.Image.DisableSIP})
+			}
+		}
+		imageCatalog, err = catalog.NewTart(catalog.New(), bases)
+		if err != nil {
+			return err
+		}
+	}
+	manager.SetImageCatalog(imageCatalog, imageLocations)
 	if cfg.ResourceLimits != nil && !remoteRuntime {
 		manager.SetResources(*cfg.ResourceLimits, func() (map[string]int64, error) { return hostresources.Disk(cfg.StoragePaths) })
 	}
-	// Every local runtime hands out leases only after per-lease credential
-	// isolation; Orchard leases are isolated by the Orchard worker path later.
-	if !remoteRuntime {
-		var preparer control.LeasePreparer = &guestssh.Manager{Dir: cfg.StateDir}
-		if nodes != nil {
-			preparer = fleet.NewPreparer(preparer, map[string]fleet.Preparer{nodes.ProviderName(): nodes})
-		}
-		manager.SetLeasePreparer(preparer)
+	// All runtime paths require verified per-lease SSH isolation. Unsupported
+	// remote templates fail admission before any VM creation.
+	var preparer control.LeasePreparer = &guestssh.Manager{Dir: cfg.StateDir}
+	if nodes != nil {
+		preparer = fleet.NewPreparer(preparer, map[string]fleet.Preparer{nodes.ProviderName(): nodes})
 	}
+	manager.SetLeasePreparer(preparer)
 	registryClient, err := registry.New(cfg.Registries)
 	if err != nil {
 		return err
@@ -251,35 +244,6 @@ func run() error {
 	manager.SetRegistry(registryClient)
 	var appleService *appleauth.Service
 	var imageBuilder control.ImageBuilder
-	if cfg.ImageTools != nil {
-		if lumeBackend == nil {
-			return errors.New("legacy image_tools are only supported by the lume runtime; Tart uses digest-pinned OCI images")
-		}
-		builder, err := images.New(cfg.StateDir, lumeBackend, *cfg.ImageTools)
-		if err != nil {
-			return err
-		}
-		builder.Registry = registryClient
-		builder.StoragePaths = cfg.StoragePaths
-		builder.AuthCookiePath = filepath.Join(cfg.StateDir, "apple-auth", "cookies.txt")
-		if executable, execErr := os.Executable(); execErr == nil {
-			if resolved, resolveErr := filepath.EvalSymlinks(executable); resolveErr == nil {
-				executable = resolved
-			}
-			browser := filepath.Join(filepath.Dir(executable), "VirfieldAppleBrowser.app", "Contents", "MacOS", "VirfieldAppleBrowser")
-			if st, statErr := os.Lstat(browser); statErr == nil && st.Mode().IsRegular() && st.Mode().Perm()&0111 != 0 {
-				appleService, err = appleauth.New("", builder.AuthCookiePath, manager)
-				if err != nil {
-					return err
-				}
-			} else if statErr != nil && !os.IsNotExist(statErr) {
-				return statErr
-			} else {
-				log.Warn("Apple browser sign-in unavailable; install VirfieldAppleBrowser.app beside virfieldd")
-			}
-		}
-		imageBuilder = builder
-	}
 	if tartBackend != nil && cfg.Runtime.Tart.Image != nil {
 		homes := make(map[string]string, len(cfg.Runtime.Tart.Containers))
 		for _, container := range cfg.Runtime.Tart.Containers {
@@ -293,7 +257,27 @@ func run() error {
 			Homes:         homes,
 			Credentials:   tartCredentials,
 			Runtime:       tartBackend,
+			Archives:      xcodearchive.New(cfg.Runtime.Tart.Image.XcodeArchives, filepath.Join(cfg.StateDir, "apple-auth", "cookies.txt")),
+			Registry:      registryClient,
 		})
+	}
+	if tartBackend != nil && cfg.Runtime.Tart.Image != nil {
+		if executable, execErr := os.Executable(); execErr == nil {
+			if resolved, resolveErr := filepath.EvalSymlinks(executable); resolveErr == nil {
+				executable = resolved
+			}
+			browser := filepath.Join(filepath.Dir(executable), "VirfieldAppleBrowser.app", "Contents", "MacOS", "VirfieldAppleBrowser")
+			if st, statErr := os.Lstat(browser); statErr == nil && st.Mode().IsRegular() && st.Mode().Perm()&0111 != 0 {
+				appleService, err = appleauth.New("", filepath.Join(cfg.StateDir, "apple-auth", "cookies.txt"), manager)
+				if err != nil {
+					return err
+				}
+			} else if statErr != nil && !os.IsNotExist(statErr) {
+				return statErr
+			} else {
+				log.Warn("Apple browser sign-in unavailable; install VirfieldAppleBrowser.app beside virfieldd")
+			}
+		}
 	}
 	// Node VM goldens are secured on their node. Guest SSH to node VMs
 	// tunnels through the pinned node connection; their guests are QEMU Macs.

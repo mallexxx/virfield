@@ -1,5 +1,5 @@
 // Package mcpadapter exposes API operations using the official MCP Go SDK.
-// There is deliberately no import of store, control, lume, SSH or os/exec.
+// There is deliberately no import of store, control, runtime, SSH or os/exec.
 package mcpadapter
 
 import (
@@ -69,7 +69,7 @@ func New(c *client.Client) *mcp.Server {
 	additive := false
 	addHelp(s)
 	addRegistryTools(s, c)
-	mcp.AddTool(s, &mcp.Tool{Name: "virfield_status", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}, Description: "Show Lume health, VM slot usage, active leases and durable jobs"}, func(ctx context.Context, _ *mcp.CallToolRequest, _ empty) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(s, &mcp.Tool{Name: "virfield_status", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}, Description: "Show runtime health, VM slot usage, active leases and durable jobs"}, func(ctx context.Context, _ *mcp.CallToolRequest, _ empty) (*mcp.CallToolResult, any, error) {
 		return result(c.Do(ctx, "GET", "status", nil, ""))
 	})
 	mcp.AddTool(s, &mcp.Tool{Name: "vm_acquire", Annotations: &mcp.ToolAnnotations{IdempotentHint: true, DestructiveHint: &additive}, Description: "Reserve one of at most two VM slots and asynchronously clone/start a verified golden image. Use image_create if the desired macOS/Xcode is not in templates. Supply a fresh per-lease Ed25519 public key; keep its private key local. Use the SAME idempotency key on retries. Returns capacity_exhausted when full."}, func(ctx context.Context, _ *mcp.CallToolRequest, a acquireArgs) (*mcp.CallToolResult, any, error) {

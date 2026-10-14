@@ -267,6 +267,15 @@ func (r *Runtime) StopImage(ctx context.Context, l domain.Lease) error {
 	return r.stopVM(ctx, n, "images", l.VMName, false)
 }
 
+func (r *Runtime) DeleteImage(ctx context.Context, l domain.Lease) error {
+	n, err := r.imageNode(l)
+	if err != nil {
+		return err
+	}
+	_, err = r.runOn(ctx, n, command(vmImageDeleteScript, "images", l.VMName, n.VMs.GoldensDir, n.KeepAwakeFile))
+	return err
+}
+
 // CommitImage writes the secured clone as a read-only golden named after the
 // image and removes the clone.
 func (r *Runtime) CommitImage(ctx context.Context, l domain.Lease) error {

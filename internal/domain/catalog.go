@@ -60,9 +60,26 @@ type MacOSRelease struct {
 	Size    int64  `json:"size"`
 }
 type ImageCatalog struct {
-	MacOS     []MacOSRelease `json:"macos"`
-	Xcode     []XcodeRelease `json:"xcode"`
-	Inventory ImageInventory `json:"inventory"`
+	MacOS         []MacOSRelease `json:"macos"`
+	Xcode         []XcodeRelease `json:"xcode"`
+	Inventory     ImageInventory `json:"inventory"`
+	MetadataError *Error         `json:"metadata_error,omitempty"`
+	TartBases     []TartBase     `json:"tart_bases,omitempty"`
+}
+
+// TartBase pins an operator-approved upstream and its exact OS/build/SIP.
+type TartBase struct {
+	MacOS      string `json:"macos"`
+	Build      string `json:"build"`
+	Upstream   string `json:"upstream"`
+	DisableSIP bool   `json:"disable_sip"`
+}
+
+func (b TartBase) Validate() error {
+	if !ValidVersion(b.MacOS) || !ValidName(b.Build) {
+		return Err("invalid_profile", "Tart base requires exact macOS and build")
+	}
+	return (TartSource{Upstream: b.Upstream}).Validate()
 }
 
 // ImageInventory is a narrow, read-only snapshot for image builders. A

@@ -100,13 +100,13 @@ func New(config Config) (*Client, error) {
 		config.MemoryReserveBytes = 4 << 30
 	}
 	if config.MemoryReserveBytes >= totalMemory {
-		return nil, errors.New("Tart memory reserve leaves no allocatable RAM")
+		return nil, errors.New("tart memory reserve leaves no allocatable RAM")
 	}
 	if config.CPULimit < 1 {
 		config.CPULimit = runtime.NumCPU()
 	}
 	if config.CPULimit > runtime.NumCPU() {
-		return nil, errors.New("Tart CPU limit exceeds host logical CPUs")
+		return nil, errors.New("tart CPU limit exceeds host logical CPUs")
 	}
 	capacity := domain.HostCapacity{
 		Total:              domain.Resources{CPU: runtime.NumCPU(), MemoryBytes: totalMemory},
@@ -404,7 +404,7 @@ func (c *Client) Clone(ctx context.Context, template domain.Template, lease doma
 	source := template.Source
 	if source == "" {
 		if template.Location != lease.Location {
-			return errors.New("Tart cannot clone a local VM across TART_HOME containers")
+			return errors.New("tart cannot clone a local VM across TART_HOME containers")
 		}
 		source = template.Name
 	}
@@ -561,7 +561,7 @@ func (r *execRunner) probeVolume(ctx context.Context, path string) (volume, erro
 		return volume{}, err
 	}
 	if !st.IsDir() {
-		return volume{}, errors.New("Tart storage path is not a directory")
+		return volume{}, errors.New("tart storage path is not a directory")
 	}
 	// diskutil accepts only a mount point or device, not a nested directory.
 	mount, err := mountPoint(path)

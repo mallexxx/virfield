@@ -1,5 +1,5 @@
 // Package guestscripts holds fixed guest provisioning scripts shared by the
-// Lume image engine and the Tart image recipe. Scripts take the guest user
+// Tart image recipe and guest qualification. Scripts take the guest user
 // from the SSH session, never from a host argument.
 package guestscripts
 
@@ -9,3 +9,6 @@ import _ "embed"
 //
 //go:embed provision27.sh
 var Provision27 string
+
+//go:embed security.sh
+var Security string

@@ -187,116 +187,89 @@ type descriptor struct {
 	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
-// Lume's chunked OCI format declares the complete logical disk size in the
-// manifest. Verify that the disk layers cover every byte before allowing a
-// download or accepting an uploaded tag as a successful publication.
-func validateDiskCoverage(annotations map[string]string, layers []descriptor) error {
-	const diskType = "application/vnd.trycua.lume.disk.v1"
-	const maxDiskSize = uint64(512 << 30)
-	disks := make([]descriptor, 0, len(layers))
-	for _, layer := range layers {
-		if layer.MediaType == diskType {
-			disks = append(disks, layer)
+const (
+	tartConfig  = "application/vnd.cirruslabs.tart.config.v1"
+	tartDisk    = "application/vnd.cirruslabs.tart.disk.v2"
+	tartOverlay = "application/vnd.cirruslabs.tart.disk.asif.overlay.v1"
+	tartNVRAM   = "application/vnd.cirruslabs.tart.nvram.v1"
+	chunkSize   = "org.cirruslabs.tart.uncompressed-size"
+	chunkDigest = "org.cirruslabs.tart.uncompressed-content-digest"
+	fileDigest  = "org.cirruslabs.tart.disk-file-content-digest"
+	chunkCount  = "org.cirruslabs.tart.disk-file-chunk-count"
+	diskSize    = "org.cirruslabs.tart.uncompressed-disk-size"
+)
+
+// Tart's canonical layout is config, a disk.v2 base, optional ASIF overlay
+// groups, then NVRAM. Disk reconstruction and blob verification remain in Tart.
+func validateMediaTypes(media string, config *descriptor, layers []descriptor) error {
+	invalid := domain.Err("registry_format_unsupported", "Expected a Tart VM manifest with ordered config, disk and NVRAM layers")
+	if media != "application/vnd.oci.image.manifest.v1+json" || config == nil || config.MediaType != "application/vnd.oci.image.config.v1+json" || config.Size > 1<<20 || len(layers) < 3 {
+		return invalid
+	}
+	if layers[0].MediaType != tartConfig || layers[0].Size > 1<<20 || layers[len(layers)-1].MediaType != tartNVRAM || layers[len(layers)-1].Size > 64<<20 || layers[1].MediaType != tartDisk {
+		return invalid
+	}
+	for _, l := range layers[1 : len(layers)-1] {
+		if l.MediaType != tartDisk && l.MediaType != tartOverlay {
+			return invalid
 		}
-	}
-	if len(disks) == 0 {
-		return nil // Legacy manifests use a different format.
-	}
-	invalid := func() error {
-		return domain.Err("registry_invalid", "GHCR disk layers do not cover the declared VM disk")
-	}
-	declared := annotations["org.trycua.lume.total-uncompressed-size"]
-	if declared == "" && len(disks) == 1 && disks[0].Annotations["org.trycua.lume.part.number"] == "" {
-		return nil // Single-layer OCI manifests use a different size annotation.
-	}
-	total, err := strconv.ParseUint(declared, 10, 64)
-	if err != nil || total == 0 || total > maxDiskSize {
-		return invalid()
-	}
-	if configured := annotations["org.trycua.lume.disk-size"]; configured != "" {
-		size, err := strconv.ParseUint(configured, 10, 64)
-		if err != nil || size != total {
-			return invalid()
-		}
-	}
-	type part struct{ number, offset, size uint64 }
-	parts := make([]part, 0, len(disks))
-	for _, disk := range disks {
-		a := disk.Annotations
-		parse := func(key string) (uint64, error) { return strconv.ParseUint(a[key], 10, 64) }
-		number, e1 := parse("org.trycua.lume.part.number")
-		count, e2 := parse("org.trycua.lume.part.total")
-		offset, e3 := parse("org.trycua.lume.part.offset")
-		size, e4 := parse("org.trycua.lume.content.uncompressed-size")
-		if e1 != nil || e2 != nil || e3 != nil || e4 != nil || count != uint64(len(disks)) || size == 0 || size > maxDiskSize {
-			return invalid()
-		}
-		parts = append(parts, part{number, offset, size})
-	}
-	sort.Slice(parts, func(i, j int) bool { return parts[i].number < parts[j].number })
-	covered := uint64(0)
-	for i, p := range parts {
-		if p.number != uint64(i) || p.offset != covered || p.size > total-covered {
-			return invalid()
-		}
-		covered += p.size
-	}
-	if covered != total {
-		return invalid()
 	}
 	return nil
 }
 
-// Lume has two supported wire formats. Docker containers, Tart images and
-// indexes are not interchangeable with a Lume macOS disk bundle.
-func validateMediaTypes(media string, config *descriptor, layers []descriptor) error {
-	invalid := func() error {
-		return domain.Err("registry_format_unsupported", "Expected a Lume VM manifest with config, NVRAM and disk layers")
+func validateDiskCoverage(annotations map[string]string, layers []descriptor) error {
+	invalid := domain.Err("registry_invalid", "Tart disk chunk metadata is incomplete or inconsistent")
+	if len(layers) < 3 {
+		return invalid
 	}
-	if media != "application/vnd.oci.image.manifest.v1+json" && media != "application/vnd.docker.distribution.manifest.v2+json" {
-		return invalid()
+	chunks := layers[1 : len(layers)-1]
+	total := uint64(0)
+	for _, l := range chunks {
+		size, err := strconv.ParseUint(l.Annotations[chunkSize], 10, 64)
+		if err != nil || size == 0 || size > 512<<30 || total > 512<<30-size || !domain.ValidRegistryDigest(l.Annotations[chunkDigest]) {
+			return invalid
+		}
+		total += size
 	}
-	modern := config != nil && config.MediaType == "application/vnd.trycua.lume.config.v1+json"
-	configs, nvrams, disks := 0, 0, 0
-	if modern {
-		configs++
+	base := 0
+	for base < len(chunks) && chunks[base].MediaType == tartDisk {
+		base++
 	}
-	for _, layer := range layers {
-		switch layer.MediaType {
-		case "application/vnd.trycua.lume.disk.v1":
-			if !modern {
-				return invalid()
-			}
-			disks++
-		case "application/vnd.trycua.lume.nvram.v1":
-			if !modern || layer.Size > 64<<20 {
-				return invalid()
-			}
-			nvrams++
-		case "application/vnd.oci.image.config.v1+json":
-			if modern || layer.Size > 1<<20 {
-				return invalid()
-			}
-			configs++
-		case "application/octet-stream":
-			if modern || layer.Size > 64<<20 {
-				return invalid()
-			}
-			nvrams++
-		case "application/octet-stream+lz4":
-			if modern {
-				return invalid()
-			}
-			disks++
-		default:
-			return invalid()
+	if base == 0 || chunks[0].Annotations[chunkCount] != "" {
+		return invalid
+	}
+	if d := chunks[0].Annotations[fileDigest]; d != "" && !domain.ValidRegistryDigest(d) {
+		return invalid
+	}
+	for _, l := range chunks[1:base] {
+		if l.Annotations[fileDigest] != "" || l.Annotations[chunkCount] != "" {
+			return invalid
 		}
 	}
-	if config != nil && (config.Size > 1<<20 || (!modern && config.MediaType != "application/vnd.oci.image.config.v1+json" && config.MediaType != "application/vnd.oci.empty.v1+json")) {
-		return invalid()
+	if base < len(chunks) && !domain.ValidRegistryDigest(chunks[0].Annotations[fileDigest]) {
+		return invalid
 	}
-	if configs != 1 || nvrams != 1 || disks == 0 {
-		return invalid()
+	for i := base; i < len(chunks); {
+		first := chunks[i]
+		n, err := strconv.ParseUint(first.Annotations[chunkCount], 10, 64)
+		if err != nil || n == 0 || n > uint64(len(chunks)-i) || first.MediaType != tartOverlay || !domain.ValidRegistryDigest(first.Annotations[fileDigest]) {
+			return invalid
+		}
+		for j := i; j < i+int(n); j++ {
+			if chunks[j].MediaType != tartOverlay || j > i && (chunks[j].Annotations[fileDigest] != "" || chunks[j].Annotations[chunkCount] != "") {
+				return invalid
+			}
+		}
+		i += int(n)
+	}
+	// For flat images the optional manifest size identifies the reconstructed disk.
+	// Stacked ASIF images retain the base's logical size; overlays have their own
+	// whole-file sizes and must not be added to that logical size.
+	if declared := annotations[diskSize]; declared != "" {
+		n, err := strconv.ParseUint(declared, 10, 64)
+		if err != nil || n == 0 || n > 512<<30 || base == len(chunks) && n != total {
+			return invalid
+		}
 	}
 	return nil
 }

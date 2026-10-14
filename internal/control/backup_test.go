@@ -65,3 +65,33 @@ func TestBackupUsesConfiguredExternalPaths(t *testing.T) {
 		t.Fatal("raw owner token was copied into backup")
 	}
 }
+
+func TestBackupPreservesNodeIdentitiesAndRejectsSymlinks(t *testing.T) {
+	c, _, _ := setup(t)
+	dir := t.TempDir()
+	for path, body := range map[string]string{"config.json": "settings", "token": "secret", "nodes/management/id_ed25519": "private-key", "nodes/htpc.probe.json": "cached-probe"} {
+		target := filepath.Join(dir, path)
+		if err := os.MkdirAll(filepath.Dir(target), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(target, []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	id, err := c.Backup(context.Background(), dir, filepath.Join(dir, "config.json"), filepath.Join(dir, "token"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, want := range map[string]string{"nodes/management/id_ed25519": "private-key", "nodes/htpc.probe.json": "cached-probe"} {
+		raw, err := os.ReadFile(filepath.Join(dir, "backups", id, path))
+		if err != nil || string(raw) != want {
+			t.Fatal(path, err)
+		}
+	}
+	if err := os.Symlink(filepath.Join(dir, "token"), filepath.Join(dir, "nodes", "unexpected-link")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Backup(context.Background(), dir, filepath.Join(dir, "config.json"), filepath.Join(dir, "token")); err == nil {
+		t.Fatal("followed node identity symlink")
+	}
+}

@@ -19,12 +19,14 @@ func fakePodman(t *testing.T) (bin, log string) {
 	script := `#!/bin/sh
 echo "$@" >> ` + log + `
 drop() { grep -vx "$1" "$HOME/running" > "$HOME/running.t" 2>/dev/null; mv "$HOME/running.t" "$HOME/running" 2>/dev/null; true; }
+drop_container() { grep -vx "$1" "$HOME/containers" > "$HOME/containers.t" 2>/dev/null; mv "$HOME/containers.t" "$HOME/containers" 2>/dev/null; true; }
 case "$1" in
-  inspect) grep -qx "$4" "$HOME/running" 2>/dev/null && echo true && exit 0; exit 125 ;;
-  run) [ "$2" = -d ] && [ "$3" = --name ] && echo "$4" >> "$HOME/running" ;;
+  container) grep -qx "$3" "$HOME/containers" 2>/dev/null && exit 0; exit 1 ;;
+  inspect) grep -qx "$4" "$HOME/running" 2>/dev/null && echo true && exit 0; grep -qx "$4" "$HOME/containers" 2>/dev/null && echo false && exit 0; exit 125 ;;
+  run) [ "$2" = -d ] && [ "$3" = --name ] && { echo "$4" >> "$HOME/running"; echo "$4" >> "$HOME/containers"; } ;;
   stop) drop "$4" ;;
   kill) drop "$2" ;;
-  rm) drop "$3" ;;
+  rm) [ ! -f "$HOME/fail-rm" ] || exit 125; drop "$3"; drop_container "$3" ;;
 esac
 case "$*" in *" convert "*) eval "out=\${$#}"; echo disk > "$out" ;; esac
 exit 0
@@ -133,8 +135,8 @@ func TestVMStartPublishesItsPortAndHoldsTheNode(t *testing.T) {
 	if _, err := os.Stat(hold); !os.IsNotExist(err) {
 		t.Fatal("hold not released")
 	}
-	if !strings.Contains(read(t, log), "kill virfield-"+vm) || read(t, filepath.Join(home, "virfield", "leases", vm, "state")) != "stopped" {
-		t.Fatal("stop did not kill the container")
+	if !strings.Contains(read(t, log), "rm -f virfield-"+vm) || read(t, filepath.Join(home, "virfield", "leases", vm, "state")) != "stopped" {
+		t.Fatal("stop did not remove the container")
 	}
 	if _, err := os.Stat(filepath.Join(home, "virfield", "leases", vm, "port")); err != nil {
 		t.Fatal("stop removed the clone")
@@ -224,5 +226,86 @@ func TestHostScriptsRefuseVMFolders(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(home, "virfield", "leases", vm, "port")); err != nil {
 		t.Fatal("host script damaged a VM folder")
+	}
+}
+
+func TestNodeSleepHoldLivesUntilLastVMAndPreservesExternalFile(t *testing.T) {
+	for _, external := range []bool{false, true} {
+		t.Run(map[bool]string{false: "owned", true: "external"}[external], func(t *testing.T) {
+			home, goldens := t.TempDir(), goldensDir(t, "secure")
+			bin, _ := fakePodman(t)
+			hold := filepath.Join(home, "hold")
+			if external {
+				if err := os.WriteFile(hold, nil, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for _, name := range []string{"vf-one", "vf-two"} {
+				if out, err := runVMScript(t, home, bin, vmCloneScript, "leases", name, "secure", goldens, testVMImage, "22100", "2"); err != nil {
+					t.Fatal(out, err)
+				}
+				if out, err := runVMScript(t, home, bin, vmStartScript, "leases", name, goldens, testVMImage, "0.0.0.0", "4", "8", "100G", hold); err != nil {
+					t.Fatal(out, err)
+				}
+			}
+			if out, err := runVMScript(t, home, bin, vmDeleteScript, "leases", "vf-one", hold); err != nil {
+				t.Fatal(out, err)
+			}
+			if _, err := os.Stat(hold); err != nil {
+				t.Fatal("remaining VM lost sleep hold", err)
+			}
+			if out, err := runVMScript(t, home, bin, vmDeleteScript, "leases", "vf-two", hold); err != nil {
+				t.Fatal(out, err)
+			}
+			_, err := os.Stat(hold)
+			if external && err != nil || !external && !os.IsNotExist(err) {
+				t.Fatal("wrong final ownership", err)
+			}
+		})
+	}
+}
+func TestNodeDeleteKeepsOverlayAndHoldWhenContainerRemovalFails(t *testing.T) {
+	home, goldens := t.TempDir(), goldensDir(t, "secure")
+	bin, _ := fakePodman(t)
+	hold := filepath.Join(home, "hold")
+	if out, err := runVMScript(t, home, bin, vmCloneScript, "leases", "vf-one", "secure", goldens, testVMImage, "22100", "2"); err != nil {
+		t.Fatal(out, err)
+	}
+	if out, err := runVMScript(t, home, bin, vmStartScript, "leases", "vf-one", goldens, testVMImage, "0.0.0.0", "4", "8", "100G", hold); err != nil {
+		t.Fatal(out, err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "fail-rm"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := runVMScript(t, home, bin, vmDeleteScript, "leases", "vf-one", hold); err == nil {
+		t.Fatal("failed removal reported cleanup", out)
+	}
+	if _, err := os.Stat(filepath.Join(home, "virfield/leases/vf-one")); err != nil {
+		t.Fatal("overlay was removed", err)
+	}
+	if _, err := os.Stat(hold); err != nil {
+		t.Fatal("sleep hold was removed", err)
+	}
+}
+func TestNodeImageDeleteProtectsBackingGoldens(t *testing.T) {
+	home, goldens := t.TempDir(), goldensDir(t, "secure")
+	bin, _ := fakePodman(t)
+	if out, err := runVMScript(t, home, bin, vmCloneScript, "leases", "vf-one", "secure", goldens, testVMImage, "22100", "2"); err != nil {
+		t.Fatal(out, err)
+	}
+	if out, err := runVMScript(t, home, bin, vmImageDeleteScript, "images", "secure", goldens, ""); err == nil {
+		t.Fatal("deleted backing golden", out)
+	}
+	if _, err := os.Stat(filepath.Join(goldens, "secure.qcow2")); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := runVMScript(t, home, bin, vmDeleteScript, "leases", "vf-one", ""); err != nil {
+		t.Fatal(out, err)
+	}
+	if out, err := runVMScript(t, home, bin, vmImageDeleteScript, "images", "secure", goldens, ""); err != nil {
+		t.Fatal(out, err)
+	}
+	if _, err := os.Stat(filepath.Join(goldens, "secure.qcow2")); !os.IsNotExist(err) {
+		t.Fatal("golden retained", err)
 	}
 }

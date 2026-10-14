@@ -15,13 +15,13 @@ func TestLivePublicManifest(t *testing.T) {
 	if os.Getenv("VIRFIELD_LIVE_REGISTRY_METADATA") != "1" {
 		t.Skip("set VIRFIELD_LIVE_REGISTRY_METADATA=1 for public GHCR metadata")
 	}
-	c, err := New([]domain.RegistrySource{{ID: "public-cua", Organization: "trycua"}})
+	c, err := New([]domain.RegistrySource{{ID: "public-tart", Organization: "cirruslabs"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	ref, err := c.Resolve(ctx, domain.RegistryResolveRequest{Source: "public-cua", Repository: "macos-sequoia-vanilla", Tag: "latest"})
+	ref, err := c.Resolve(ctx, domain.RegistryResolveRequest{Source: "public-tart", Repository: "macos-ventura-base", Tag: "latest"})
 	if err != nil {
 		t.Fatal(err)
 	}

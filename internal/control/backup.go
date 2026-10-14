@@ -55,8 +55,7 @@ func (c *Controller) Backup(ctx context.Context, stateDir, configPath, tokenPath
 	if err := c.store.Backup(ctx, filepath.Join(folder, "state.db")); err != nil {
 		return "", err
 	}
-	// The IPSW cache, live VM disks and diagnostic screenshots are not credentials.
-	// Snapshot only verified state and its identities; the VMs remain managed by Lume.
+	// Snapshot controller identities, not runtime disks or download caches.
 	for _, l := range ls {
 		scope := "leases"
 		if l.Purpose == "image" {
@@ -80,6 +79,18 @@ func (c *Controller) Backup(ctx context.Context, stateDir, configPath, tokenPath
 			}
 		}
 	}
+	// Node management keys and cached probes are required to reconnect to
+	// enrolled physical nodes after a controller restore.
+	nodesIncluded := false
+	nodes := filepath.Join(stateDir, "nodes")
+	if _, err := os.Lstat(nodes); err == nil {
+		if err := copyPrivateTree(ctx, nodes, filepath.Join(folder, "nodes")); err != nil {
+			return "", err
+		}
+		nodesIncluded = true
+	} else if !os.IsNotExist(err) {
+		return "", err
+	}
 	config, err := os.ReadFile(configPath)
 	if err != nil {
 		return "", err
@@ -98,7 +109,7 @@ func (c *Controller) Backup(ctx context.Context, stateDir, configPath, tokenPath
 	for i := range token {
 		token[i] = 0
 	}
-	manifest, _ := json.MarshalIndent(map[string]any{"format": 2, "id": id, "created_at": c.now(), "leases": len(ls), "database_integrity": "ok", "vm_disks_included": false, "owner_token_included": false}, "", "  ")
+	manifest, _ := json.MarshalIndent(map[string]any{"format": 2, "id": id, "created_at": c.now(), "leases": len(ls), "database_integrity": "ok", "vm_disks_included": false, "owner_token_included": false, "node_identities_included": nodesIncluded}, "", "  ")
 	if err := os.WriteFile(filepath.Join(folder, "manifest.json"), manifest, 0600); err != nil {
 		return "", err
 	}
@@ -141,4 +152,35 @@ func (c *Controller) Backup(ctx context.Context, stateDir, configPath, tokenPath
 		}
 	}
 	return id, nil
+}
+
+func copyPrivateTree(ctx context.Context, source, destination string) error {
+	return filepath.WalkDir(source, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if err = ctx.Err(); err != nil {
+			return err
+		}
+		relative, err := filepath.Rel(source, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(destination, relative)
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return os.MkdirAll(target, 0700)
+		}
+		if !info.Mode().IsRegular() || info.Size() > 1<<20 {
+			return domain.Err("backup_failed", "Node identity tree contains an unsupported file")
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(target, b, 0600)
+	})
 }

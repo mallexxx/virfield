@@ -19,7 +19,7 @@ class DeploymentTests(unittest.TestCase):
         self.root = Path(self.temporary.name).resolve()
         self.account = SimpleNamespace(pw_uid=os.getuid(), pw_name='vm-operator', pw_dir='/srv/VM Owner')
         (self.root / 'bin').mkdir()
-        for name in ('virfield', 'virfieldd', 'virfield-mcp', 'virfield-lume', 'lume', 'python', 'tesseract', 'vncdotool'):
+        for name in ('virfield', 'virfieldd', 'virfield-mcp', 'tart', 'packer'):
             path = self.root / 'bin' / name
             path.write_text('#!/bin/sh\nexit 0\n')
             path.chmod(0o700)
@@ -30,9 +30,9 @@ class DeploymentTests(unittest.TestCase):
         (self.root / 'token').write_text('fixture-token-never-published')
         (self.root / 'token').chmod(0o600)
         self.config = dict(state_dir=str(self.root), token_file=str(self.root / 'token'),
-                           listen='127.0.0.1:18780', lume_url='http://127.0.0.1:18777',
-                           image_tools={name: str(self.root / 'bin' / name) for name in ('lume', 'python', 'tesseract')})
-        self.config['image_tools']['vnc_bin'] = str(self.root / 'bin')
+                           listen='127.0.0.1:18780', runtime=dict(provider='tart', tart=dict(
+                               binary=str(self.root / 'bin/tart'), image=dict(
+                                   packer=str(self.root / 'bin/packer'), xcode_archives=str(self.root / 'cache')))))
         self.save()
 
     def save(self):
@@ -43,16 +43,12 @@ class DeploymentTests(unittest.TestCase):
     def test_alternate_home_paths_spaces_and_ports(self):
         result = services.render(self.root, self.account, 'vm-group')
         manager = plistlib.loads(result['ai.virfield.virfieldd.plist'])
-        lume = plistlib.loads(result['ai.virfield.lume.plist'])
         mcp = json.loads(result['mcp.json'])['mcpServers']['virfield']
         self.assertEqual(manager['UserName'], 'vm-operator')
         self.assertEqual(manager['GroupName'], 'vm-group')
         self.assertEqual(manager['EnvironmentVariables']['HOME'], '/srv/VM Owner')
         self.assertEqual(manager['ProgramArguments'][-1], str(self.root / 'config.json'))
-        self.assertIn('-config', lume['ProgramArguments'])
-        self.assertIn(str(self.root / 'config.json'), lume['ProgramArguments'])
-        self.assertNotIn('-binary', lume['ProgramArguments'])
-        self.assertEqual(lume['ProgramArguments'][-2:], ['-port', '18777'])
+        self.assertEqual(set(result), {'ai.virfield.virfieldd.plist', 'mcp.json'})
         self.assertEqual(mcp['args'][:2], ['-url', 'http://127.0.0.1:18780'])
         self.assertNotIn(b'fixture-token', b''.join(result.values()))
         self.assertFalse((self.root / 'launchd').exists())
@@ -63,14 +59,26 @@ class DeploymentTests(unittest.TestCase):
             services.render(self.root, self.account, 'staff')
         self.assertFalse((self.root / 'launchd').exists())
 
-    def test_missing_tools_and_remote_lume_rejected(self):
-        self.config['lume_url'] = 'http://example.com:7777'
+    def test_legacy_runtime_and_missing_tart_rejected(self):
+        runtime = self.config.pop('runtime')
         self.save()
         with self.assertRaises(ValueError):
             services.render(self.root, self.account, 'staff')
-        self.config['lume_url'] = 'http://127.0.0.1:7777'
+        self.config['runtime'] = runtime
         self.save()
-        (self.root / 'bin/lume').unlink()
+        (self.root / 'bin/tart').unlink()
+        with self.assertRaises(ValueError):
+            services.render(self.root, self.account, 'staff')
+
+    def test_separate_private_state_and_optional_browser(self):
+        state = self.root / 'state'
+        state.mkdir(mode=0o700)
+        self.config['state_dir'] = str(state)
+        self.save()
+        (self.root / 'bin/VirfieldAppleBrowser.app/Contents/MacOS/VirfieldAppleBrowser').unlink()
+        self.assertEqual(set(services.render(self.root, self.account, 'staff')),
+                         {'ai.virfield.virfieldd.plist', 'mcp.json'})
+        state.chmod(0o755)
         with self.assertRaises(ValueError):
             services.render(self.root, self.account, 'staff')
 

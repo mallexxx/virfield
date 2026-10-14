@@ -70,21 +70,23 @@ func (b *Builder) qualify(ctx context.Context, l domain.Lease, p domain.ImagePro
 		bootstrap.Close()
 		return err
 	}
-	if err := b.guests.Secure(ctx, l, ip, bootstrap); err != nil {
-		bootstrap.Close()
-		return err
+	if !l.Portable {
+		if err := b.guests.Secure(ctx, l, ip, bootstrap); err != nil {
+			bootstrap.Close()
+			return err
+		}
 	}
 	if err := b.shutdown(ctx, l, bootstrap); err != nil {
 		return err
 	}
-	if err := progress("Credentials rotated; verifying the image after reboot"); err != nil {
+	if err := progress("Verifying the image after reboot"); err != nil {
 		return err
 	}
 	ip, err = b.boot(ctx, l)
 	if err != nil {
 		return err
 	}
-	g, err := b.guests.Connect(ctx, l, ip, false)
+	g, err := b.guests.Connect(ctx, l, ip, l.Portable)
 	if err != nil {
 		return err
 	}
@@ -120,9 +122,12 @@ func (b *Builder) verify(ctx context.Context, l domain.Lease, p domain.ImageProf
 	if err != nil {
 		return nil, err
 	}
-	password, err := b.guests.Password(l)
-	if err != nil {
-		return nil, err
+	password := "admin"
+	if !l.Portable {
+		password, err = b.guests.Password(l)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if err := qualify.Password(ctx, g, user, password); err != nil {
 		return nil, err
@@ -131,7 +136,7 @@ func (b *Builder) verify(ctx context.Context, l domain.Lease, p domain.ImageProf
 		return os.WriteFile(filepath.Join(b.folder(l), "xcode-verify.log"), []byte(out), 0600)
 	}
 	xcode := p.Xcode
-	if xcode == nil {
+	if xcode == nil && p.Provision == "uitest-27-v1" {
 		// UI-test images adopt the upstream Xcode; record what is installed.
 		installed, err := qualify.InstalledXcode(ctx, g)
 		if err != nil {
@@ -139,8 +144,17 @@ func (b *Builder) verify(ctx context.Context, l domain.Lease, p domain.ImageProf
 		}
 		xcode = &installed
 	}
-	if err := qualify.Xcode(ctx, g, user, *xcode, logXcode); err != nil {
-		return nil, err
+	if xcode != nil {
+		if err := qualify.Xcode(ctx, g, user, *xcode, logXcode); err != nil {
+			return nil, err
+		}
+	}
+	if p.Security == "automation" {
+		if err := qualify.Security(ctx, g, user, func(out string) error {
+			return os.WriteFile(filepath.Join(b.folder(l), "security-verify.log"), []byte(out), 0600)
+		}); err != nil {
+			return nil, err
+		}
 	}
 	if p.Provision == "uitest-27-v1" {
 		logProvision := func(out string) error {
@@ -150,11 +164,14 @@ func (b *Builder) verify(ctx context.Context, l domain.Lease, p domain.ImageProf
 			return nil, err
 		}
 	}
-	support, err := b.deviceSupport(ctx, b.config.StateDir, ip, version, p.Build, progress)
-	if err != nil {
-		return nil, err
+	support := ""
+	if xcode != nil {
+		support, err = b.deviceSupport(ctx, b.config.StateDir, ip, version, p.Build, progress)
+		if err != nil {
+			return nil, err
+		}
 	}
-	return map[string]any{"macos": version, "build": p.Build, "xcode": xcode, "sip": sip, "desktop": true, "disk": disk, "scoped_image_ssh": true, "guest_user": user, "device_support": support, "provision": p.Provision, "security": p.Security, "verified_at": time.Now().UTC()}, nil
+	return map[string]any{"macos": version, "build": p.Build, "xcode": xcode, "sip": sip, "desktop": true, "disk": disk, "scoped_image_ssh": !l.Portable, "portable": l.Portable, "guest_user": user, "device_support": support, "provision": p.Provision, "security": p.Security, "verified_at": time.Now().UTC()}, nil
 }
 
 func (b *Builder) boot(ctx context.Context, l domain.Lease) (string, error) {

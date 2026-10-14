@@ -16,7 +16,10 @@ import (
 
 // nodeBackend is a physical node runtime: one host with one lease slot and a
 // pseudo-golden named after its booted volume.
-type nodeBackend struct{ *fakeBackend }
+type nodeBackend struct {
+	*fakeBackend
+	maxTargets int
+}
 
 func (b *nodeBackend) ProviderName() string { return "baremetal" }
 
@@ -25,8 +28,11 @@ func (b *nodeBackend) Observe(ctx context.Context) (domain.Observation, error) {
 	if err != nil {
 		return o, err
 	}
-	o.HostMax = 1
-	o.Hosts = []domain.Host{{ID: "mbp", Provider: "baremetal", Availability: "available", Capacity: domain.HostCapacity{MaxVMs: 1, UsedVMs: o.HostUsed}}}
+	o.HostMax = b.maxTargets
+	if o.HostMax == 0 {
+		o.HostMax = 1
+	}
+	o.Hosts = []domain.Host{{ID: "mbp", Provider: "baremetal", Availability: "available", Capacity: domain.HostCapacity{MaxVMs: o.HostMax, UsedVMs: o.HostUsed}}}
 	o.StorageContainers = []domain.StorageContainer{{ID: "mbp", HostID: "mbp", Provider: "baremetal", Availability: "available"}}
 	return o, nil
 }
@@ -39,7 +45,7 @@ func nodeController(t *testing.T) (*Controller, *fakeBackend, *nodeBackend) {
 	}
 	t.Cleanup(func() { s.Close() })
 	vms := newBackend()
-	node := &nodeBackend{&fakeBackend{vms: map[string]domain.VM{"mbp/Monterey": {Name: "Monterey", Location: "mbp", OS: "macOS", State: "stopped"}}, counts: map[string]int{}}}
+	node := &nodeBackend{fakeBackend: &fakeBackend{vms: map[string]domain.VM{"mbp/Monterey": {Name: "Monterey", Location: "mbp", OS: "macOS", State: "stopped"}}, counts: map[string]int{}}}
 	ts := []domain.Template{
 		{ID: "test", Name: "golden", Location: "home"},
 		{ID: "mbp-monterey", Name: "Monterey", Location: "mbp", Provider: "baremetal", OS: "macOS", GuestUser: "admin"},
@@ -158,6 +164,8 @@ func TestNodeLeaseIsNotChargedToMacResources(t *testing.T) {
 func nodeImageController(t *testing.T) (*Controller, *fakeImageBuilder) {
 	t.Helper()
 	c, _, node := nodeController(t)
+	node.maxTargets = 3
+	tick(t, c)
 	p := domain.ImageProfile{Node: &domain.NodeSource{Golden: "sonoma-bootstrap"}, MacOS: "14.8.9", Build: "23J631", DisableSIP: true}
 	c.templates["mbp-sonoma"] = domain.Template{ID: "mbp-sonoma", Name: "mbp-sonoma", Location: "mbp", Provider: "baremetal", OS: "macOS", GuestUser: "admin", GuestHome: "/Users/admin", Image: &p}
 	builder := &fakeImageBuilder{backend: node.fakeBackend}
@@ -218,4 +226,45 @@ func TestNodeImageQualifyRetriesButCommitDoesNot(t *testing.T) {
 	}
 	_, err = c.RecoverImage(ctx, op.Lease.ID, "node-retry-commit", "mbp-sonoma", "retry", true)
 	code(t, err, "unsafe_retry")
+}
+
+func TestNodeHostRemainsExclusiveWithVMSlots(t *testing.T) {
+	c, _, node := nodeController(t)
+	node.maxTargets = 3
+	tick(t, c)
+	ctx := context.Background()
+	if _, err := c.AcquireAs(ctx, "exclusive-host-one", domain.AcquireRequest{Template: "mbp-monterey", TTLSeconds: 3600, SSHPublicKey: testPublicKey(t)}, "one"); err != nil {
+		t.Fatal(err)
+	}
+	_, err := c.AcquireAs(ctx, "exclusive-host-two", domain.AcquireRequest{Template: "mbp-monterey", TTLSeconds: 3600, SSHPublicKey: testPublicKey(t)}, "two")
+	code(t, err, "capacity_exhausted")
+}
+func TestNodeImageDeletionKeepsOwningProvider(t *testing.T) {
+	c, _ := nodeImageController(t)
+	ctx := context.Background()
+	if _, err := c.BuildImage(ctx, "mbp-sonoma", "node-delete-build"); err != nil {
+		t.Fatal(err)
+	}
+	for range 12 {
+		tick(t, c)
+	}
+	op, err := c.DeleteImage(ctx, "mbp-sonoma", "node-delete-golden", "mbp-sonoma")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if op.Lease.Provider != "baremetal" || op.Lease.GuestUser != "admin" {
+		t.Fatalf("lost image identity: %#v", op.Lease)
+	}
+	for range 4 {
+		tick(t, c)
+	}
+	j, err := c.Job(ctx, op.Job.ID)
+	if err != nil || j.State != "succeeded" {
+		t.Fatal(j, err)
+	}
+}
+func TestPhysicalHostCannotBeDeletedAsImage(t *testing.T) {
+	c, _, _ := nodeController(t)
+	_, err := c.DeleteImage(context.Background(), "mbp-monterey", "delete-host-refused", "Monterey")
+	code(t, err, "invalid_request")
 }

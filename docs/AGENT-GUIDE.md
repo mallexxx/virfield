@@ -29,7 +29,7 @@ Balda reaches image catalog/build/job/Apple-link actions through the Execution
 Broker MCP tools `virfield_image_catalog`, `virfield_image_create`,
 `virfield_image_build`, `virfield_image_job` and `virfield_image_apple_auth`.
 It does not call Virfield directly. The same host capacity is shared with
-Broker worker leases; separate tenant identities are still a release gap.
+Broker worker leases; scoped REST principals exist, but HTTP MCP is operator-only and v3 tenant grants are not implemented.
 
 ## Tool reference
 
@@ -43,16 +43,16 @@ letters, digits, `_`, `.` or `-`. `ID` placeholders below are not interchangeabl
 | --- | --- | --- |
 | `virfield_help` | `{"topic":"workflows"}`; topic optional | Read the requested embedded runbook |
 | `virfield_status` | `{}` | Inventory, freshness/error, capacity, leases, active jobs, templates |
-| `image_catalog` | `{}` | Restore releases and stable Xcode versions/minimum macOS; each Xcode has `local_state` (`available`, `downloaded`, `installed`) and ready `installed_images` |
-| `image_create` | `{"id":"NEW_TEMPLATE_ID","macos":"VERSION_OR_BUILD_OR_CODENAME","xcode":"EXACT_VERSION","security":"automation","location":"home","idempotency_key":"NEW_KEY"}` | Durable operation; `xcode`, `security`, `location` optional; poll `job.id` |
+| `image_catalog` | `{}` | Approved Tart bases, public version metadata and stable Xcode versions/minimum macOS; each Xcode has `local_state` (`available`, `downloaded`, `installed`) and ready `installed_images` |
+| `image_create` | `{"id":"NEW_TEMPLATE_ID","macos":"VERSION_OR_BUILD_OR_CODENAME","xcode":"EXACT_VERSION","security":"automation","location":"CONTAINER_ID","idempotency_key":"NEW_KEY"}` | Select an approved Tart base and SIP policy; Xcode is optional; resolved versions/digests are pinned |
 | `registry_sources` | `{}` | Configured GHCR namespaces, authentication availability and publish permission; no credentials |
-| `registry_resolve` | `{"source":"SOURCE_ID","repository":"PACKAGE","tag":"TAG"}` | Verified Lume manifest digest and compressed size; no VM mutation |
-| `image_pull` | `{"id":"NEW_TEMPLATE_ID","source":"SOURCE_ID","repository":"PACKAGE","tag":"TAG","macos":"EXPECTED_VERSION_OR_BUILD","xcode":"EXACT_VERSION","security":"automation","location":"home","idempotency_key":"NEW_KEY"}` | Import, prepare and verify a new golden; `xcode`, `security`, `location` optional; poll job |
-| `image_publish` | `{"template":"TEMPLATE_ID","source":"SOURCE_ID","repository":"PACKAGE","tag":"NEW_TAG","idempotency_key":"NEW_KEY"}` | Fresh portable rebuild of the verified recipe, upload and temporary-VM cleanup; poll job, retain `export.digest` |
+| `registry_resolve` | `{"source":"SOURCE_ID","repository":"PACKAGE","tag":"TAG"}` | Resolve an allowlisted GHCR Tart manifest and verify its digest/chunk metadata |
+| `image_pull` | `{"id":"NEW_TEMPLATE_ID","source":"SOURCE_ID","repository":"PACKAGE","tag":"TAG","macos":"EXPECTED_VERSION_OR_BUILD","xcode":"EXACT_VERSION","security":"automation","location":"CONTAINER_ID","idempotency_key":"NEW_KEY"}` | Pin the Tart manifest, rebuild/qualify the expected OS and policy, preserve provenance |
+| `image_publish` | `{"template":"TEMPLATE_ID","source":"SOURCE_ID","repository":"PACKAGE","tag":"NEW_TAG","idempotency_key":"NEW_KEY"}` | Fresh portable Tart rebuild → sanitize → stopped push → digest verification → confirmed temporary cleanup |
 | `image_build` | `{"id":"TEMPLATE_ID","idempotency_key":"NEW_KEY"}` | Build an absent VM from its registered profile; poll `job.id` |
 | `vm_acquire` | `{"template":"TEMPLATE_ID","ttl_seconds":3600,"ssh_public_key":"ssh-ed25519 PUBLIC_KEY","destination_location":"fast","idempotency_key":"NEW_KEY"}` | Durable operation; `destination_location` is optional and strict; omission uses configured clone storage fallback order |
 | `virfield_job` | `{"id":"JOB_ID"}` | Job state, phase, progress, deadline and error |
-| `image_apple_auth` | `{"id":"JOB_ID"}` | For `apple_auth_required`, issue a 15-minute local launcher link for Apple's website and that exact job; send it privately to the user on the Virfield Mac |
+| `image_apple_auth` | `{"id":"JOB_ID"}` | Legacy download authorization; not yet connected to the Tart builder |
 | `vm_lease` | `{"id":"LEASE_OR_IMAGE_RECORD_ID"}` | Durable record; a ready worker includes `ip`, `ssh`, `expires_at` |
 | `virfield_events` | `{"after":0,"lease_id":"LEASE_OR_IMAGE_RECORD_ID"}`; both optional | Ordered events and `next_cursor`; persist cursor after processing |
 | `vm_renew` | `{"id":"LEASE_ID","expires_at":"ABSOLUTE_RFC3339_TIMESTAMP"}` | Updated lease; deadline must be in the future, at most 24 hours ahead |
@@ -68,100 +68,21 @@ Never substitute a VM name for a lease ID or an image-record ID for a template I
 
 ## Build a golden for the requested versions
 
-1. Read `virfield_status` and `virfield_help({"topic":"verification"})`. Compare
-   the requested OS, Xcode and security policy against existing `templates[].image`.
-   A template's presence does not prove its image is ready. Use existing verified
-   images only when the requested versions and policy match.
-2. If no matching image exists, call `image_catalog`. Resolve macOS by exact
-   version, build, or codename; choose an exact stable Xcode version satisfying
-   its minimum macOS. Catalog availability does not guarantee host compatibility
-   or live acceptance. Do not substitute newer versions without authorization.
-3. Obtain an idle pool before building: no active worker leases or image jobs,
-   and all VMs stopped. Do not delete another client's VM to make room. Submit
-   `image_create` once with a new name and stable idempotency key.
-4. Poll the returned job until `succeeded`; stop for `needs_attention` and report
-   its code, phase and progress. Read the image record with `vm_lease`; require
-   `state: "image_ready"`. Download acceptance or a running VM is not completion.
-5. Acquire a disposable clone for actual execution. A successful golden build
-   does not prove cloning or the requested workload works; report clone/workload
-   results separately.
+Read status and the verification topic first. Match exact OS/build, Xcode and
+policy to a configured Tart or node profile. Use `image_build` only for an absent
+configured golden, preserving its idempotency key, and require job succeeded plus
+image_ready before leasing. Do not run work on the golden itself.
 
-Request example (check that both versions appear in the current catalog):
-
-```json
-{"id":"sequoia-xcode162","macos":"15.2","xcode":"16.2","security":"automation","idempotency_key":"sequoia-xcode162-build-001"}
-```
-
-Omit `xcode` for a base desktop. Omit `security` or use `default` to keep SIP and
-system protections enabled; `sip-disabled` changes SIP only; `automation` also
-applies Gatekeeper/AMFI and Terminal/SSH TCC policy. Changes apply only inside the
-guest. Full third-party UI tools require the separately documented UI-test recipe.
-Default portable golden System/Data volumes must be unencrypted and unlocked;
-FileVault off alone is not enough. Explicit `legacy_uuid` images may use APFS
-encryption at rest with FileVault off, one active worker and no registry
-publication. The Monterey 12.6 / Xcode 13.4.1 image and one disposable clone
-passed under that policy on 2026-10-03. Read the current verification
-topic before treating any catalog release as production accepted.
-
-For `apple_auth_required`, call `image_apple_auth` with the failed `job.id` and
-send its `url` privately to the user on the same Mac as Virfield. The local
-page launches the native Apple browser; credentials and 2FA are entered on
-`developer.apple.com`, not on the Virfield page. Do not ask for or relay
-those values through Mattermost, MCP, job arguments or logs. The link expires in
-15 minutes; a new call revokes the old link. Successful sign-in stores only a
-private Apple download session and automatically retries the exact job's download
-stage. Poll `virfield_job` until it succeeds or reports another error. The user
-must open a new link after a daemon restart. A selected Xcode version may still
-fail Apple authorization or host compatibility; do not substitute another version.
-
-## Import and publish through GHCR
-
-1. Read `registry_sources`. The host operator configures permitted GitHub
-   organizations/users and private credential files. Agents cannot supply a host,
-   URL, token or token path. An empty list requires operator configuration using
-   the operations topic. Only Lume legacy LZ4 and Lume OCI VM manifests are
-   supported; a Docker container or Tart manifest is not a Lume VM.
-2. Resolve an explicit repository/tag with `registry_resolve`. Repository is one
-   lowercase package-name component (no namespace or slash); source supplies the
-   namespace. This checks metadata, not the guest, provenance or workload safety.
-   Import only images from a publisher authorized by the user/operator.
-   The image must boot with SSH enabled for the native `lume` account and
-   bootstrap password `lume`. Virfield prepares imported accounts through SSH;
-   it never overwrites their directory records using offline Setup Assistant.
-   Other credentials or an unfinished initial Setup Assistant are not an import
-   contract: prepare a portable image with `image_publish` or build from IPSW.
-3. With an idle pool, submit `image_pull` with the expected macOS and optional
-   Xcode/security selection. The job pins the manifest and refuses a changed tag
-   before boot. Imported files are checked; CPU/RAM become 4/8 GiB, network NAT,
-   and display 1920×1440. VM hardware identity is retained for first boot.
-   Setup, disk policy, credential isolation, exact guest versions and reboot
-   checks still apply. Require `image_ready`, then test an ordinary worker clone.
-4. For an explicitly authorized upload, call `image_publish` with a verified
-   template and a new unique tag in a push-enabled source. **This rebuilds its
-   pinned recipe; it does not snapshot the current golden disk.** Workload files
-   and manual modifications are excluded. The fresh VM uses public `lume/lume`
-   bootstrap credentials, is verified, sanitized and stopped before upload.
-   The original golden and its private credentials stay on the host. GHCR
-   visibility is controlled by the package owner; the tool does not change it.
-5. Require job `succeeded` and `export.digest`. Completion includes deletion of
-   the temporary portable VM and its private host-side files. A failed/ambiguous
-   upload may have created a tag; never repeat with a new key or overwrite it.
-   Inspect the exact tag/job using operator recovery. Acceptance requires a
-   pull-back, normal clone boot, pinned SSH workload and cleanup, not just upload.
-
-Public bootstrap credentials are intentional transport credentials, not safe
-worker access. Only acquire a worker after Virfield has re-keyed and verified the
-import. Tags are mutable: absence is checked before acceptance and upload, but
-GHCR/Lume has no atomic create-only tag transaction. Use a unique per-build tag
-and ensure no other writer uses it. Keep the resulting digest as the identity.
-Downloading compressed images executes the pinned Lume decoder; configured
-publishers must be trusted. Descriptor/space checks are not a decompression
-sandbox. Read the verification topic for the current live GHCR acceptance state.
+The catalog is metadata/inventory, not proof that image_create works on the current
+runtime. Its IPSW resolver and legacy registry/auth tools are not yet a Tart
+factory. Report an unmatched profile to the operator; never silently substitute
+versions, copy a private golden to a registry, or invoke a runtime around the
+journal. Image construction and recovery contracts are in the images topic.
 
 ## Acquire, execute and collect results
 
-1. Check health/capacity. A maximum of two macOS VMs includes reservations and
-   external running VMs. `capacity_exhausted` means stop acquiring and report the
+1. Check health/capacity. Local Tart capacity includes reservations and
+   external running VMs. Secondary nodes have their own capacity. `capacity_exhausted` means stop acquiring and report the
    blockers. Broker owns queueing. TTL is 60–86400 seconds, starting at acceptance,
    not readiness; choose enough time for boot, execution and artifact export.
    For UI tests (XCUITest) on a physical macOS node, require its pseudo-golden in
@@ -179,7 +100,8 @@ sandbox. Read the verification topic for the current live GHCR acceptance state.
    a guest IP and the verified `ssh` connection. Never use the bootstrap password,
    inherited golden keys, disabled host checking or an unverified `ssh-keyscan`.
 4. Generate pinned SSH configuration using the CLI below. Transfer inputs, run
-   the workload in `~/workspace`, and retrieve its outputs before expiry. Renew
+   the workload in `~/workspace` for VM leases or the documented per-lease
+   workspace for a physical-host lease, and retrieve its outputs before expiry. Renew
    with `vm_renew` before the deadline if needed; renewal uses an absolute UTC
    timestamp, not a duration. Shell execution remains subject to the user's task.
 5. Export results and obtain authorization for disposable-VM deletion if not
@@ -275,11 +197,11 @@ make guest commands idempotent.
 | `image_in_use`, `operation_in_progress` | Inspect current jobs; do not start a competing image operation |
 | `idempotency_conflict`, `ssh_key_in_use` | Correct request tracking/key ownership; do not silently create a duplicate |
 | `apple_auth_required` | Call `image_apple_auth`, send the local link privately, then poll the same job after the user signs in |
-| `registry_bootstrap_failed` | Import requires native `lume`/`lume` SSH access; retain the failed job and use a compatible portable source. Do not overwrite its account offline. |
+| `registry_format_unsupported` | Use a Tart VM manifest, not an old Lume/container/index artifact; do not override format verification. |
 | `disk_encrypted`, `disk_locked`, `disk_policy_unknown` | Golden cannot be published; report disk verification failure without bypassing it |
 | `unsupported_policy`, setup/recovery/security verification failure | Read image runbook and private diagnostics; no guessed key presses or unsupported OS substitutions |
 | `outcome_unknown`, `operation_timeout`, `unsafe_retry` | Mutation may have occurred; preserve reservation and inspect exact VM before recovery |
-| `backend_unavailable`, stale/failed observation | Restore/check the backend; do not trust cached capacity or restart Lume with active VMs |
+| `backend_unavailable`, stale/failed observation | Restore/check the backend; do not trust cached capacity or restart the runtime with active VMs |
 | `vm_drift`, SSH host-key/authentication failure | Stop executing; inspect/release the owned lease. Never suppress host-key checks |
 | `lease_expired`, `lease_released` | Do not renew/reuse the old worker; inspect cleanup before acquiring another |
 
@@ -288,7 +210,7 @@ resolution, image recovery/provisioning, service installation and backups. Ask a
 operator or use an explicitly authorized host CLI workflow from
 `virfield_help({"topic":"operations"})` / `virfield_help({"topic":"images"})`.
 Exact-VM confirmation and inspection that no mutation remains in flight are
-required. Do not edit SQLite, manipulate VM directories, invoke Lume directly to
+required. Do not edit SQLite, manipulate VM directories, invoke Tart/Podman directly to
 bypass the journal, or mark an image ready by hand. Destructive action requires
 user authorization; already authorized cleanup need not be reconfirmed.
 
@@ -302,5 +224,5 @@ is needed. Registration alone does not prove workflow readiness.
 Acceptance for **each client** requires discovery of `virfield_help`, reading this
 guide, authenticated status, and an authorized create/acquire → ready → pinned SSH
 workload → artifact export → release workflow. Validate same-key retries and the
-shared two-slot limit across clients. Record exact OS/Xcode/security/build and
+configured per-host slot limits across clients. Record exact OS/Xcode/security/build and
 cleanup results in Verification before calling it production ready.

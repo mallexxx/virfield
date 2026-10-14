@@ -38,6 +38,14 @@ func (c *Controller) PublishImage(ctx context.Context, r domain.ImagePublishRequ
 	if c.registry == nil || c.imageBuilder == nil || c.imageCatalog == nil {
 		return domain.Operation{}, domain.Err("registry_unconfigured", "Configure registry sources and image tools")
 	}
+	if _, ok := c.imageBuilder.(ImageExporter); !ok || t.Image.Node != nil {
+		return domain.Operation{}, domain.Err("registry_push_disabled", "This runtime does not support portable Tart publication")
+	}
+	if v, ok := c.imageBuilder.(interface{ ValidateTemplate(domain.Template) error }); ok {
+		if err := v.ValidateTemplate(t); err != nil {
+			return domain.Operation{}, err
+		}
+	}
 	organization, err := c.registry.PushTarget(r.Source)
 	if err != nil {
 		return domain.Operation{}, err
@@ -51,7 +59,7 @@ func (c *Controller) PublishImage(ctx context.Context, r domain.ImagePublishRequ
 		return domain.Operation{}, err
 	}
 	p := *t.Image
-	if p.Registry != nil {
+	if p.Registry != nil && p.Tart == nil {
 		selection := domain.ImageCreateRequest{ID: r.Template, MacOS: p.Build, Security: p.Security}
 		if p.Xcode != nil {
 			selection.Xcode = p.Xcode.Version

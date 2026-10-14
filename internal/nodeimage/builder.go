@@ -229,3 +229,10 @@ func (s sshGuests) Password(l domain.Lease) (string, error) {
 	c, err := guestssh.LoadCredentials(s.m.CredentialPath(l))
 	return c.Password, err
 }
+
+func (b *Builder) ValidateTemplate(t domain.Template) error {
+	if t.Image == nil || t.Image.Node == nil || t.GuestUser != "admin" || strings.HasPrefix(t.Name, "vf-") {
+		return domain.Err("invalid_profile", "Node builds require a named bootstrap golden and the admin account")
+	}
+	return t.Image.Validate()
+}

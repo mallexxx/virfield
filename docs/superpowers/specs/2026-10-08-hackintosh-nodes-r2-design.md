@@ -1,3 +1,9 @@
+> **Reconciled status — 2026-10-14:** This is a dated design/execution record.
+> It is not a current deployment runbook or live task tracker. See
+> [current delivery state](../../VIRFIELD-3-PLAN.md) and
+> [current acceptance](../../VERIFICATION.md); old paths/statuses and unchecked
+> example steps below describe their original execution context.
+
 # Remote nodes R2: macOS VMs on the Linux HTPC
 
 Status: live (2026-10-08); see VERIFICATION.md "Remote nodes R2". Builds on R1 (`2026-10-08-remote-nodes-r1-design.md`).

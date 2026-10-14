@@ -1,3 +1,9 @@
+> **Reconciled status — 2026-10-14:** This is a dated design/execution record.
+> It is not a current deployment runbook or live task tracker. See
+> [current delivery state](../../VIRFIELD-3-PLAN.md) and
+> [current acceptance](../../VERIFICATION.md); old paths/statuses and unchecked
+> example steps below describe their original execution context.
+
 # Tart image adoption — design
 
 Date: 2026-10-07. Status: approved direction; implements Phase 1 of

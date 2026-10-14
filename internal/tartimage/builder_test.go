@@ -95,7 +95,7 @@ func testBuilder(t *testing.T) (*Builder, *fakeRunner, *fakeRuntime, domain.Leas
 		Security:   "sip-disabled",
 		DisableSIP: true,
 		Provision:  "developer-v1",
-		Xcode:      &domain.XcodeRelease{Version: "15.2", Build: "15C500b", Requires: "13.5", SHA1: hex.EncodeToString(sum[:])},
+		Xcode:      &domain.XcodeRelease{Version: "15.2", Build: "15C500b", Requires: "13.5", URL: "https://download.developer.apple.com/Developer_Tools/Xcode_15.2/Xcode_15.2.xip", SHA1: hex.EncodeToString(sum[:])},
 	}
 	if err := os.WriteFile(filepath.Join(archives, p.Xcode.SHA1+".xip"), content, 0600); err != nil {
 		t.Fatal(err)
@@ -287,5 +287,27 @@ func TestBootRetriesWhileTheVMIsStillHeld(t *testing.T) {
 	ip, err := b.boot(context.Background(), l)
 	if err != nil || ip == "" || flaky.failures != 0 {
 		t.Fatal(ip, err, flaky.failures)
+	}
+}
+
+func TestBaseAndAutomationBuildsUsePinnedPolicy(t *testing.T) {
+	b, r, _, l, p := testBuilder(t)
+	p.Xcode = nil
+	p.Security = "automation"
+	p.Provision = "security-v1"
+	if err := b.Step(context.Background(), l, p, "build", noProgress); err != nil {
+		t.Fatal(err)
+	}
+	args := strings.Join(r.calls[0].args, " ")
+	if !strings.Contains(args, "security=automation") || !strings.Contains(args, "base.pkr.hcl") || strings.Contains(args, "xip=") {
+		t.Fatal(args)
+	}
+	p.MacOS = "27.0"
+	p.Build = "26A428"
+	if err := b.Step(context.Background(), l, p, "build", noProgress); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(r.calls[1].args, " "), "base27.pkr.hcl") {
+		t.Fatal(r.calls[1])
 	}
 }

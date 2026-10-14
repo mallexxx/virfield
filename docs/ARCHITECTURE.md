@@ -1,113 +1,66 @@
 # Architecture
 
-Virfield is a single Go module at the repository root. Clients use the daemon API;
-only the controller and its adapters own VM lifecycle effects. Broker execution
-policy and Runner/Callee workflow execution belong to separate applications.
+Virfield is one modular Go application. Clients call `/api/v1`; the controller
+and runtime adapters alone perform infrastructure effects. `main` is the
+maintained source. Broker/Runner own execution semantics.
 
 ## Modules
 
-| Module | Responsibility |
+| Module | Current responsibility |
 |---|---|
-| `cmd/virfieldd` | Configuration, host singleton lock, HTTP server, shutdown |
-| `internal/control` | Admission, leases, durable job phases, reconciliation, cleanup |
-| `internal/guestssh` | Bounded pinned SSH, image bootstrap, per-lease credential isolation |
-| `internal/registry` | Fixed-origin GHCR metadata, digest/format validation, operator-owned credential files |
-| `internal/catalog` | Public version metadata, macOS selectors and Xcode minimum-OS checks |
-| `internal/images` | Pinned IPSW downloads, versioned guest provisioning, image verification |
-| `internal/store` | SQLite schema, atomic state + event transactions, idempotency |
-| `internal/lume` | Sole Lume HTTP/CLI adapter, fixed image commands, no blind mutation retries |
-| `internal/httpapi`, `internal/web` | Versioned authenticated API, embedded console |
-| `internal/client`, `cmd/virfield` | API-only CLI |
-| `internal/mcpadapter`, `cmd/virfield-mcp` | Official Go SDK stdio and authenticated HTTP MCP adapter |
-| `internal/hostresources`, `internal/logging` | CPU/RAM/storage admission and bounded service logs |
-| `cmd/virfield-lume` | Independent launchd entrypoint with bounded Lume logs |
-| `internal/config`, `internal/hostlock` | Validated config/token, single host owner |
+| `cmd/virfieldd` | Config, single-owner locks, runtime wiring, API and shutdown |
+| `internal/control` | Lease/image admission, durable phases, reconciliation, expiry and cleanup |
+| `internal/store` | SQLite schema 7, atomic lease/job/event/request/template records, snapshots and retention |
+| `internal/provider`, `internal/fleet` | Runtime seam and local Tart + SSH-node routing |
+| `internal/tart`, `internal/tartimage` | Tart inventory/lifecycle and pinned Packer image adoption |
+| `internal/baremetal`, `internal/nodeimage`, `internal/wol` | SSH physical nodes, node VM overlays, securing goldens and wake packets |
+| `internal/guestssh`, `internal/qualify` | Account-specific credentials, host pins and guest qualification |
+| `internal/catalog`, `internal/registry` | Version metadata and allowlisted registry metadata |
+| `internal/httpapi`, `internal/web` | Bearer-authenticated API and embedded local console |
+| `internal/client`, `internal/mcpadapter` | API-only CLI/SDK and MCP adapters with embedded documentation |
+| `internal/appleauth`, `apple-browser` | Scoped native Apple website authentication |
+| `internal/orchard` | Unaccepted Orchard candidate adapter |
 
-There is no personal SSH key discovery, host shell endpoint, API credential upload,
-process-name scanning or automatic Lume restart in v2. Fixed image jobs use
-allowlisted Lume CLI operations and a versioned guest VNC script. The initial
-Lume password is rotated for managed goldens. Portable registry builds keep
-public bootstrap credentials and never clone a private source disk. API clients have no direct store or Lume dependency.
-
-See [Image Manager](IMAGE-PIPELINE.md) for profiles, build, recovery and deletion.
+The Lume backend, image factory, wrapper and build/install files are removed.
+Legacy profile fields are read only for journal compatibility; Tart rejects old
+IPSW recipes before reserving a build. The retired host service is independent
+of the candidate and tracked in [Verification](VERIFICATION.md).
 
 ## Capacity and recovery
 
-1. Acceptance reserves a slot under the controller mutex and commits it before
-   returning HTTP 202. The cap is `min(config.max_vms, Lume.max_vms, 2)`.
-2. Capacity is the union of active observed VMs and unreleased leases, plus any
-   additional occupied slots reported by Lume. Stopped managed VMs still reserve
-   their slot until cleanup completes. External VMs count against capacity.
-3. Unknown or stale inventory blocks acquisition. Unknown VM states consume
-   capacity. Backend failures never become an empty list or permission to start.
-4. Each external effect has a durable dispatch phase. A lost response never
-   causes an automatic clone/start/stop/delete retry. Start is asynchronous:
-   HTTP 202 is not readiness. An early `stopped` observation does not permit
-   deleting a disk while a start might still complete.
-5. Expiry queues cleanup in SQLite. Preparation cancellation, cleanup acceptance
-   and its event are atomic. Capacity is freed only after a fresh observation
-   confirms absence, with no unconfirmed start or clone outstanding.
+Acceptance commits reservations before returning. Capacity includes active
+observed targets and unreleased durable reservations without double-counting.
+Local Tart slots and secondary node slots are separate. An unreachable node
+remains visible; WoL-capable nodes may retain cached image inventory for waking.
+A cached image is not proof of a currently reachable guest.
 
-A kernel file lock prevents two v2 daemons for the same OS user, even with
-different ports/databases. External Lume callers remain outside that lock:
-production operation requires that other writers do not manage these VMs.
-Lume/Virtualization.framework remains the final hardware admission authority.
+Unknown/stale primary inventory blocks admission. Unknown mutation outcomes keep
+reservations and require operator inspection; a dispatch is never blindly
+replayed. Stop and deletion are distinct effects. Capacity is freed only after
+fresh absence is confirmed. Expiry revokes access even during backend failure.
 
-`ready` requires a running VM, valid guest IP and successful authentication
-against its new host key after per-lease credential isolation. Each clone receives
-a distinct administrator password, daemon management key and Ed25519 host key.
-Its `authorized_keys` contains only its management key and caller public key;
-the image key is explicitly tested for authentication rejection. Effective sshd
-policy must disable password, keyboard-interactive and root login, and agent
-forwarding. Private material stays in owner-only daemon files; API/MCP expose only
-connection metadata and public keys.
-
-An interrupted SSH isolation is never replayed. The lease becomes
-`needs_attention`, remains reserved and can be released or expire normally:
-its clone ownership and completed start are already known. An IP change after
-verification requires a new lease. Schema version 6 prevents older binaries from
-skipping readiness, resource, catalog-template, registry and provisioning contracts. Existing leases without an SSH identity require
-release and reacquisition; the existing verified image remains usable.
+Local Tart/node VM readiness requires running state, address, per-lease credential
+isolation and authentication against a pinned host key. Physical host leases add
+one caller key to the configured account and reserve its workspace. They do not
+reset the host or kill workloads under the shared account. A physical host has one exclusive reservation independent of its VM slots.
+Shared sleep holds are reference-counted; foreign holds are retained. VM cleanup
+requires confirmed container removal before deleting overlays or releasing holds.
 
 ## API boundary
 
-`internal/httpapi` implements the bearer-authenticated `/api/v1` contract.
-`internal/domain` owns request/response models; `internal/client` is the shared
-Go API client. `/mcp` wraps that API with the official MCP SDK. The embedded
-console and stdio adapter never access Lume or SQLite directly.
+REST scoped principals support `lease:own` and `image:build`; ownership checks
+protect lease access. HTTP MCP currently uses the operator principal. These are
+not v3 tenant grants. Loopback-only API deployment uses an explicit Host allowlist;
+remote use requires an authenticated TLS proxy and accepted routing.
 
-Mutations return durable job/lease identities before background execution.
-Preparation and cleanup use explicit dispatch checkpoints. Idempotency keys
-identify a request; they are not permission to replay an uncertain external
-side effect. Unknown outcomes retain reservations for operator inspection.
-There is no arbitrary host-shell API, generic guest-script endpoint or access to
-personal SSH credentials. Operational commands are documented in
-[Operations](OPERATIONS.md); image mutation contracts are in
-[Image pipeline](IMAGE-PIPELINE.md).
+Clients never access SQLite or runtime storage. Do not add arbitrary host shell
+or generic workload execution through this API. `/api/v1`, schema versions and
+recipe identifiers are protocol contracts, not product marketing versions.
 
-The `/api/v1` route prefix, SQLite schema versions and `uitest-27-v1` image recipe
-are current protocol identifiers. They are independent of retired implementation
-history and must not be renamed as cosmetic cleanup.
+## Development rules
 
-## Sources and implementation rules
-
-- [Effective Go](https://go.dev/doc/effective_go) and [Go Code Review Comments](https://go.dev/wiki/CodeReviewComments).
-- [Lume CLI reference, documented for 0.5.3](https://cua.ai/docs/reference/lume/cli-reference).
-- [Serve the Lume API](https://cua.ai/docs/how-to-guides/lume/serve-api).
-- [Lume API snapshot](reference/lume-0.5.3-api.json): output of the installed `lume dump-docs --type api --pretty`.
-
-The installed server also exposes `/lume/host/status`, which is **not in that
-API dump**. Its required capacity fields were checked live on 2026-09-29. The
-reported `version: 1.0.0` is not the CLI version; do not compare it to 0.5.3.
-Malformed/missing fields fail closed. Revalidate this contract on Lume upgrades.
-
-Use contexts and deadlines for all I/O; wrap errors at boundaries; expose safe
-machine error codes, never raw upstream response bodies; keep dependency
-interfaces at the consumer; format with gofmt; run vet and race tests. Persist
-intent before effects, never fake exactly-once external execution, and never
-hold the admission mutex across network I/O. Add tests for failure behavior,
-not tests that only mirror implementation details.
-
-The minimum Go patch is pinned after `govulncheck` found reachable standard-library
-vulnerabilities in the installed Go 1.26.2. Go toolchain selection downloads a
-project toolchain; it does not replace the Homebrew installation.
+Use bounded contexts, safe error codes, atomic persist-before-effect transitions,
+strict SSH host checking and private credential files. Never hold admission locks
+across network effects. Run formatting, vet, race tests and release checks; test
+failure behavior and provider routing. [Operations](OPERATIONS.md) owns commands;
+[the 3.0 plan](VIRFIELD-3-PLAN.md) owns future architecture.

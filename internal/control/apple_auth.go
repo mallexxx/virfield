@@ -15,13 +15,13 @@ func (c *Controller) AppleAuthJob(ctx context.Context, jobID string) (domain.Xco
 	if err != nil {
 		return domain.XcodeRelease{}, err
 	}
-	if j.Kind != "image_build" || j.Phase != "download_dispatched" || j.State != "needs_attention" || j.Error == nil || j.Error.Code != "apple_auth_required" || j.Image == nil || j.Image.Xcode == nil || c.active[j.LeaseID] {
+	if j.Kind != "image_build" || (j.Phase != "download_dispatched" && j.Phase != "resolve_dispatched") || j.State != "needs_attention" || j.Error == nil || j.Error.Code != "apple_auth_required" || j.Image == nil || j.Image.Xcode == nil || c.active[j.LeaseID] {
 		return domain.XcodeRelease{}, domain.Err("invalid_request", "job is not waiting for Apple Xcode authorization")
 	}
 	return *j.Image.Xcode, nil
 }
 
-// ResumeAppleDownload is safe because download is the only replayed image stage.
+// ResumeAppleDownload retries only download/resolve stages, before any VM build.
 // The browser may authorize a retry; it cannot skip verification or VM mutation.
 func (c *Controller) ResumeAppleDownload(ctx context.Context, jobID string) error {
 	c.mu.Lock()
@@ -30,7 +30,7 @@ func (c *Controller) ResumeAppleDownload(ctx context.Context, jobID string) erro
 	if err != nil {
 		return err
 	}
-	if j.Kind != "image_build" || j.Phase != "download_dispatched" || j.State != "needs_attention" || j.Error == nil || j.Error.Code != "apple_auth_required" || j.Image == nil || j.Image.Xcode == nil || c.active[j.LeaseID] {
+	if j.Kind != "image_build" || (j.Phase != "download_dispatched" && j.Phase != "resolve_dispatched") || j.State != "needs_attention" || j.Error == nil || j.Error.Code != "apple_auth_required" || j.Image == nil || j.Image.Xcode == nil || c.active[j.LeaseID] {
 		return domain.Err("invalid_request", "job is not waiting for Apple Xcode authorization")
 	}
 	l, err := c.store.Lease(ctx, j.LeaseID)

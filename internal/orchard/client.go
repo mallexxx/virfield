@@ -63,7 +63,7 @@ func (e *RejectedMutation) Definitive() bool { return true }
 func New(config Config) (*Client, error) {
 	u, err := url.Parse(config.URL)
 	if err != nil || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
-		return nil, errors.New("Orchard URL must be an HTTP(S) origin")
+		return nil, errors.New("orchard URL must be an HTTP(S) origin")
 	}
 	if u.Scheme != "https" {
 		ip := net.ParseIP(u.Hostname())
@@ -453,7 +453,7 @@ func (c *Client) request(ctx context.Context, method, path string, body, result 
 		return err
 	}
 	if len(data) > responseLimit {
-		return errors.New("Orchard response exceeds 4 MiB")
+		return errors.New("orchard response exceeds 4 MiB")
 	}
 	if result != nil {
 		if err := json.Unmarshal(data, result); err != nil {

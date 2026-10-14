@@ -32,6 +32,7 @@ func TestRegistryPullPersistsPinAndReplaysOffline(t *testing.T) {
 	cat := &fakeCatalog{p: *c.templates["test"].Image}
 	cat.p.MacOS = "12.6"
 	cat.p.Build = "21G115"
+	cat.p.Provision = "base-v1"
 	c.SetImageCatalog(cat, []string{"home"})
 	r := &fakeRegistry{}
 	c.SetRegistry(r)

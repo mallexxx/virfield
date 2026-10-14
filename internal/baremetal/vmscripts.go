@@ -48,37 +48,64 @@ fi
 // $7 memory GB, $8 disk size, $9 keep-awake file (may be empty), $10 desktop
 // publish address (empty for none). passt forwards guest SSH and Screen
 // Sharing; QEMU's own VNC moves off 5900 and is never published.
-const vmStartScript = vmDirs + `[ -f "$d/port" ]
+const vmStartScript = sleepHoldFunctions + vmContainerFunctions + vmDirs + `[ -f "$d/port" ]
 g=$(cat "$d/golden")
 p=$(cat "$d/port")
-if ! podman inspect -f '{{.State.Running}}' "$c" 2>/dev/null | grep -qx true; then
-  podman rm -f "$c" >/dev/null 2>&1 || true
+running=false
+if vf_container_exists; then
+  running=$(podman inspect -f '{{.State.Running}}' "$c")
+  case "$running" in true|false) ;; *) echo "invalid container state" >&2; exit 3;; esac
+fi
+if [ "$running" != true ]; then
+  if vf_container_exists; then podman rm -f "$c" >/dev/null; fi
+  vf_hold "$d" "${9:-}"
   podman run -d --name "$c" --device /dev/kvm --device /dev/net/tun --cap-add NET_ADMIN \
     -e DISK_FMT=qcow2 -e "DISK_SIZE=$8" -e "RAM_SIZE=$7G" -e "CPU_CORES=$6" -e USER_PORTS=22,5900 -e VNC_PORT=5950 \
     -p "$5:$p:22" ${10:+-p "${10}:5900"} -v "$d/storage:/storage:Z" -v "$3:$3:ro,z" -v "$3/$g.opencore.plist:/custom.plist:ro,z" \
     --stop-timeout 30 "$4" >/dev/null
 fi
-if [ -n "${9:-}" ] && [ ! -e "$9" ]; then
-  : > "$9"
-  : > "$d/hold-created"
-fi
+vf_hold "$d" "${9:-}"
 printf running > "$d/state"
 `
 
 // vmStopScript: $3 keep-awake file. macOS clones can hang at the end of a
 // guest shutdown, so stop is ACPI with a bounded wait, then kill.
-const vmStopScript = vmDirs + `[ -d "$d" ] || exit 0
-podman stop -t 30 "$c" >/dev/null 2>&1 || true
-podman kill "$c" >/dev/null 2>&1 || true
-podman rm -f "$c" >/dev/null 2>&1 || true
-if [ -f "$d/hold-created" ]; then
-  [ -n "${3:-}" ] && rm -f "$3"
-  rm -f "$d/hold-created"
-fi
-printf stopped > "$d/state"
+const vmContainerFunctions = `
+vf_container_exists() {
+  vf_status=0
+  podman container exists "$c" || vf_status=$?
+  case "$vf_status" in 0) return 0;; 1) return 1;; *) echo "container observation failed" >&2; exit "$vf_status";; esac
+}
+vf_stop_container() {
+  if vf_container_exists; then
+    podman stop -t 30 "$c" >/dev/null 2>&1 || podman kill "$c" >/dev/null 2>&1
+    podman rm -f "$c" >/dev/null
+    if vf_container_exists; then echo "container cleanup not confirmed" >&2; exit 3; fi
+  fi
+}
+`
+
+const vmStopScript = sleepHoldFunctions + vmContainerFunctions + vmDirs + `vf_stop_container
+vf_unhold "$d" "${3:-}"
+[ ! -d "$d" ] || printf stopped > "$d/state"
 `
 
 const vmDeleteScript = vmStopScript + `rm -rf "$d"
+`
+
+// The controller authorizes an exact unused image name. Both completed golden
+// files and an interrupted image clone are removed, never a backing image.
+const vmImageDeleteScript = sleepHoldFunctions + vmContainerFunctions + vmDirs + `
+for scope in leases images; do
+  for other in "$HOME"/virfield/$scope/*/; do
+    [ -f "$other/golden" ] || continue
+    [ "$(cat "$other/golden")" != "$2" ] || { echo "golden has an overlay" >&2; exit 3; }
+  done
+done
+vf_stop_container
+vf_unhold "$d" "${4:-}"
+rm -rf "$d"
+rm -f "$3/$2.qcow2" "$3/$2.opencore.plist"
 `
 
 // vmCommitScript: $3 goldens dir, $4 image. Writes <goldens>/<vm>.qcow2 once,

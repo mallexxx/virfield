@@ -29,7 +29,14 @@ func (g *fakeGuest) Run(_ context.Context, command, input string) (string, error
 }
 
 func (g *fakeGuest) RunReader(ctx context.Context, _ time.Duration, command string, input io.Reader) (string, error) {
-	return g.Run(ctx, command, "")
+	if input == nil {
+		return g.Run(ctx, command, "")
+	}
+	data, err := io.ReadAll(input)
+	if err != nil {
+		return "", err
+	}
+	return g.Run(ctx, command, string(data))
 }
 
 func code(err error) string {
@@ -126,6 +133,24 @@ func TestProvisionProbeUsesConfiguredUser(t *testing.T) {
 		t.Fatal(probe, logged)
 	}
 	if err := Provision(context.Background(), g, "a b", func(string) error { return nil }); code(err) != "provision_verification_failed" {
+		t.Fatal(err)
+	}
+}
+
+func TestAutomationSecurityRequiresRebootVerificationEvidence(t *testing.T) {
+	g := &fakeGuest{outputs: map[string]string{"sudo -n /bin/bash -s -- verify 'admin'": "Guest policy verify complete; SIP disabled; Gatekeeper disabled"}}
+	log := func(string) error { return nil }
+	if err := Security(context.Background(), g, "admin", log); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(g.inputs[0], "kern.bootargs") || !strings.Contains(g.inputs[0], "TCC verified") || strings.Contains(g.commands[0], "lume") {
+		t.Fatal("incomplete guest policy check")
+	}
+	g.outputs[g.commands[0]] = ""
+	if err := Security(context.Background(), g, "admin", log); code(err) != "security_verification_failed" {
+		t.Fatal(err)
+	}
+	if err := Security(context.Background(), g, "admin;exit", log); code(err) != "security_verification_failed" {
 		t.Fatal(err)
 	}
 }

@@ -37,6 +37,11 @@ func (c *Controller) BuildImage(ctx context.Context, id, key string) (domain.Ope
 	return c.buildImageLocked(ctx, t, key, fp, false)
 }
 func (c *Controller) buildImageLocked(ctx context.Context, t domain.Template, key, fp string, register bool) (domain.Operation, error) {
+	if v, ok := c.imageBuilder.(interface{ ValidateTemplate(domain.Template) error }); ok {
+		if err := v.ValidateTemplate(t); err != nil {
+			return domain.Operation{}, err
+		}
+	}
 	ls, err := c.store.Leases(ctx)
 	if err != nil {
 		return domain.Operation{}, err
@@ -47,6 +52,9 @@ func (c *Controller) buildImageLocked(ctx context.Context, t domain.Template, ke
 	}
 	if capacity.Available < 1 {
 		return domain.Operation{}, domain.Err("capacity_exhausted", "image build requires one available VM slot")
+	}
+	if err := c.admitNodeTarget(ls, t); err != nil {
+		return domain.Operation{}, err
 	}
 	for _, l := range ls {
 		if l.Key() == t.Location+"/"+t.Name {
@@ -192,7 +200,7 @@ func (c *Controller) advanceImageBuild(ctx context.Context, l domain.Lease, j do
 				code = e.Code
 				msg = e.Message
 			}
-			if e := c.attention(saveCtx, l, j, code, msg, step != "download"); e != nil {
+			if e := c.attention(saveCtx, l, j, code, msg, step != "download" && step != "resolve"); e != nil {
 				c.log.Error("persist image failure", "error", e)
 			}
 			return

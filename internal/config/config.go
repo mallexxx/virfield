@@ -26,10 +26,10 @@ type Config struct {
 	Registries             []domain.RegistrySource `json:"registries,omitempty"`
 	ResourceLimits         *domain.ResourceLimits  `json:"resource_limits,omitempty"`
 	StoragePaths           map[string]string       `json:"storage_paths,omitempty"`
-	ImageTools             *domain.ImageTools      `json:"image_tools,omitempty"`
+	LegacyImageTools       json.RawMessage         `json:"image_tools,omitempty"`
 	DefaultCloneLocation   string                  `json:"default_clone_location,omitempty"`
 	Listen                 string                  `json:"listen"`
-	LumeURL                string                  `json:"lume_url"`
+	LumeURL                string                  `json:"lume_url,omitempty"`
 	StateDir               string                  `json:"state_dir"`
 	TokenFile              string                  `json:"token_file"`
 	MaxVMs                 int                     `json:"max_vms"`
@@ -38,7 +38,7 @@ type Config struct {
 
 // Runtime selects one infrastructure authority for this virfieldd instance.
 // Orchard may fan out to many remote workers; Tart manages this Mac directly.
-// A missing runtime preserves the v2 Lume configuration.
+// The infrastructure authority must be explicit; implicit legacy runtimes are rejected.
 type Runtime struct {
 	Provider string   `json:"provider"`
 	Tart     *Tart    `json:"tart,omitempty"`
@@ -122,6 +122,7 @@ type Tart struct {
 	Containers          []TartContainer          `json:"containers"`
 	RegistryCredentials []TartRegistryCredential `json:"registry_credentials,omitempty"`
 	Image               *TartImage               `json:"image,omitempty"`
+	Bases               []domain.TartBase        `json:"bases,omitempty"`
 }
 
 type TartRegistryCredential struct {
@@ -264,7 +265,10 @@ func Load(path string) (Config, error) {
 
 func validateRuntime(c *Config) error {
 	if c.Runtime == nil {
-		return nil
+		return errors.New("runtime is required; migrate retired Lume deployments to Tart")
+	}
+	if len(c.LegacyImageTools) != 0 && string(c.LegacyImageTools) != "null" {
+		return errors.New("image_tools is retired; configure runtime.tart.image")
 	}
 	if err := validateNodes(c.Runtime); err != nil {
 		return err
@@ -275,6 +279,11 @@ func validateRuntime(c *Config) error {
 			return errors.New("runtime tart requires only the tart configuration")
 		}
 		t := c.Runtime.Tart
+		for _, base := range t.Bases {
+			if err := base.Validate(); err != nil {
+				return err
+			}
+		}
 		if c.ResourceLimits != nil {
 			return errors.New("runtime-specific host limits replace legacy resource_limits")
 		}

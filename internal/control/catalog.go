@@ -111,14 +111,11 @@ func (c *Controller) CreateImage(ctx context.Context, r domain.ImageCreateReques
 		return *op, nil
 	}
 	if c.imageCatalog == nil || c.imageBuilder == nil {
-		return domain.Operation{}, domain.Err("image_dependency", "Configure image_tools before building catalog images")
+		return domain.Operation{}, domain.Err("image_dependency", "Configure a runtime image builder before building catalog images")
 	}
-	location := r.Location
-	if location == "" {
-		location = "home"
-	}
-	if !c.imageLocations[location] {
-		return domain.Operation{}, domain.Err("invalid_request", "Storage location is not configured by the host operator")
+	location, err := c.imageLocation(r.Location)
+	if err != nil {
+		return domain.Operation{}, err
 	}
 	p, err := c.imageCatalog.Resolve(ctx, r)
 	if err != nil {
@@ -146,5 +143,28 @@ func (c *Controller) CreateImage(ctx context.Context, r domain.ImageCreateReques
 		}
 	}
 	t := domain.Template{ID: r.ID, Name: r.ID, Location: location, Image: &p}
+	if p.Tart != nil {
+		t.GuestUser, t.GuestHome, t.OS, t.Arch = "admin", "/Users/admin", "macOS", "arm64"
+	}
 	return c.buildImageLocked(ctx, t, key, fp, true)
+}
+
+func (c *Controller) imageLocation(requested string) (string, error) {
+	location := requested
+	if location == "" {
+		location = c.defaultCloneLocation
+		if location == "" {
+			if len(c.imageLocations) == 1 {
+				for name := range c.imageLocations {
+					location = name
+				}
+			} else if c.imageLocations["home"] {
+				location = "home"
+			}
+		}
+	}
+	if !c.imageLocations[location] {
+		return "", domain.Err("invalid_request", "Select an operator-configured image storage location")
+	}
+	return location, nil
 }

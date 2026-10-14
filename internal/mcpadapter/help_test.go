@@ -103,7 +103,7 @@ func TestHelpDiscoveryWithoutDaemonAndDocumentationCoverage(t *testing.T) {
 	if len(parts) != 2 {
 		t.Fatal("operations tool list missing")
 	}
-	toolList := strings.SplitN(parts[1], "\nUse `image_create`", 2)[0]
+	toolList := strings.SplitN(parts[1], "\n\n", 2)[0]
 	listedNames := regexp.MustCompile("`[a-z_]+`").FindAllString(toolList, -1)
 	if len(listedNames) != len(listed.Tools) {
 		t.Fatalf("operations lists %d tools, server exposes %d", len(listedNames), len(listed.Tools))

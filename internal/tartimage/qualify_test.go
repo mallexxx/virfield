@@ -40,6 +40,8 @@ func (s fakeSession) Run(_ context.Context, command, _ string) (string, error) {
 		return "15.2\n15C500b\n", nil
 	case strings.HasPrefix(command, "/usr/bin/xcodebuild -version"):
 		return "Xcode 15.2\nBuild version 15C500b\n", nil
+	case strings.HasPrefix(command, "sudo -n /bin/bash -s -- verify"):
+		return "Guest policy verify complete; SIP disabled; Gatekeeper disabled", nil
 	case strings.Contains(command, "kern.bootargs"):
 		return "assessments disabled\n", nil
 	case strings.HasPrefix(command, "sudo -n /sbin/shutdown"):
@@ -158,5 +160,48 @@ func TestUITestQualifyRecordsInstalledXcodeAndVerifiesProvisioning(t *testing.T)
 	raw, err := os.ReadFile(filepath.Join(b.folder(l), "verification.json"))
 	if err != nil || !strings.Contains(string(raw), `"version": "15.2"`) {
 		t.Fatal("installed Xcode not recorded", err)
+	}
+}
+
+func TestBaseQualificationDoesNotRequireXcodeOrDeviceSupport(t *testing.T) {
+	b, _, g, l, p := qualifyBuilder(t)
+	p.Xcode = nil
+	p.Provision = "base-v1"
+	b.deviceSupport = func(context.Context, string, string, string, string, func(string) error) (string, error) {
+		t.Fatal("base requested Xcode DeviceSupport")
+		return "", nil
+	}
+	if err := b.Step(context.Background(), l, p, "qualify", noProgress); err != nil {
+		t.Fatal(err)
+	}
+	for _, command := range g.commands {
+		if strings.Contains(command, "Xcode.app") || strings.Contains(command, "xcodebuild") {
+			t.Fatal("base unexpectedly requires Xcode", command)
+		}
+	}
+}
+func TestPortableQualificationPreservesPublicBootstrapAccount(t *testing.T) {
+	b, _, g, l, p := qualifyBuilder(t)
+	l.Portable = true
+	if err := b.Step(context.Background(), l, p, "qualify", noProgress); err != nil {
+		t.Fatal(err)
+	}
+	if g.secured != 0 || len(g.connects) != 2 || !g.connects[0] || !g.connects[1] {
+		t.Fatal("portable rebuild received private golden credentials", g.secured, g.connects)
+	}
+	raw, err := os.ReadFile(filepath.Join(b.folder(l), "verification.json"))
+	if err != nil || !strings.Contains(string(raw), `"scoped_image_ssh": false`) {
+		t.Fatal(string(raw), err)
+	}
+}
+
+func TestAutomationProfileIsVerifiedAfterReboot(t *testing.T) {
+	b, _, g, l, p := qualifyBuilder(t)
+	p.Security = "automation"
+	if err := b.Step(context.Background(), l, p, "qualify", noProgress); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(g.commands, "\n"), "sudo -n /bin/bash -s -- verify 'admin'") {
+		t.Fatal("automation policy was not checked after reboot")
 	}
 }

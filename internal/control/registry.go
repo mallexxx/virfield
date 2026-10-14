@@ -47,12 +47,9 @@ func (c *Controller) PullImage(ctx context.Context, r domain.ImagePullRequest, k
 	if c.registry == nil || c.imageCatalog == nil || c.imageBuilder == nil {
 		return domain.Operation{}, domain.Err("registry_unconfigured", "Configure registry sources and image tools on the host")
 	}
-	location := r.Location
-	if location == "" {
-		location = "home"
-	}
-	if !c.imageLocations[location] {
-		return domain.Operation{}, domain.Err("invalid_request", "Storage location is not configured by the host operator")
+	location, err := c.imageLocation(r.Location)
+	if err != nil {
+		return domain.Operation{}, err
 	}
 	ref, err := c.registry.Resolve(ctx, domain.RegistryResolveRequest{Source: r.Source, Repository: r.Repository, Tag: r.Tag})
 	if err != nil {
@@ -63,6 +60,7 @@ func (c *Controller) PullImage(ctx context.Context, r domain.ImagePullRequest, k
 		return domain.Operation{}, err
 	}
 	p.Registry = &ref
+	p.Tart = &domain.TartSource{Upstream: "ghcr.io/" + ref.Organization + "/" + ref.Repository + "@" + ref.Digest}
 	p.URL = ""
 	p.SHA256 = ""
 	p.Size = 0
@@ -87,6 +85,6 @@ func (c *Controller) PullImage(ctx context.Context, r domain.ImagePullRequest, k
 			return domain.Operation{}, domain.Err("image_exists", "VM name is reserved by another template")
 		}
 	}
-	t := domain.Template{ID: r.ID, Name: r.ID, Location: location, Image: &p}
+	t := domain.Template{ID: r.ID, Name: r.ID, Location: location, Image: &p, GuestUser: "admin", GuestHome: "/Users/admin", OS: "macOS", Arch: "arm64"}
 	return c.buildImageLocked(ctx, t, key, fp, true)
 }

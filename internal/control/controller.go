@@ -98,11 +98,7 @@ func New(s *store.Store, b Backend, templates []domain.Template, limit int, log 
 		// admin/admin; the image pipeline secures it.
 		tartImage := t.Image != nil && (t.Image.Tart != nil || t.Image.Node != nil)
 		if t.GuestUser == "" {
-			if t.Source != "" || tartImage {
-				t.GuestUser = "admin"
-			} else {
-				t.GuestUser = "lume"
-			}
+			t.GuestUser = "admin"
 		}
 		if tartImage && t.GuestUser != "admin" {
 			return nil, fmt.Errorf("template %s: Tart and node images use the admin account", t.ID)
@@ -270,7 +266,7 @@ func (c *Controller) capacityOn(leases []domain.Lease, location string) domain.C
 	}
 	sort.Strings(names)
 	if unknown > 0 {
-		names = append(names, fmt.Sprintf("%d additional slot(s) reported by Lume", unknown))
+		names = append(names, fmt.Sprintf("%d additional slot(s) reported by the runtime", unknown))
 	}
 	n := len(used) + unknown
 	limit := hostMax
@@ -457,6 +453,9 @@ func (c *Controller) AcquireAs(ctx context.Context, key string, r domain.Acquire
 	cap := c.capacityOn(ls, t.Location)
 	if cap.Available == 0 {
 		return domain.Operation{}, cap.FullError()
+	}
+	if err := c.admitNodeTarget(ls, t); err != nil {
+		return domain.Operation{}, err
 	}
 	reservation, destinationLocation, err := c.admitResources(ls, t, r.DestinationLocation)
 	if err != nil {
@@ -1110,7 +1109,7 @@ func (c *Controller) Resolve(ctx context.Context, id, key, vmName string, noOper
 		return domain.Operation{}, domain.Err("invalid_request", "confirmation must match the exact VM name")
 	}
 	if c.active[id] {
-		return domain.Operation{}, domain.Err("operation_in_progress", "Lume operation is still in flight")
+		return domain.Operation{}, domain.Err("operation_in_progress", "Runtime operation is still in flight")
 	}
 	if l.State != "quarantined" && l.State != "needs_attention" {
 		return domain.Operation{}, domain.Err("invalid_request", "only leases needing attention can be resolved")
@@ -1121,7 +1120,7 @@ func (c *Controller) Resolve(ctx context.Context, id, key, vmName string, noOper
 	_, exists := c.vm(l)
 	// Collisions are not ours. They may be forgotten, but never adopted/deleted.
 	if exists && l.Error != nil && (l.Error.Code == "name_collision" || l.Error.Code == "ownership_unconfirmed" || l.Error.Code == "protected_template") {
-		return domain.Operation{}, domain.Err("ownership_unconfirmed", "refusing to delete an unowned or protected VM; remove the conflicting identity from Lume before resolving")
+		return domain.Operation{}, domain.Err("ownership_unconfirmed", "refusing to delete an unowned or protected VM; remove the conflicting identity from the runtime before resolving")
 	}
 	l.StartPending = false
 	if exists {

@@ -47,13 +47,27 @@ done
 const cloneScript = `set -eu
 d="$HOME/virfield/leases/$1"
 umask 077
+mkdir -p "$HOME/virfield/leases"
+lock="$HOME/virfield/leases/.host.lock"
+tries=0
+until mkdir "$lock" 2>/dev/null; do
+  tries=$((tries + 1))
+  [ "$tries" -lt 30 ] || exit 3
+  sleep 1
+done
+trap 'rmdir "$lock"' EXIT
+for other in "$HOME"/virfield/leases/*/; do
+  [ -f "$other/state" ] || continue
+  [ -f "$other/kind" ] && continue
+  [ "$(basename "$other")" = "$1" ] || { echo "physical host reserved" >&2; exit 3; }
+done
 mkdir -p "$d/workspace"
 [ -f "$d/state" ] || printf stopped > "$d/state"
 `
 
 // startScript keeps the node awake for the lease: caffeinate on macOS, and
 // the node's keep-awake file (created only if absent) where configured.
-const startScript = `set -eu
+const startScript = sleepHoldFunctions + `set -eu
 d="$HOME/virfield/leases/$1"
 [ -d "$d" ]
 [ -f "$d/kind" ] && { echo "node VM folder" >&2; exit 3; }
@@ -63,27 +77,20 @@ if command -v caffeinate >/dev/null 2>&1; then
     echo $! > "$d/inhibitor.pid"
   fi
 fi
-if [ -n "${2:-}" ] && [ ! -e "$2" ]; then
-  : > "$2"
-  : > "$d/hold-created"
-fi
+vf_hold "$d" "${2:-}"
 printf running > "$d/state"
 `
 
 // stopScript releases what startScript took, never another owner's hold.
-const stopScript = `set -eu
+const stopScript = sleepHoldFunctions + `set -eu
 d="$HOME/virfield/leases/$1"
-[ -d "$d" ] || exit 0
 [ -f "$d/kind" ] && { echo "node VM folder" >&2; exit 3; }
 if [ -f "$d/inhibitor.pid" ]; then
   kill "$(cat "$d/inhibitor.pid")" 2>/dev/null || true
   rm -f "$d/inhibitor.pid"
 fi
-if [ -f "$d/hold-created" ]; then
-  [ -n "${2:-}" ] && rm -f "$2"
-  rm -f "$d/hold-created"
-fi
-printf stopped > "$d/state"
+vf_unhold "$d" "${2:-}"
+[ ! -d "$d" ] || printf stopped > "$d/state"
 `
 
 // deleteScript revokes the lease key and removes the lease workspace. The

@@ -1,6 +1,6 @@
 module github.com/mallexxx/virfield
 
-go 1.26.8
+go 1.26.9
 
 require (
 	github.com/modelcontextprotocol/go-sdk v1.7.0

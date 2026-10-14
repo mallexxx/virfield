@@ -4,6 +4,10 @@ Virfield generates a host-build/remote-run workflow for a ready macOS lease.
 Install the official LLDB-DAP VS Code extension before opening the generated
 workspace.
 
+The 2026-10-07 timing baseline below belongs to the retired Lume lease.
+The generator remains implemented; remote-debug on current Tart leases has not
+yet passed acceptance. Do not treat the old timings as a Tart release result.
+
 ## Data path
 
 | Operation | Location and protocol |
@@ -20,7 +24,7 @@ the guest cache into `~/Library/Developer/Xcode/macOS DeviceSupport/<version>
 as a recovery fallback, starts `debugserver`, and creates the local SSH tunnel.
 LLDB loads application symbols on demand and uses minimal remote module loading.
 
-Golden developer images enable `DevToolsSecurity`, add `lume` to `_developer`,
+Golden developer images enable `DevToolsSecurity`, add their configured guest user to `_developer`,
 and export only the immutable dyld cache to the private `192.168.64.0/24`
 network. Ad-hoc signed apps therefore launch under `debugserver` without an
 interactive authorization prompt.

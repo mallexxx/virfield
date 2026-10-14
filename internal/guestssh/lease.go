@@ -174,7 +174,7 @@ func (e *Manager) Forget(l domain.Lease) error {
 }
 
 // ForgetImage removes the private identity and diagnostic files only after the
-// controller has confirmed absence of an explicitly deleted image in Lume.
+// controller has confirmed absence of an explicitly deleted image in the runtime.
 func (e *Manager) ForgetImage(l domain.Lease) error {
 	if l.Purpose != "image" || !strings.HasPrefix(l.ID, "image-") || !domain.ValidName(l.ID) {
 		return domain.Err("invalid_request", "Not an image identity")

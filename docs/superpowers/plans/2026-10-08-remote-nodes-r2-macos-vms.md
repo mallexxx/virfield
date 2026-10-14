@@ -1,3 +1,9 @@
+> **Reconciled status — 2026-10-14:** This is a dated design/execution record.
+> It is not a current deployment runbook or live task tracker. See
+> [current delivery state](../../VIRFIELD-3-PLAN.md) and
+> [current acceptance](../../VERIFICATION.md); old paths/statuses and unchecked
+> example steps below describe their original execution context.
+
 # Remote Nodes R2: macOS VMs on the HTPC — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

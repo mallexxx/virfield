@@ -1,4 +1,4 @@
-// virfield-mcp is a stdio adapter. It always calls virfieldd, never Lume.
+// virfield-mcp is a stdio adapter. It always calls virfieldd, never the runtime.
 package main
 
 import (

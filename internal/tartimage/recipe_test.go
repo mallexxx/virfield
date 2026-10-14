@@ -13,9 +13,9 @@ import (
 // compact folds whitespace so assertions do not depend on HCL alignment.
 func compact(s string) string { return strings.Join(strings.Fields(s), " ") }
 
-func TestRecipeDigestIsStableAndPinned(t *testing.T) {
-	if RecipeDigest() != RecipeDigest() || len(RecipeDigest()) != 64 {
-		t.Fatal("unstable recipe digest")
+func TestRecipePinsPluginAndGuestPolicies(t *testing.T) {
+	if len(RecipeDigest()) != 64 {
+		t.Fatal("invalid recipe digest")
 	}
 	template, err := recipe.ReadFile("recipe/developer.pkr.hcl")
 	if err != nil {
@@ -33,7 +33,7 @@ func TestRecipeScriptsParseAndMaterializePrivately(t *testing.T) {
 	if err := writeRecipe(dir); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"check-guest.sh", "install-xcode.sh", "xcode-post.sh", "reset-host-keys.sh", "grow-disk.sh"} {
+	for _, name := range []string{"check-guest.sh", "install-xcode.sh", "xcode-post.sh", "reset-host-keys.sh", "grow-disk.sh", "security.sh", "provision27.sh"} {
 		path := filepath.Join(dir, "scripts", name)
 		if out, err := exec.Command("/bin/bash", "-n", path).CombinedOutput(); err != nil {
 			t.Fatalf("%s: %s %v", name, out, err)

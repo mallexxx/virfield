@@ -2,9 +2,6 @@ package tartimage
 
 import (
 	"context"
-	"crypto/sha1"
-	"encoding/hex"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,7 +11,9 @@ import (
 
 	"github.com/mallexxx/virfield/internal/domain"
 	"github.com/mallexxx/virfield/internal/guestssh"
+	"github.com/mallexxx/virfield/internal/registry"
 	"github.com/mallexxx/virfield/internal/tart"
+	"github.com/mallexxx/virfield/internal/xcodearchive"
 )
 
 // Runtime is the subset of the Tart runtime client the builder drives.
@@ -38,6 +37,8 @@ type Config struct {
 	Homes       map[string]string
 	Credentials []tart.RegistryCredential
 	Runtime     Runtime
+	Archives    *xcodearchive.Store
+	Registry    ImageRegistry
 }
 
 type Builder struct {
@@ -59,8 +60,11 @@ func New(config Config) *Builder {
 }
 
 func (b *Builder) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile, step string, progress func(string) error) error {
-	if p.Tart == nil || (p.Xcode == nil && p.Provision != "uitest-27-v1") {
-		return domain.Err("invalid_profile", "Tart builder requires a Tart source and a pinned Xcode release or the UI-test recipe")
+	if err := p.Validate(); err != nil {
+		return err
+	}
+	if p.Tart == nil {
+		return domain.Err("invalid_profile", "Tart builder requires a pinned Tart source")
 	}
 	home, ok := b.config.Homes[l.Location]
 	if !ok {
@@ -71,7 +75,7 @@ func (b *Builder) Step(ctx context.Context, l domain.Lease, p domain.ImageProfil
 	}
 	switch step {
 	case "resolve":
-		return b.resolve(ctx, l, p)
+		return b.resolve(ctx, l, p, progress)
 	case "build":
 		return b.build(ctx, l, p, home)
 	case "qualify":
@@ -90,9 +94,14 @@ func (b *Builder) archive(p domain.ImageProfile) string {
 	return filepath.Join(b.config.XcodeArchives, p.Xcode.SHA1+".xip")
 }
 
-func (b *Builder) resolve(ctx context.Context, l domain.Lease, p domain.ImageProfile) error {
+func (b *Builder) resolve(ctx context.Context, l domain.Lease, p domain.ImageProfile, progress func(string) error) error {
 	if p.Xcode != nil {
-		if err := verifyArchive(b.archive(p), p.Xcode.SHA1); err != nil {
+		if b.config.Archives != nil {
+			if _, err := b.config.Archives.Archive(ctx, *p.Xcode, progress); err != nil {
+				return err
+			}
+		}
+		if err := verifyArchive(ctx, b.archive(p), p.Xcode.SHA1); err != nil {
 			return err
 		}
 	}
@@ -119,6 +128,9 @@ func (b *Builder) build(ctx context.Context, l domain.Lease, p domain.ImageProfi
 	if p.Provision == "uitest-27-v1" {
 		return b.buildUITest(ctx, l, p, home)
 	}
+	if p.Xcode == nil {
+		return b.buildBase(ctx, l, p, home)
+	}
 	sip := "enabled"
 	if p.DisableSIP {
 		sip = "disabled"
@@ -129,6 +141,7 @@ func (b *Builder) build(ctx context.Context, l domain.Lease, p domain.ImageProfi
 		"macos_version=" + p.MacOS,
 		"macos_build=" + p.Build,
 		"sip=" + sip,
+		"security=" + p.Security,
 		"xip=" + b.archive(p),
 		"xip_sha1=" + p.Xcode.SHA1,
 		"xcode_version=" + p.Xcode.Version,
@@ -138,12 +151,48 @@ func (b *Builder) build(ctx context.Context, l domain.Lease, p domain.ImageProfi
 	for _, v := range vars {
 		args = append(args, "-var", v)
 	}
-	args = append(args, "developer.pkr.hcl")
-	env := append([]string{"TART_HOME=" + home}, b.registryEnv(p.Tart.Upstream)...)
+	template := "developer.pkr.hcl"
+	if strings.Split(p.MacOS, ".")[0] == "27" {
+		template = "developer27.pkr.hcl"
+	}
+	args = append(args, template)
+	credentials, err := b.registryEnvFor(p)
+	if err != nil {
+		return err
+	}
+	env := append([]string{"TART_HOME=" + home}, credentials...)
 	if err := b.packer(ctx, l, env, "packer-build.log", args...); err != nil {
 		return domain.Err("image_command_failed", "Packer build failed; inspect the private packer-build log")
 	}
 	return nil
+}
+
+func (b *Builder) buildBase(ctx context.Context, l domain.Lease, p domain.ImageProfile, home string) error {
+	sip := "enabled"
+	if p.DisableSIP {
+		sip = "disabled"
+	}
+	args := []string{"build"}
+	for _, v := range []string{"base=" + p.Tart.Upstream, "vm_name=" + l.VMName, "macos_version=" + p.MacOS, "macos_build=" + p.Build, "sip=" + sip, "security=" + p.Security} {
+		args = append(args, "-var", v)
+	}
+	template := "base.pkr.hcl"
+	if strings.Split(p.MacOS, ".")[0] == "27" {
+		template = "base27.pkr.hcl"
+	}
+	args = append(args, template)
+	credentials, err := b.registryEnvFor(p)
+	if err != nil {
+		return err
+	}
+	if err := b.packer(ctx, l, append([]string{"TART_HOME=" + home}, credentials...), "packer-build.log", args...); err != nil {
+		return domain.Err("image_command_failed", "Packer base build failed; inspect the private build log")
+	}
+	return nil
+}
+
+func (b *Builder) CachedXcode(x domain.XcodeRelease) bool {
+	return b.config.Archives != nil && b.config.Archives.CachedXcode(x)
 }
 
 // buildUITest adopts the upstream Xcode image and runs the shared
@@ -155,7 +204,11 @@ func (b *Builder) buildUITest(ctx context.Context, l domain.Lease, p domain.Imag
 		args = append(args, "-var", v)
 	}
 	args = append(args, "uitest.pkr.hcl")
-	env := append([]string{"TART_HOME=" + home}, b.registryEnv(p.Tart.Upstream)...)
+	credentials, err := b.registryEnvFor(p)
+	if err != nil {
+		return err
+	}
+	env := append([]string{"TART_HOME=" + home}, credentials...)
 	if err := b.packer(ctx, l, env, "packer-build.log", args...); err != nil {
 		return domain.Err("image_command_failed", "Packer build failed; inspect the private packer-build log")
 	}
@@ -235,23 +288,11 @@ func (b *Builder) waitState(ctx context.Context, l domain.Lease, state string) e
 	}
 }
 
-func verifyArchive(path, digest string) error {
-	f, err := os.Open(path)
-	if err != nil {
+func verifyArchive(ctx context.Context, path, digest string) error {
+	if _, err := os.Lstat(path); err != nil {
 		return domain.Err("unsafe_cache", "Pinned Xcode archive is not in the configured cache")
 	}
-	defer f.Close()
-	if st, err := f.Stat(); err != nil || !st.Mode().IsRegular() {
-		return domain.Err("unsafe_cache", "Xcode archive is not a regular file")
-	}
-	h := sha1.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return err
-	}
-	if hex.EncodeToString(h.Sum(nil)) != digest {
-		return domain.Err("unsafe_cache", "Xcode archive digest differs from the pinned release")
-	}
-	return nil
+	return xcodearchive.Verify(ctx, path, domain.XcodeRelease{SHA1: digest})
 }
 
 type execRunner struct{}
@@ -270,4 +311,41 @@ func (execRunner) Run(ctx context.Context, dir string, env []string, log, name s
 	cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) }
 	cmd.WaitDelay = 2 * time.Minute
 	return cmd.Run()
+}
+
+func (b *Builder) ValidateTemplate(t domain.Template) error {
+	if t.Image == nil || t.Image.Tart == nil {
+		return domain.Err("invalid_profile", "Tart builder requires a pinned Tart profile; IPSW and retired Lume recipes are unsupported")
+	}
+	if t.GuestUser != "admin" {
+		return domain.Err("invalid_profile", "Tart images require the admin account")
+	}
+	if _, ok := b.config.Homes[t.Location]; !ok {
+		return domain.Err("invalid_profile", "Image location is not a Tart container")
+	}
+	return t.Image.Validate()
+}
+
+func (b *Builder) registryEnvFor(p domain.ImageProfile) ([]string, error) {
+	if p.Registry == nil {
+		return b.registryEnv(p.Tart.Upstream), nil
+	}
+	if b.config.Registry == nil {
+		return nil, domain.Err("registry_unconfigured", "Imported Tart images require the configured registry source")
+	}
+	source, err := b.config.Registry.Source(p.Registry.Source)
+	if err != nil {
+		return nil, err
+	}
+	if source.Organization != p.Registry.Organization {
+		return nil, domain.Err("invalid_registry", "Registry provenance is outside the approved source")
+	}
+	token, err := registry.Credentials(source)
+	if err != nil {
+		return nil, err
+	}
+	if token == "" {
+		return nil, nil
+	}
+	return []string{"TART_REGISTRY_HOSTNAME=ghcr.io", "TART_REGISTRY_USERNAME=" + source.Username, "TART_REGISTRY_PASSWORD=" + token}, nil
 }

@@ -14,6 +14,10 @@ variable "vm_name" { type = string }
 variable "macos_version" { type = string }
 variable "macos_build" { type = string }
 variable "sip" { type = string }
+variable "security" {
+  type    = string
+  default = ""
+}
 variable "xip" { type = string }
 variable "xip_sha1" { type = string }
 variable "xcode_version" { type = string }
@@ -57,6 +61,10 @@ build {
   provisioner "shell" {
     script  = "scripts/xcode-post.sh"
     timeout = "1h"
+  }
+  provisioner "shell" {
+    script          = "scripts/security.sh"
+    execute_command = "if [ '${var.security}' = 'automation' ]; then sudo -n /bin/bash '{{.Path}}' apply admin; fi"
   }
   provisioner "shell" {
     script = "scripts/reset-host-keys.sh"

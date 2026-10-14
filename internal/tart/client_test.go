@@ -177,7 +177,6 @@ func TestStartDetachedReportsImmediateExit(t *testing.T) {
 }
 
 type slowGetRunner struct {
-	mu    sync.Mutex
 	names []string
 	delay time.Duration
 }

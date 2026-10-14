@@ -61,21 +61,3 @@ func matchesLoginPassword(encoded, password string) bool {
 	end := bytes.IndexByte(b, 0)
 	return end >= 0 && string(b[:end]) == password
 }
-
-// BootstrapAutoLogin is confined to a fresh Lume guest's native Setup Assistant.
-// Credential rotation remains in the subsequent journaled assistant stage.
-func BootstrapAutoLogin(ctx context.Context, g *Client) error {
-	script := `set -eu
-IFS= read -r user
-IFS= read -r new
-IFS= read -r kcpassword
-umask 077
-mkdir -p ~/.ssh
-chmod 700 ~/.ssh
-` + autologinScript
-	_, err := g.Run(ctx, "/bin/bash -c '"+strings.ReplaceAll(script, "'", "'\"'\"'")+"'", "lume\nlume\n"+loginPassword("lume")+"\n")
-	if err != nil {
-		return err
-	}
-	return VerifyAutoLogin(ctx, g, "lume", "lume")
-}

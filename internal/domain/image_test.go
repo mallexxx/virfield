@@ -56,7 +56,7 @@ func TestTartProfileRejectsUnpinnedOrCompetingSources(t *testing.T) {
 		"ipsw":     func(p *ImageProfile) { p.URL = "https://updates.cdn-apple.com/x.ipsw" },
 		"no build": func(p *ImageProfile) { p.Build = "" },
 		"no xcode": func(p *ImageProfile) { p.Xcode = nil; p.Provision = "" },
-		"recipe":   func(p *ImageProfile) { p.Provision = "security-v1"; p.Security = "automation"; p.Xcode = nil },
+		"recipe":   func(p *ImageProfile) { p.Provision = "unknown-v1" },
 		"registry": func(p *ImageProfile) { p.Registry = &RegistryReference{} },
 	}
 	for name, mutate := range cases {
@@ -100,5 +100,27 @@ func TestNodeSourceProfile(t *testing.T) {
 		if bad.Validate() == nil {
 			t.Fatal(name, "accepted")
 		}
+	}
+}
+
+func TestTartBaseAndAutomationProfilesValidate(t *testing.T) {
+	p := tartProfile()
+	p.Xcode = nil
+	p.Provision = "base-v1"
+	if err := p.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	p.Provision = "security-v1"
+	p.Security = "automation"
+	if err := p.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	p.Registry = &RegistryReference{Source: "team", Organization: "cirruslabs", Repository: "macos-ventura-base", Tag: "stable", Digest: "sha256:9fb387bb987cdda942fbc27118296ed8e16a3359a672c95c6d5ac960165ef1c5", Size: 1024}
+	if err := p.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	p.Registry.Digest = "sha256:" + strings.Repeat("a", 64)
+	if p.Validate() == nil {
+		t.Fatal("unmatched registry provenance accepted")
 	}
 }

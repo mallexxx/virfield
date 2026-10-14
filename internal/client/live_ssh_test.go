@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -28,7 +30,11 @@ func TestLiveLeaseSSH(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := New("http://127.0.0.1:7780", strings.TrimSpace(string(token)))
+	base := os.Getenv("VIRFIELD_LIVE_URL")
+	if base == "" {
+		base = "http://127.0.0.1:7780"
+	}
+	c, err := New(base, strings.TrimSpace(string(token)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +52,7 @@ func TestLiveLeaseSSH(t *testing.T) {
 		t.Fatal(err)
 	}
 	if status.Capacity.Used != 0 || len(status.Jobs) != 0 {
-		t.Fatal("requires idle v2 manager")
+		t.Fatal("requires idle manager")
 	}
 	fullProfile := false
 	var profile *domain.ImageProfile
@@ -82,6 +88,7 @@ func TestLiveLeaseSSH(t *testing.T) {
 	}
 	leases := []owned{}
 	tunnels := map[string]string{}
+	desktops := map[string]string{}
 	wait := func(ctx context.Context, id string) error {
 		for {
 			var j domain.Job
@@ -123,6 +130,12 @@ func TestLiveLeaseSSH(t *testing.T) {
 				if err == nil {
 					conn.Close()
 					t.Error("released tunnel still open")
+				}
+			}
+			if address := desktops[l.op.Lease.ID]; address != "" {
+				if conn, err := net.DialTimeout("tcp", address, time.Second); err == nil {
+					conn.Close()
+					t.Error("released desktop tunnel still open")
 				}
 			}
 			if _, err := os.Stat(filepath.Join(os.Getenv("VIRFIELD_LIVE_STATE_DIR"), "leases", l.op.Lease.ID, "credentials.json")); !os.IsNotExist(err) {
@@ -247,7 +260,7 @@ func TestLiveLeaseSSH(t *testing.T) {
 			return nil, err
 		}
 		_ = raw.SetDeadline(time.Now().Add(20 * time.Second))
-		conn, ch, req, err := ssh.NewClientConn(raw, address, &ssh.ClientConfig{User: "lume", Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)}, HostKeyAlgorithms: []string{ssh.KeyAlgoED25519}, HostKeyCallback: ssh.FixedHostKey(host)})
+		conn, ch, req, err := ssh.NewClientConn(raw, address, &ssh.ClientConfig{User: l.SSH.User, Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)}, HostKeyAlgorithms: []string{ssh.KeyAlgoED25519}, HostKeyCallback: ssh.FixedHostKey(host)})
 		if err != nil {
 			raw.Close()
 			return nil, err
@@ -258,7 +271,7 @@ func TestLiveLeaseSSH(t *testing.T) {
 		return ssh.NewClient(conn, ch, req), nil
 	}
 	dial := func(l domain.Lease, signer ssh.Signer) (*ssh.Client, error) {
-		return dialAt(l, signer, net.JoinHostPort(l.IP, "22"))
+		return dialAt(l, signer, net.JoinHostPort(l.IP, strconv.Itoa(l.SSH.Port)))
 	}
 	deny := func(l domain.Lease, signer ssh.Signer) {
 		t.Helper()
@@ -296,6 +309,9 @@ func TestLiveLeaseSSH(t *testing.T) {
 		if l.ready.LegacyUUID != "" {
 			expectedEncryption = "true"
 		}
+		if profile.Tart != nil {
+			expectedEncryption = "tart"
+		}
 		diskProbe := `/bin/bash -c 'set -euo pipefail
 /usr/bin/sw_vers -productVersion
 /usr/bin/sw_vers -buildVersion
@@ -304,7 +320,11 @@ for volume in / /System/Volumes/Data; do
  for key in FileVault Locked; do
   test "$(printf "%s" "$info" | /usr/bin/plutil -extract "$key" raw -o - -)" = false
  done
- test "$(printf "%s" "$info" | /usr/bin/plutil -extract Encryption raw -o - -)" = __EXPECTED_ENCRYPTION__
+ if [ __EXPECTED_ENCRYPTION__ = tart ]; then
+  case "$(printf "%s" "$info" | /usr/bin/plutil -extract Encryption raw -o - -)" in true|false) ;; *) exit 1;; esac
+ else
+  test "$(printf "%s" "$info" | /usr/bin/plutil -extract Encryption raw -o - -)" = __EXPECTED_ENCRYPTION__
+ fi
 done
 printf "virfield-artifact-ok\\n" > ~/workspace/virfield-acceptance.txt
 '`
@@ -398,6 +418,23 @@ printf 'virfield-ui-profile-ok\n'
 			t.Fatal("tunneled SSH authentication failed", err)
 		}
 		tunneled.Close()
+		var desktop domain.Tunnel
+		body, err := c.Do(ctx, "POST", "leases/"+l.ready.ID+"/tunnel", map[string]string{"service": "desktop"}, "")
+		if err != nil || json.Unmarshal(body, &desktop) != nil {
+			t.Fatal("desktop tunnel failed", err)
+		}
+		desktops[l.ready.ID] = desktop.Address
+		conn, err := net.DialTimeout("tcp", desktop.Address, 10*time.Second)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = conn.SetDeadline(time.Now().Add(15 * time.Second))
+		banner := make([]byte, 12)
+		_, err = io.ReadFull(conn, banner)
+		conn.Close()
+		if err != nil || !strings.HasPrefix(string(banner), "RFB ") {
+			t.Fatal("desktop protocol failed", err)
+		}
 		if cloneCount == 2 {
 			deny(l.ready, leases[1-i].signer)
 		}

@@ -162,7 +162,7 @@ func (e *Manager) Connect(ctx context.Context, l domain.Lease, ip string, bootst
 
 // ConnectReady retries only failed TCP connections, before any guest command or
 // credential mutation. macOS can temporarily deny the first local-network dial
-// after a daemon update; a Lume SSH-ready flag is not an authenticated connection.
+// after a daemon update; a runtime SSH-ready flag is not an authenticated connection.
 // Host-key and authentication failures are never retried or downgraded.
 func (e *Manager) ConnectReady(ctx context.Context, l domain.Lease, ip string, bootstrap bool) (*Client, error) {
 	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)

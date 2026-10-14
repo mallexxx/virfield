@@ -154,6 +154,7 @@ func (r *Runtime) Observe(ctx context.Context) (domain.Observation, error) {
 			reason = "asleep"
 		}
 		h := r.host(n, "unavailable", reason, cached.host.Capacity.Total)
+		h.LastSeenAt = cached.at
 		if known && n.WakeMAC != "" {
 			o.StorageContainers = append(o.StorageContainers, container(n, "available", "", cached.at))
 			o.VMs = append(o.VMs, cached.golden)
@@ -256,6 +257,18 @@ func (r *Runtime) Clone(ctx context.Context, t domain.Template, l domain.Lease) 
 	if r.vmGolden(n, t.Name) {
 		return domain.Err("invalid_request", "Node VM leases require a verified image")
 	}
+	p, err := r.probe(ctx, n, r.now())
+	if err != nil {
+		return err
+	}
+	if t.Name != "" && p.golden.Name != t.Name {
+		return domain.Err("template_unavailable", "Node boot environment changed before reservation")
+	}
+	for name := range p.leases {
+		if name != l.VMName {
+			return domain.Err("capacity_exhausted", "Physical host already has a lease marker")
+		}
+	}
 	return r.runLease(ctx, l, cloneScript)
 }
 
@@ -278,10 +291,16 @@ func (r *Runtime) Start(ctx context.Context, l domain.Lease) error {
 }
 
 func (r *Runtime) Stop(ctx context.Context, l domain.Lease) error {
+	if l.Purpose == "image" {
+		return r.StopImage(ctx, l)
+	}
 	return r.stopLease(ctx, l, false)
 }
 
 func (r *Runtime) Delete(ctx context.Context, l domain.Lease) error {
+	if l.Purpose == "image" {
+		return r.DeleteImage(ctx, l)
+	}
 	return r.stopLease(ctx, l, true)
 }
 

@@ -31,6 +31,9 @@ func (c *Controller) DeleteImage(ctx context.Context, id, key, confirmName strin
 	if confirmName != tm.Name {
 		return domain.Operation{}, domain.Err("invalid_request", "confirm_name must match the exact configured VM name")
 	}
+	if c.secondaryProvider(tm.Provider) && tm.Image == nil {
+		return domain.Operation{}, domain.Err("invalid_request", "Physical hosts are not deletable images")
+	}
 	leases, err := c.store.Leases(ctx)
 	if err != nil {
 		return domain.Operation{}, err
@@ -58,14 +61,14 @@ func (c *Controller) DeleteImage(ctx context.Context, id, key, confirmName strin
 		}
 	}
 	if !found {
-		return domain.Operation{}, domain.Err("not_found", "image is absent from Lume")
+		return domain.Operation{}, domain.Err("not_found", "Image is absent from its runtime")
 	}
 	now := c.now()
-	l := domain.Lease{ID: domain.NewID("image-"), Purpose: "image", Template: id, VMName: tm.Name, Location: tm.Location, State: "image_deleting", CreatedAt: now, UpdatedAt: now}
+	l := domain.Lease{ID: domain.NewID("image-"), Purpose: "image", Template: id, VMName: tm.Name, Location: tm.Location, Provider: tm.Provider, GuestUser: tm.GuestUser, GuestHome: tm.GuestHome, CreatedAt: now}
 	if existing != nil {
-		l.ID = existing.ID
-		l.CreatedAt = existing.CreatedAt
+		l = *existing
 	}
+	l.State, l.Error, l.UpdatedAt = "image_deleting", nil, now
 	j := domain.Job{ID: domain.NewID("job-"), LeaseID: l.ID, Kind: "image_delete", Phase: "queued", State: "queued", CreatedAt: now, UpdatedAt: now, Deadline: now.Add(5 * time.Minute)}
 	if err := c.store.Save(ctx, l, &j, key, fp, "image.delete_accepted", "Operator authorized deletion of configured image "+tm.Name); err != nil {
 		return domain.Operation{}, err
@@ -87,7 +90,7 @@ func (c *Controller) advanceImageDelete(ctx context.Context, l domain.Lease, j d
 		if j.Export != nil {
 			j.Progress = "Published registry manifest verified; temporary portable VM and credentials removed"
 		}
-		return c.save(ctx, l, j, "image.deleted", "Image absence verified in Lume")
+		return c.save(ctx, l, j, "image.deleted", "Image absence verified in its runtime")
 	}
 	if j.Phase == "queued" || j.Phase == "image_stop_dispatched" {
 		if v.State != "stopped" {

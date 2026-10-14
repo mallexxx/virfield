@@ -35,7 +35,7 @@ func TestListenAndAbsolutePaths(t *testing.T) {
 	}
 }
 func TestPrincipalScopesMustBeExplicit(t *testing.T) {
-	base := `{"listen":"127.0.0.1:7780","state_dir":"/tmp/a","token_file":"/tmp/t","max_vms":2,"principals":`
+	base := `{"listen":"127.0.0.1:7780","state_dir":"/tmp/a","token_file":"/tmp/t","max_vms":2,"runtime":{"provider":"tart","tart":{"binary":"/tmp/tart","host_id":"test","containers":[{"id":"home","path":"/tmp/home","kind":"local"},{"id":"external","path":"/tmp/external","kind":"local"}]}},"principals":`
 	for _, candidate := range []struct {
 		value   string
 		allowed bool
@@ -56,7 +56,7 @@ func TestPrincipalScopesMustBeExplicit(t *testing.T) {
 }
 
 func TestCloneLocationsReferenceConfiguredStorage(t *testing.T) {
-	base := `{"listen":"127.0.0.1:7780","state_dir":"/tmp/a","token_file":"/tmp/t","max_vms":2,"storage_paths":{"home":"/tmp/home","external":"/tmp/external"},`
+	base := `{"listen":"127.0.0.1:7780","state_dir":"/tmp/a","token_file":"/tmp/t","max_vms":2,"runtime":{"provider":"tart","tart":{"binary":"/tmp/tart","host_id":"test","containers":[{"id":"home","path":"/tmp/home","kind":"local"},{"id":"external","path":"/tmp/external","kind":"local"}]}},`
 	for _, candidate := range []struct {
 		value   string
 		allowed bool

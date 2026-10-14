@@ -48,7 +48,7 @@ func (s TartSource) Validate() error {
 
 func (p ImageProfile) Validate() error {
 	switch p.Provision {
-	case "":
+	case "", "base-v1":
 		if p.Xcode != nil {
 			return Err("invalid_profile", "Xcode requires developer-v1 provisioning")
 		}
@@ -100,8 +100,16 @@ func (p ImageProfile) Validate() error {
 		return nil
 	}
 	if p.Tart != nil {
-		if p.Registry != nil || p.URL != "" || p.SHA256 != "" || p.Size != 0 || !ValidVersion(p.MacOS) || !ValidName(p.Build) || (p.Provision != "developer-v1" && p.Provision != "uitest-27-v1") {
-			return Err("invalid_profile", "Tart images need expected macOS/build, developer-v1 or uitest-27-v1, and no competing source")
+		if p.URL != "" || p.SHA256 != "" || p.Size != 0 || !ValidVersion(p.MacOS) || !ValidName(p.Build) || (p.Provision != "developer-v1" && p.Provision != "uitest-27-v1" && p.Provision != "base-v1" && p.Provision != "security-v1") {
+			return Err("invalid_profile", "Tart images need expected macOS/build, a supported recipe and no competing restore source")
+		}
+		if p.Registry != nil {
+			if err := p.Registry.Validate(); err != nil {
+				return err
+			}
+			if p.Tart.Upstream != "ghcr.io/"+p.Registry.Organization+"/"+p.Registry.Repository+"@"+p.Registry.Digest {
+				return Err("invalid_profile", "Registry provenance must match the pinned Tart source")
+			}
 		}
 		return p.Tart.Validate()
 	}
@@ -120,17 +128,6 @@ func (p ImageProfile) Validate() error {
 		return Err("invalid_profile", "profile requires lowercase SHA-256, exact size (up to 40 GiB), and expected macOS build")
 	}
 	return nil
-}
-
-// ImageTools are immutable operator-owned host paths, never API input.
-type ImageTools struct {
-	Xcode         string `json:"xcode,omitempty"`
-	XcodeArchives string `json:"xcode_archives,omitempty"`
-	AppleCookies  string `json:"apple_cookies,omitempty"`
-	Lume          string `json:"lume"`
-	Python        string `json:"python"`
-	Tesseract     string `json:"tesseract"`
-	VNCBin        string `json:"vnc_bin"`
 }
 
 // SupportsRecovery lists Apple silicon guest generations with paired Recovery.
