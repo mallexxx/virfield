@@ -41,6 +41,30 @@ runbooks, and native browser GUI acceptance and existing HTPC golden permission
 migration still await their separate human gates. A later runbook-only package
 must keep dated code-test provenance distinct from its exact `release.json`.
 
+At 09:49 UTC the clean UUID-probe correction was installed as `29e2bc9` /
+`0.0.0-volume-refresh`, preserving seven manifests and the signing identity.
+Full local CI, pinned Staticcheck and Gitleaks (220 commits) passed; govulncheck
+reported zero reachable/imported-package vulnerabilities. Exact archive stdio
+passed. Installed HTTP/fresh stdio passed on a repeat in 22.55 seconds, after an
+earlier ten-second HTTP timeout. Variable API delay remained: a second daemon
+sample showed SQLite `fcntl`/read activity, with no other process owning the DB.
+The actual root-owned launchd job uses `Background`, with thread priority `4T`.
+Reversible changes to this daemon's background/latency/throughput policies did not
+establish complete causality or replace the registered plist. The service template
+now uses `Standard`; persistent migration of this old job remains pending and
+needs an idle administrator registration. No foreign build was stopped.
+
+The first acquire's unknown reply was inspected against the journal and empty
+server inventory before retrying its exact key/body/SSH identity. Its next reply
+was a typed `backend_unavailable` rejection before reservation. A subsequent
+healthy, responsive interval admitted the same request and its second Sonoma.
+Both owned leases are provisioning; the full provider matrix remains pending.
+The original post-install diagnostic collector indexed the optional worker
+`purpose` field and produced collector errors once leases appeared. Those rows
+are not daemon outages; the corrected collector records a separate series.
+Private evidence: `/private/tmp/virfield-installed-htpc-native-29e2bc9-20261015`
+and `/private/tmp/virfield-inventory-watch-29e2bc9-r2-20261015`.
+
 An earlier code checkpoint installed `8c521fe`, version
 `0.0.0-desktop-preflight`. Subsequent runbook/acceptance-tool packages retain this
 dated code-test provenance and carry their own exact `release.json` revision.

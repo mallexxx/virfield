@@ -251,6 +251,16 @@ Review/register the generated service as the VM-owning user. Do not install a
 Lume service. The [service example](../deploy/ai.virfield.virfieldd.plist.example)
 is a template, not an installed configuration.
 
+The API daemon uses `ProcessType=Standard`. `Background` applies stronger CPU/I/O
+limits intended for work not requested by a user, and HTTP requests do not give
+it Adaptive XPC priority boosts. See Apple's
+[launchd process classifications](https://github.com/apple-oss-distributions/launchd/blob/main/man/launchd.plist.5).
+Replacing binaries does not change an already registered job's process class.
+An older system LaunchDaemon needs its reviewed plist updated and re-registered
+with administrator rights during a fully idle maintenance window, preserving
+the label, account, paths and environment. A temporary `taskpolicy` adjustment is
+not persistent migration or proof that host contention has been resolved.
+
 ## Service upgrades
 
 Build and verify outside live state. Record the exact source revision, clean/dirty
