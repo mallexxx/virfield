@@ -3,9 +3,35 @@ package qualify
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
+
+type failingDesktopGuest struct {
+	Guest
+	failure    error
+	diagnostic string
+}
+
+func (g *failingDesktopGuest) Run(context.Context, string, string) (string, error) {
+	return "partial-native-observation", g.failure
+}
+
+func (g *failingDesktopGuest) ReportDesktopFailure(output string) { g.diagnostic = output }
+
+func TestDesktopRetainsOriginalProbeFailureAndPartialOutput(t *testing.T) {
+	failure := errors.New("original backend connection failure")
+	g := &failingDesktopGuest{failure: failure}
+	if err := Desktop(context.Background(), g); !errors.Is(err, failure) {
+		t.Fatal("Desktop hid the original failure", err)
+	}
+	for _, want := range []string{"deadline=", "probe_duration=", "partial-native-observation", failure.Error()} {
+		if !strings.Contains(g.diagnostic, want) {
+			t.Fatal("Missing private failure evidence", want)
+		}
+	}
+}
 
 func TestDesktopDoesNotHideLoginAssistantBehindFinder(t *testing.T) {
 	observations := 0

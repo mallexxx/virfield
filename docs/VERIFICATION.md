@@ -10,16 +10,47 @@ are distinct artifacts.
 
 ## Acceptance checkpoint (2026-10-15)
 
-Current deployment remains `750a896` / `0.0.0-observation-recovery`.
-Source `636967b` adds the demand-start/worker SSH gate; the subsequent correction
-separate login-password authentication from desktop readiness and detect visible
-SecurityAgent dialogs. These changes are not yet an accepted installed matrix.
-Both retained Sequoia fixtures from this run have been released with their
-original durable cleanup keys and SSH revocation verified. A new foreign macOS 27
-lease `lease-8bec7ed8310ad4045c78a04a07174045` became ready at the next checkpoint;
-installation/restart waits for the entire pool to become idle. No foreign VM
-is changed. The owning MCP process still serves `2724f94`; exact fresh
-stdio acceptance does not upgrade that already-connected process.
+Current deployment is `f8b64f5` / `0.0.0-console-readiness`, installed at
+12:20 UTC in a verified idle pool with private backup, the previous signing/FDA
+identity, configuration, keys and all seven baseline image manifests preserved.
+Exact installed HTTP/fresh stdio version, all four runbooks/resources, discovery,
+status and anonymous 401 passed in 1.32 seconds. The actual owning MCP transport
+closed after its old process was terminated and did not reconnect automatically;
+the requested manual Virfield MCP Restart has not been confirmed. It is not an
+accepted current client.
+
+Fresh native acceptance failed. The first Sonoma's preflight failed about seventy
+seconds after `ssh_started`, before worker credentials existed; its exact original
+backend error was not retained. A later Finder/Keyboard Setup Assistant screenshot
+does not prove the timeout's cause. Both matrix fixtures were released and SSH
+revocation passed. A separate owned Sonoma trace proved that the SSH caller's
+Quartz session follows the real login from root/waiting to admin/desktop. The
+stale-Quartz-context hypothesis is disproven. That clone and a fresh Samsung
+Monterey both then hung in GUI `login-rekey` for five minutes. Their private phase
+logs establish the stalled stage; a failure cannot count as native acceptance.
+
+The subsequent source correction replaces the GUI `security` CLI password-change
+call with native SecKeychainUnlock/ChangePassword and disables interaction in
+that same caller. Only `errSecAuthFailed` permits trying another credential; UI
+or later native I/O failures never do. Production JXA tests use three disposable
+explicit-path keychains (locked, unlocked and public-base fallback), retain an
+existing item, reject wrong passwords promptly, verify the new password after a
+lock, and verify idempotence. The user's real login/default is never changed.
+Worker preflight now retains bounded private `leases/ID/desktop.log` with the
+deadline, command budget, duration, partial observations and original error, even
+before worker credentials exist. These changes require a new clean package and
+fresh installed acceptance; `f8b64f5` receipts do not certify them.
+Full local CI (seventeen Python tests, Go vet and the complete race suite), pinned
+Staticcheck 0.7.0 and documentation checks passed for this correction. The retained
+diagnostic Sonoma was released after its private phase log, native console trace
+and framebuffer were saved; the 12:59 UTC snapshot had no worker leases or jobs
+and still contained all seven image-ready baseline records.
+
+Private evidence: `virfield-installed-htpc-native-f8b64f5-coexist-20261015`,
+`virfield-installed-samsung-monterey-f8b64f5-20261015`, and
+`virfield-own-node-console-trace-f8b64f5-20261015` under `/private/tmp`.
+Full release acceptance remains open. The following deployment paragraphs are
+dated checkpoints superseded by this current record.
 
 Deployment snapshot at 09:47 UTC: `558a6cb` / `0.0.0-cold-reboot-checkpoint`
 is installed with its original signing/FDA identity, private backup and all seven

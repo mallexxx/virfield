@@ -435,6 +435,9 @@ an Aqua LaunchAgent (`ai.virfield.guest-keychain`) and a VM-only SSH command bri
 `~/.virfield-keychain`. Worker preparation first requires the inherited Finder
 desktop to settle before rotating account/autologin credentials, matching image
 qualification. This read-only preflight leaves credentials untouched on failure.
+Its bounded private `leases/<id>/desktop.log` retains the wait deadline, command
+budget, observation duration, partial output and original error, without creating
+worker credentials or overwriting the golden's diagnostics.
 Credential mutation failures retain bounded private stdout/stderr even after a
 deadline, plus a fixed failure class and secret-free timestamped phases in
 `leases/<id>/provision.log`. No command is automatically replayed after a timeout.
@@ -452,8 +455,12 @@ match the VM. It remains the default and first in the search list across boots:
 loginwindow unlocks it during automatic login, before early OS clients start.
 A custom scoped default can leave Spotlight password dialogs queued before the
 owned Aqua agent starts, even if that agent subsequently unlocks it.
-The password-change API authenticates each old-password candidate
-without deliberately locking the login keychain; an artificial lock can leave an
+Native SecKeychainUnlock/ChangePassword authenticates each old-password candidate
+with user interaction disabled in that same caller. A wrong password returns
+`errSecAuthFailed`; only that error permits a fallback. The GUI `security` CLI can
+hang in a password dialog and is not used for this authentication. Secrets are
+read from the private identity file, not command arguments.
+The preparer does not deliberately lock the login keychain; an artificial lock can leave an
 OS client's password dialog open even after a successful unlock. Successful rekey
 is followed by native WhenUnlocked add/read/delete with the new password. A
 desktop overlay cannot select another password, and failed I/O after successful

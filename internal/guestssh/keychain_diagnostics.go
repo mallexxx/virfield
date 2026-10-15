@@ -8,6 +8,19 @@ import (
 	"time"
 )
 
+// ReportDesktopFailure saves the observations already obtained on the pinned
+// SSH connection. A command timeout closes that connection: do not reconnect,
+// rerun the command, or expose its private output through the public API.
+func (g *Client) ReportDesktopFailure(output string) {
+	if g.diagnosticDir == "" {
+		return
+	}
+	if err := os.MkdirAll(g.diagnosticDir, 0700); err != nil {
+		return
+	}
+	_ = writePrivateDiagnostic(g.diagnosticDir, "desktop.log", "Guest command timeout: "+commandTimeout.String()+"\n"+output)
+}
+
 // ReportKeychainFailure retains bounded private diagnostics while the existing
 // provisioning SSH connection can still run commands. Never read identity or
 // keychain contents and never attach this output to an API error or event.
@@ -28,7 +41,7 @@ const keychainDiagnostics = `set +x
 /bin/date -u
 /usr/bin/stat -f '%Su' /dev/console
 /usr/sbin/sysctl -n kern.bootsessionuuid
-for name in phase agent.log display-result login-result result startup desktop-result; do
+for name in phase agent.log display-result login-auth-result login-result result startup desktop-result; do
   file="$HOME/.virfield-keychain/$name"
   if [ -f "$file" ] && [ ! -L "$file" ]; then
     printf '\n%s\n' "$name"
@@ -48,7 +61,11 @@ for pid in $(/usr/bin/pgrep -U "$(/usr/bin/id -u)" -f 'osascript -l JavaScript .
 done`
 
 func writeKeychainDiagnostic(directory, stage, output, logs string) error {
-	f, err := os.CreateTemp(directory, ".keychain-log-")
+	return writePrivateDiagnostic(directory, "keychain.log", "Keychain failure stage: "+stage+"\n"+output+"\n"+logs)
+}
+
+func writePrivateDiagnostic(directory, name, output string) error {
+	f, err := os.CreateTemp(directory, ".guest-diagnostic-")
 	if err != nil {
 		return err
 	}
@@ -57,11 +74,11 @@ func writeKeychainDiagnostic(directory, stage, output, logs string) error {
 	if err := f.Chmod(0600); err != nil {
 		return err
 	}
-	if _, err := f.WriteString("Keychain failure stage: " + stage + "\n" + output + "\n" + logs); err != nil {
+	if _, err := f.WriteString(output[:min(len(output), 65536)]); err != nil {
 		return err
 	}
 	if err := f.Close(); err != nil {
 		return err
 	}
-	return os.Rename(f.Name(), filepath.Join(directory, "keychain.log"))
+	return os.Rename(f.Name(), filepath.Join(directory, name))
 }

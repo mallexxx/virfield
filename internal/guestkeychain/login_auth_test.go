@@ -41,11 +41,18 @@ security() {
  case "$1" in
  lock-keychain) locks=$((locks+1));;
  unlock-keychain) selected="$3";;
- set-keychain-password) rekeys=$((rekeys+1)); [[ "$3" == "$VF_TEST_SECRET" ]] || return 51;;
+ set-keychain-password) echo 'Interactive CLI rekey is forbidden'; return 1;;
  esac
  return 0
 }
 osascript() {
+ if [[ "$3" == */login-auth.js ]]; then
+  rekeys=$((rekeys+1))
+  case "$6" in current) old=current-private;; previous) old=previous-private;; user) old=admin;; esac
+  if [[ "$old" != "$VF_TEST_SECRET" ]]; then printf '{"authenticated":false,"try_next":true,"status":-25293}'; return; fi
+  selected=current-private
+  printf '{"authenticated":true,"try_next":false,"status":0}'; return
+ fi
  probes=$((probes+1)); io=false
  [[ "$selected" != current-private || "$VF_TEST_NATIVE" != true ]] || io=true
  printf '{"keychain_ready":%s,"ready":false,"keyboard_setup_visible":true,"security_dialog_visible":true}' "$io"

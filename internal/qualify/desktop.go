@@ -2,6 +2,7 @@ package qualify
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -54,10 +55,24 @@ func WaitDesktop(ctx context.Context, poll, settle time.Duration, observe func(c
 func Desktop(ctx context.Context, g Guest) error {
 	wait, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
+	started := time.Now()
+	var trace strings.Builder
 	state, err := WaitDesktop(wait, 2*time.Second, 5*time.Second, func(ctx context.Context) (string, error) {
-		return g.Run(ctx, DesktopProbe, "")
+		probeStarted := time.Now()
+		out, err := g.Run(ctx, DesktopProbe, "")
+		// Only this fixed, read-only probe is recorded. Keep the first and
+		// failing observations, including partial output from a timed-out call.
+		if trace.Len() < 8192 || err != nil {
+			fmt.Fprintf(&trace, "at=%s elapsed=%s probe_duration=%s output=%q error=%v\n",
+				probeStarted.UTC().Format(time.RFC3339Nano), probeStarted.Sub(started), time.Since(probeStarted), out[:min(len(out), 4096)], err)
+		}
+		return out, err
 	})
 	if err != nil {
+		if reporter, ok := g.(interface{ ReportDesktopFailure(string) }); ok {
+			deadline, _ := wait.Deadline()
+			reporter.ReportDesktopFailure(fmt.Sprintf("Desktop wait deadline=%s elapsed=%s error=%v\n%s", deadline.UTC().Format(time.RFC3339Nano), time.Since(started), err, trace.String()))
+		}
 		return err
 	}
 	if state != "desktop" {

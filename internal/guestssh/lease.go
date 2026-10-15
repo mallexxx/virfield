@@ -48,6 +48,10 @@ func (e *Manager) Prepare(ctx context.Context, l domain.Lease) (domain.SSHConnec
 	}
 
 	defer g.Close()
+	// The inherited connection belongs to this worker's preparation. Keep
+	// failure evidence with the worker, never overwrite the golden's logs.
+	scoped := e.derive("leases")
+	g.diagnosticDir = scoped.Directory(l)
 	// SSH can become available before the inherited automatic GUI login has
 	// finished. As in image qualification, require a settled desktop before
 	// changing the account/autologin secret that loginwindow is consuming.
@@ -56,7 +60,6 @@ func (e *Manager) Prepare(ctx context.Context, l domain.Lease) (domain.SSHConnec
 	if err := qualify.Desktop(ctx, g); err != nil {
 		return result, err
 	}
-	scoped := e.derive("leases")
 	if err := os.MkdirAll(scoped.Directory(l), 0700); err != nil {
 		return result, err
 	}

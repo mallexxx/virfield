@@ -179,6 +179,36 @@ function run(argv) {
     ready:!loginOnly && keychainReady && (!aqua || consoleReady && snapshotAvailable && !keyboardSetup && !securityDialog) && (!displayManaged || !aqua || size.width === 1920 && size.height === 1080)});
 }
 JXA
+  cat > "$dir/login-auth.js" <<'AUTH'
+ObjC.import('Foundation'); ObjC.import('Security');
+ObjC.bindFunction('SecKeychainOpen', ['int', ['char *', 'id *']]);
+ObjC.bindFunction('SecKeychainUnlock', ['int', ['id', 'unsigned int', 'char *', 'bool']]);
+ObjC.bindFunction('SecKeychainChangePassword', ['int', ['id', 'unsigned int', 'char *', 'unsigned int', 'char *']]);
+function run(argv) {
+  // This applies to this native caller, not a separately spawned security CLI.
+  // A wrong old password must return an error instead of opening a GUI prompt.
+  $.SecKeychainSetUserInteractionAllowed(false);
+  var text = $.NSString.stringWithContentsOfFileEncodingError(argv[1], $.NSUTF8StringEncoding, null);
+  if (!text) throw new Error('Private login identity is unavailable');
+  var identity = String(ObjC.unwrap(text)).split('\n'), password = identity[1];
+  var candidate = argv[2] === 'current' ? password : argv[2] === 'previous' ? identity[2] :
+    argv[2] === 'user' ? String(ObjC.unwrap($.NSUserName())) : null;
+  if (!password || candidate === null) throw new Error('Invalid login authentication request');
+  if (!candidate) return JSON.stringify({authenticated:false, try_next:true, skipped:true});
+  function result(status, retry) { return JSON.stringify({authenticated:status === 0, try_next:retry, status:status}); }
+  function length(value) { return Number($(value).lengthOfBytesUsingEncoding($.NSUTF8StringEncoding)); }
+  var reference = Ref(), status = Number($.SecKeychainOpen(argv[0], reference));
+  if (status !== 0) return result(status, false);
+  var keychain = reference[0];
+  status = Number($.SecKeychainUnlock(keychain, length(candidate), candidate, true));
+  if (status !== 0) return result(status, status === -25293);
+  // ChangePassword authenticates the old secret even if already unlocked.
+  status = Number($.SecKeychainChangePassword(keychain, length(candidate), candidate, length(password), password));
+  if (status !== 0) return result(status, status === -25293);
+  status = Number($.SecKeychainUnlock(keychain, length(password), password, true));
+  return result(status, false);
+}
+AUTH
   cat > "$dir/session.sh" <<'AGENT'
 #!/bin/bash
 set +x
@@ -239,15 +269,17 @@ if [[ "$mode" == ensure ]]; then
     [[ ! -L "$login" ]] || exit 65
     ready=false
     attempt=0
-    for candidate in "$password" "$previous" "$(id -un)"; do
-      [[ -n "$candidate" ]] || continue
+    for candidate in current previous user; do
       attempt=$((attempt+1))
       # Changing the password authenticates the old secret even when unlocked.
       # Never lock the real login keychain just to test a candidate: OS clients
       # can leave a persistent modal unlock request during that artificial gap.
       phase login-rekey
-      /usr/bin/security set-keychain-password -o "$candidate" -p "$password" "$login" 2>/dev/null || continue
-      /usr/bin/security unlock-keychain -p "$password" "$login"
+      /usr/bin/osascript -l JavaScript "$dir/login-auth.js" "$login" "$dir/identity" "$candidate" > "$dir/login-auth-result"
+      if ! grep -q '"authenticated":true' "$dir/login-auth-result"; then
+        grep -q '"try_next":true' "$dir/login-auth-result" && continue
+        exit 65
+      fi
       /usr/bin/security default-keychain -d user -s "$login"
       /usr/bin/security list-keychains -d user -s "$login" /Library/Keychains/System.keychain
       phase login-new-native-io
@@ -338,7 +370,7 @@ if [[ "$mode" == ensure ]]; then
 fi
 phase ready
 AGENT
-  chmod 600 "$dir/display.js" "$dir/probe.js" "$dir/session.sh"
+  chmod 600 "$dir/display.js" "$dir/probe.js" "$dir/login-auth.js" "$dir/session.sh"
   cat > "$plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

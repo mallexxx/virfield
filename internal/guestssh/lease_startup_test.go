@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -110,6 +111,13 @@ func TestPrepareDoesNotRotateBeforeInheritedDesktop(t *testing.T) {
 	}
 	if _, err := os.Stat(m.derive("leases").CredentialPath(l)); !os.IsNotExist(err) {
 		t.Fatal("Created a secured worker identity before read-only GUI preflight", err)
+	}
+	log, err := os.ReadFile(filepath.Join(m.derive("leases").Directory(l), "desktop.log"))
+	if err != nil || !strings.Contains(string(log), `output="waiting\n"`) || !strings.Contains(string(log), "deadline=") {
+		t.Fatal("Missing private worker preflight observations", err)
+	}
+	if _, err := os.Stat(filepath.Join(m.Directory(image), "desktop.log")); !os.IsNotExist(err) {
+		t.Fatal("Worker failure contaminated golden diagnostics", err)
 	}
 	after, err := os.ReadFile(m.CredentialPath(image))
 	if err != nil || string(before) != string(after) {

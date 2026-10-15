@@ -36,10 +36,10 @@ Configurable node CPU/RAM/disk admission and image-cache quotas are implemented 
 the new candidate, with durable reservations and post-wake resource checks; live acceptance pending.
 Configured worker reservations/private HDD placement and partial native provider
 cycles have live evidence, but the full current HTPC matrix remains open. The
-post-reboot verification correction is installed after the unrelated MacBook lease
-was released by its owner. Inventory staleness during host contention blocked the
-next VM dispatch; a mount-bound UUID lookup correction awaits installation. See
-the dated deployment checkpoint in Verification.
+post-reboot, mount-bound UUID lookup, demand-start and tunnel-continuity corrections
+are installed in `f8b64f5`. Its fresh native matrix exposed a GUI login-rekey
+hang; the native noninteractive correction still requires a new installed repeat.
+See the current deployment checkpoint in Verification.
 Remaining: node-agent with signed inventory/heartbeats, same-L2 WoL relay, durable power
 intents and connection grants/connectors. Browser noVNC and physical-host desktop
 are not implemented. The Intel Mac has no accepted WoL capability; the original
