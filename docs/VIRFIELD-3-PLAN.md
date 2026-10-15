@@ -34,6 +34,10 @@ The R1–R3 specs describe these completed slices, not the full Phase 2 target.
 Host exclusivity, shared sleep holds and node cleanup are fixed with regression tests.
 Configurable node CPU/RAM/disk admission and image-cache quotas are implemented in
 the new candidate, with durable reservations and post-wake resource checks; live acceptance pending.
+Configured worker reservations/private HDD placement and partial native provider
+cycles have live evidence, but the full current HTPC matrix remains open. The
+clean post-reboot verification correction awaits an idle installation after an
+unrelated MacBook lease; see the dated deployment checkpoint in Verification.
 Remaining: node-agent with signed inventory/heartbeats, same-L2 WoL relay, durable power
 intents and connection grants/connectors. Browser noVNC and physical-host desktop
 are not implemented. The Intel Mac has no accepted WoL capability; the original

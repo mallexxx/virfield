@@ -10,7 +10,20 @@ are distinct artifacts.
 
 ## Acceptance checkpoint (2026-10-15)
 
-The installed code acceptance baseline at this checkpoint is `8c521fe`, version
+Deployment snapshot at 09:14 UTC: `6779b6f` / `0.0.0-native-protocol` remains
+installed. Code candidate `a6cd900` / `0.0.0-cold-reboot` is clean, pushed and
+packaged; full local CI, Staticcheck and Gitleaks (219 commits) passed. Its
+fresh archive stdio passed exact version, all four runbooks/resources and
+read-only status against the existing daemon. This does not attest installation,
+new HTTP version or the owning client. Installation stopped before deployment
+changes because a new unrelated ready physical MacBook lease was present:
+`lease-de909d6e7f47b802c3d4939954805f87`, `mbp2014-monterey`, expiry
+10:01:12 UTC. The operator's wait policy remains in force; VM-slot usage 0/2
+alone does not mean the shared controller is idle. No foreign release/recovery
+or restart was performed. A later runbook-only package must keep this dated code
+provenance distinct from its own exact `release.json` revision.
+
+An earlier code checkpoint installed `8c521fe`, version
 `0.0.0-desktop-preflight`. Subsequent runbook/acceptance-tool packages retain this
 dated code-test provenance and carry their own exact `release.json` revision.
 Factory capacity, node temporary-file permission, stable-TSC
@@ -467,6 +480,8 @@ Clean local package provenance:
 
 | Source revision | Archive SHA-256 | Deployment |
 |---|---|---|
+| `a6cd900bc9e6dfae071fca65a96920622fe4ce41` | `b979a7aa7ced7a0ef58c5b97cdbf5aab738ed7fcfe76d3422c7a3e60f733d0ed` | Prepared, not installed; fresh archive stdio/all four runbooks/resources/status passed; waiting for unrelated MacBook lease |
+| `6779b6faa1983a20fbc831fa1b415c110c087c67` | `3ee01fe145444c7da23bef19aa349c8ce007b772c85b3149ffcba73fd2af569d` | Installed; exact MCP, two Monterey cycles and one full Sequoia cycle passed; second Sequoia exposed the five-minute post-reboot verification bound |
 | `8c521fe1a6c25656368810c0c8fb820b6927e5a0` | `282064aa6829d4b6c33600bc7e541d2ddc7956a89799ecc2a2a3615d74cd44db` | Installed; exact MCP and two fresh iPad Monterey native/reboot/workload cycles plus Xcode/Swift passed |
 | `c85a89974a4d2e707e732cfd3c15eaf92a5b4e7e` | `75dea2278095f682706acb5eb67aa9d933a53b2a79e00e6c9d119786112d373a` | Installed earlier; SSH bounds and physical HTPC lease passed; two staggered native Sonoma cycles passed after a failed simultaneous boot |
 | `083801895ec9d78b80328645436801b4215dbfdb` | `a74d66420b935ab5a3e076e24a298458f93c76658de683957dcadc91f775f0e6` | Installed; exact MCP passed; outer SSH command budget now follows the existing job deadline |
@@ -507,6 +522,9 @@ revocation alongside SSH, cross-key/image-key rejection, workload and artifacts.
   Fresh native Monterey acceptance passed on the corrected guest code.
   Node conversion privacy and overall preparation corrections are installed;
   factory roundtrip and controller-binary rollback/forward passed.
+- Install the clean post-reboot verification-budget candidate after unrelated
+  leases/jobs are actually clear, then repeat the complete HTPC matrix and exact
+  installed MCP acceptance. The prepared archive smoke does not close this gate.
 - Reconnect the actual owning MCP clients after installation and verify their
   version, runbooks and workflow; a fresh adapter alone cannot attest old sessions.
 - Accept the native Apple browser GUI/URL-scheme flow after the Mac is unlocked;
