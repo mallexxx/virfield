@@ -222,6 +222,7 @@ make guest commands idempotent.
 | `outcome_unknown`, `operation_timeout`, `unsafe_retry` | Mutation may have occurred; preserve reservation and inspect exact VM before recovery |
 | `backend_unavailable`, stale/failed host or address observation | Check inventory and wait for recovery; a ready lease keeps its verified identity, but new tunnels remain blocked. Do not trust cached capacity or restart the runtime with active VMs |
 | `vm_drift`, SSH host-key/authentication failure | Stop executing; inspect/release the owned lease. Never suppress host-key checks |
+| `guest_keychain_failed` | VM native GUI/SSH key storage or unlocked/unobstructed-console qualification failed before readiness. Preserve exact job/lease evidence and follow [keychain diagnostics](OPERATIONS.md#vm-keychain-readiness); the code alone does not identify the failed substage. The current Broker boundary is in [Verification](VERIFICATION.md#broker-macos27-reacceptance). |
 | `lease_desktop_failed` | Preparation could not read a real Screen Sharing RFB greeting through pinned guest SSH. Inspect the owned lease; a listening port alone is insufficient. |
 | `lease_expired`, `lease_released` | Do not renew/reuse the old worker; inspect cleanup before acquiring another |
 

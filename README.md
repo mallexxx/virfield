@@ -49,3 +49,5 @@ node-agent, browser desktop and VS Code extension remain roadmap work.
 [Published v2.0.0](https://github.com/mallexxx/virfield/releases/tag/v2.0.0)
 is a historical Lume release, not an archive of the current Tart implementation.
 Use the current source and Operations until a new release passes its gates.
+The [Broker macos27 reacceptance record](docs/VERIFICATION.md#broker-macos27-reacceptance)
+records the current cross-project boundary and the evidence required to close it.

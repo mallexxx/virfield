@@ -106,6 +106,9 @@ Failure is `guest_keychain_failed`; the image/lease does not become ready. This
 policy applies to VMs, including node VM qualification, and does not alter shared
 physical-host keychains. Existing ready images are historical evidence: new
 qualification or new lease preparation is needed to obtain these gates.
+The [Broker macos27 reacceptance record](VERIFICATION.md#broker-macos27-reacceptance)
+tracks the exact failed versions, confirmed cleanup and newer deployment that
+still needs its own production-path evidence.
 
 `security: automation` applies the version-aware Gatekeeper, AMFI and TCC
 policy inside the guest, then verifies its signed identities, grants, canonical

@@ -41,8 +41,43 @@ own test app and Safari tab were closed. Receipt:
 `/private/tmp/virfield-native-browser-gui-f60efe3-20261015.json`.
 Targeted HTPC transport diagnosis remains open; the trace itself does not establish
 the old timeout's cause. Existing golden permission approval remains separate.
-The actual owning MCP still returns `Transport closed`; fresh stdio does not close
-that acceptance gate.
+The Virfield release task's owning MCP last returned `Transport closed`; fresh
+stdio does not close that client's acceptance gate. The Broker task's own MCP
+help/status reads succeeded on 2026-10-15; that is a separate client observation.
+
+### Broker macos27 reacceptance
+
+The Broker `macos-codex` profile uses Tart template `macos27`. Earlier
+qualification attempts returned `guest_keychain_failed` before bootstrap and
+provider execution; their owned leases were released. The operator's private
+incident register retains the exact run/job/lease bindings, timestamps and
+per-attempt deployment provenance.
+
+The last tested candidate was `614daf5`. The later `f60efe3` package and
+Background-to-Standard host-service migration are recorded in the deployment
+checkpoint above. Broker has not repeated its macos27 acceptance against that
+later deployment. Earlier errors establish the failed prerequisite only on
+their tested version; earlier isolated Codex Stories and successful
+Monterey/Ventura qualification do not close this production path.
+
+The public error groups native GUI/SSH I/O and unlocked/unobstructed-console
+checks. It does not identify a particular password, OAuth or native-cache
+cause. Confirmed cleanup can remove private provisioning directories, so
+retain available public failure evidence and record diagnostic gaps in the
+private incident register. Exact operational identifiers and private logs
+are intentionally excluded from this public runbook.
+
+This gate closes only after a fresh worker on the exact installed candidate
+passes pinned SSH, native GUI/new SSH key storage and console qualification,
+then the production Broker bootstrap/Story, independent tests, explicit Codex
+read-only write denial, artifact hashes, credential settlement and release.
+Capture bounded private diagnostics before cleanup when available, within the
+existing deadline; retain the public job/lease failure and confirmed cleanup
+when those diagnostics are unavailable. Do not hold a failed VM indefinitely or
+repeat unchanged attempts as evidence of a fix. See
+[VM keychain operations](OPERATIONS.md#vm-keychain-readiness).
+
+### Earlier guest-policy evidence
 
 The following `614daf5` paragraphs retain the preceding guest-policy evidence.
 
@@ -751,7 +786,7 @@ The older service snapshot below is a dated checkpoint.
 | Tart clone routing | A factory golden on internal storage selected the deployment's external default; source-container compatibility is now checked before reservation, and the acceptance runner selects each golden's own container |
 | Interrupted Tart inventory | Regression tests reproduced canceled address/container probes returning partial healthy snapshots; refresh now fails on cancellation and Control preserves the last complete inventory while pausing admission; installed in the current candidate |
 | Cold Tart transfer | First live factory attempt failed with Packer EOF during source transfer; journaled recovery deleted only its own failed record after process/inventory inspection. Pinned prefetch/retryable resolve and disabled automatic pruning later passed the full private roundtrip recorded above |
-| GUI/SSH keychain | Private Aqua/SSH session preparation, retained/rekeyed login items, native WhenUnlocked add/read/delete and fresh boot evidence; Ventura/macOS 27 live fixtures and real DDG CI Downloads smoke passed |
+| GUI/SSH keychain | Private Aqua/SSH session preparation, retained/rekeyed items, native WhenUnlocked I/O and fresh boot checks. Earlier Ventura/macOS 27 fixtures and DDG CI Downloads smoke passed; [Broker macos27 reacceptance](#broker-macos27-reacceptance) remains open on the newer installed deployment |
 | UI desktop | Persistent actual 1920×1080 frame in Aqua, explicit pixel units in Tart configuration and no window refit; eight-clone native matrix and real Settings/General UI-test smoke passed |
 | macOS 27 ASIF factory | Explicit Recovery keep bypasses default deletion/file lock; full isolated source factory build/qualification passed |
 | SSH boot banner | 45-second banner budget, timeout classified as retryable connection failure before commands; real local SSH banner regression test |

@@ -508,6 +508,11 @@ It does not change firewall policy or weaken authentication.
 The worker Aqua agent also reads the real greeting before publishing native
 readiness on each login/reboot; image qualification skips this worker service.
 
+The current [Broker macos27 reacceptance record](VERIFICATION.md#broker-macos27-reacceptance)
+separates three failed older probes from the later installed candidate, whose
+Broker path has not been reaccepted. A ready catalog entry or another profile's
+successful test does not establish this path's readiness.
+
 If `guest_keychain_failed` occurs, preserve the operation/lease ID and inspect the
 owner-only guest `~/.virfield-keychain/agent.log` and host provisioning diagnostics.
 The SSH preparer now captures bounded GUI/SSH results and agent/display logs into
