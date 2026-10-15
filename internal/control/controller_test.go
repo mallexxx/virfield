@@ -624,6 +624,32 @@ func TestReadyDriftDoesNotClaimSuccess(t *testing.T) {
 	}
 }
 
+func TestClonedVMWaitsForSnapshotAfterMutationCompletion(t *testing.T) {
+	c, _, b := setup(t)
+	op := acquire(t, c, "clone-snapshot-race")
+	tick(t, c)
+	l, err := c.Lease(context.Background(), op.Lease.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j, err := c.Job(context.Background(), op.Job.ID)
+	if err != nil || j.Phase != "cloned" {
+		t.Fatal(j, err)
+	}
+	// The current snapshot predates the completed clone and has no new VM.
+	if err := c.advance(context.Background(), l, j); err != nil {
+		t.Fatal(err)
+	}
+	l, _ = c.Lease(context.Background(), op.Lease.ID)
+	if l.State == "needs_attention" || b.count("start") != 0 || b.count("clone") != 1 {
+		t.Fatal("old snapshot rejected or replayed a confirmed clone", l)
+	}
+	tick(t, c)
+	if b.count("start") != 1 || b.count("clone") != 1 {
+		t.Fatal("fresh snapshot did not start exactly once")
+	}
+}
+
 type interruptedObserver struct {
 	*fakeBackend
 	cancel context.CancelFunc

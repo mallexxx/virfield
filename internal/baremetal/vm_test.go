@@ -7,9 +7,63 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mallexxx/virfield/internal/domain"
 )
+
+type blockedCloneSession struct {
+	session
+	entered chan<- struct{}
+	proceed <-chan struct{}
+}
+
+func (s blockedCloneSession) Run(ctx context.Context, cmd, input string) (string, error) {
+	if strings.Contains(cmd, "no free VM port") {
+		close(s.entered)
+		select {
+		case <-s.proceed:
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	}
+	return s.session.Run(ctx, cmd, input)
+}
+
+func TestObserveDuringCloneCannotCacheAbsentVMForNextObservation(t *testing.T) {
+	r, local, _ := vmRuntime(t, "secured")
+	r.probeInterval = time.Hour
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := r.Observe(ctx); err != nil {
+		t.Fatal(err)
+	}
+	entered, proceed := make(chan struct{}), make(chan struct{})
+	r.dial = func(ctx context.Context, n Node) (session, error) {
+		s, err := local.dial(ctx, n)
+		return blockedCloneSession{session: s, entered: entered, proceed: proceed}, err
+	}
+	l := domain.Lease{VMName: "vf-observed-during-clone", Location: "htpc", ImageID: "image-ready"}
+	completed := make(chan error, 1)
+	go func() { completed <- r.Clone(ctx, domain.Template{Name: "secured"}, l) }()
+	select {
+	case <-entered:
+	case <-ctx.Done():
+		t.Fatal("clone did not enter the mutation")
+	}
+	o, err := r.Observe(ctx)
+	if _, exists := vmNamed(o, l.VMName); err != nil || exists {
+		t.Fatal("unexpected observation before clone completion", o, err)
+	}
+	close(proceed)
+	if err := <-completed; err != nil {
+		t.Fatal(err)
+	}
+	o, err = r.Observe(ctx)
+	if vm, exists := vmNamed(o, l.VMName); err != nil || !exists || vm.State != "stopped" {
+		t.Fatal("completed clone remained absent in cached inventory", o.VMs, err)
+	}
+}
 
 func vmNode(goldens string) Node {
 	return Node{ID: "htpc", Address: "127.0.0.1", User: "bazzite", HostKeys: []string{testHostKey}, OS: "linux", Arch: "amd64",

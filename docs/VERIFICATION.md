@@ -1,6 +1,6 @@
 # Verification
 
-Current record, reconciled 2026-10-14. Accepted deployment: local Tart plus SSH
+Current record, reconciled 2026-10-15. Accepted deployment: local Tart plus SSH
 nodes and Podman macOS lab VMs. Virfield switched to Tart on 2026-10-08. On 2026-10-14 the retired separate
 Lume LaunchDaemon was disabled and booted out after verifying empty inventory; its rollback files are preserved and port 7777 is closed.
 [Earlier Lume acceptance and release records](history/VERIFICATION-before-2026-10-14.md)
@@ -8,7 +8,44 @@ are historical evidence, not current gates. Later passing tests do not invalidat
 newly reproduced defects below. Source, installed candidate and published release
 are distinct artifacts.
 
-## Candidate hardening (2026-10-14)
+## Installed acceptance checkpoint (2026-10-15)
+
+Installed `8e07015` includes native GUI/SSH keychain readiness, explicit
+`1920x1080px` Tart displays, interrupted-inventory protection and the separate
+private HTPC HDD root. Its native Apple browser accepts a separate private
+state directory; compiled Swift trust checks passed against the actual deployment
+and reject exposed files, symlinks and foreign origins. The complete local
+`make check` (10 Python tests and Go race suite) and Staticcheck passed.
+
+Eight disposable Tart clones passed on installed `4a53b67`: two each of the new
+iPad Monterey, original Monterey, Ventura and macOS 27 profiles. Each passed
+native WhenUnlocked add/read/data comparison/delete in Aqua and a new SSH session
+before/after a real reboot, fresh boot UUID/nonce, actual GUI 1920x1080,
+OS/build/SIP, cross-key rejection, distinct host keys, artifacts, RFB desktop,
+release and tunnel revocation. All eight VMs were removed; seven goldens remain.
+The VM implementation and guest scripts are unchanged in `8e07015`.
+Private journals: `/private/tmp/virfield-installed-monterey-pixel-4a53b67-20261015`
+and `/private/tmp/virfield-installed-tart-native-4a53b67-20261015`.
+
+Installed `8e07015` HTTP and fresh stdio exact-version/all-four-runbooks/resources
+smoke passed; the already-connected owning client still serves old Lume docs.
+Native browser URL-scheme registration passed; GUI launch acceptance is blocked
+by the locked Mac and is not claimed.
+
+The first concurrent HTPC run failed with `vm_missing` immediately after confirmed
+clone. Both owned fixtures were released and their native folders/containers were
+independently confirmed absent. A deterministic test reproduced node inventory
+invalidation being consumed while a mutation was running. The new source
+invalidates again on completion, including partial failures; Control waits for a
+snapshot started after clone completion. Regression tests, full local CI and
+Staticcheck passed. Installation and repeated HTPC acceptance are pending.
+Evidence: `/private/tmp/virfield-installed-htpc-native-8e07015-20261015`.
+
+Factory/private GHCR roundtrip, current-client reconnection, live controller
+restore/rollback and existing HTPC golden permission migration remain open.
+The following sections retain dated evidence from earlier candidates.
+
+## Earlier candidate hardening (2026-10-14)
 
 Candidate `09ad696` was installed on 2026-10-14 with the same Developer identity and
 Team ID E3R68ED529, preserving all five image-ready records. Local `make check`
@@ -16,7 +53,7 @@ passed and six successive clones (two per configured Tart profile) passed pinned
 SSH, cross-key rejection, distinct host keys, exact OS/build/SIP, desktop, artifact
 export and confirmed release. Disk reserve correctly prevents two concurrent
 full-size disks on the external SSD; this run used sequential clones.
-Supplemental candidate `aee89c1` is now installed. HTTP and fresh stdio MCP passed
+Supplemental candidate `aee89c1` was installed at that checkpoint. HTTP and fresh stdio MCP passed
 help/status/tool discovery, including HTTP 401 without authentication. Two fresh
 stdio MCP factory-clone cycles passed acquire/replay, pinned SSH workload,
 artifact export, desktop and confirmed release. The live discovery check now
@@ -27,8 +64,8 @@ The new automation factory rebuilt and qualified image
 `image-5387f340da4ae093162383c18449c592`; two sequential clones on its explicit
 internal container passed pinned SSH, cross-key rejection, distinct host keys,
 OS/build/SIP, desktop, artifact export and confirmed cleanup.
-The supplemental storage-routing, inventory and keychain/UI candidate is packaged but not installed:
-the operator elected to wait for the unrelated active macos27 lease to be released.
+The supplemental storage-routing, inventory and keychain/UI fixes were later
+installed after both unrelated leases were released; see the current checkpoint.
 Node clone acceptance and the private GHCR roundtrip are still outstanding.
 The older service snapshot below is a dated checkpoint.
 
@@ -51,7 +88,7 @@ The older service snapshot below is a dated checkpoint.
 | Node overlay storage | Live quota probe exposed only 99 GiB free on HTPC home NVMe; dedicated `vms.storage_dir` supports new VM overlays on data storage, keeps physical workspaces separate and blocks changing roots with overlays; live acceptance pending |
 | Existing node golden permissions | New commits use owner-only mode 0400; the two older secured HTPC qcow2/OpenCore goldens still have mode 0444 under traversable directories. Their permission migration awaits separate operator approval; files are unchanged |
 | Tart clone routing | A factory golden on internal storage selected the deployment's external default; source-container compatibility is now checked before reservation, and the acceptance runner selects each golden's own container |
-| Interrupted Tart inventory | Regression tests reproduced canceled address/container probes returning partial healthy snapshots; refresh now fails on cancellation and Control preserves the last complete inventory while pausing admission; supplemental installation pending |
+| Interrupted Tart inventory | Regression tests reproduced canceled address/container probes returning partial healthy snapshots; refresh now fails on cancellation and Control preserves the last complete inventory while pausing admission; installed in the current candidate |
 | Cold Tart transfer | First live factory attempt failed with Packer EOF during source transfer; journaled recovery deleted only its own failed record after process/inventory inspection. New candidate prefetches the pinned digest in retryable resolve and disables automatic cache pruning; roundtrip not yet accepted |
 | GUI/SSH keychain | Private Aqua/SSH session preparation, retained/rekeyed login items, native WhenUnlocked add/read/delete and fresh boot evidence; Ventura/macOS 27 live fixtures and real DDG CI Downloads smoke passed |
 | UI desktop | Native persistent 1920×1080 logical mode in Aqua, host-side Tart configuration and no window refit; real Settings/General UI-test smoke passed |
@@ -94,7 +131,9 @@ must pass in both contexts; qualification checks a fresh post-reboot proof.
 The login keychain remains searchable so ScopedBookmarkAgent cannot leave an old
 password dialog over the browser. Passwords are not made blank or public.
 
-Tart recipes/clones configure a 1920×1080 logical desktop. Cached guest modes
+Tart recipes/clones use explicit `1920x1080px`, independent of host Retina scale.
+Default/point units reproduced a 3840x2160 Monterey display without a 1920x1080
+mode; the pixel-unit correction passed the eight-clone matrix above. Cached guest modes
 ignore a host display hint, and `CGDisplaySetDisplayMode` reverts when its process
 exits. The Aqua agent uses a permanent CoreGraphics configuration transaction and
 checks the actual frame. macOS 27 recipes also explicitly keep Recovery: the
@@ -118,9 +157,8 @@ Private journals and result bundles are retained under
 `factory-journal.json` identifies the exact source recipe digest and owned image.
 Two failed old-daemon factory attempts were deleted through exact-name journaled
 recovery after confirming no VM/process remained. No existing golden was replaced.
-These fixes are not installed in the production daemon yet: installation still
-waits for the operator-selected release of unrelated active leases. Native tool
-exit status alone is never the new readiness gate.
+These fixes are installed; the current installed native matrix is recorded above.
+Native tool exit status alone is never the readiness gate.
 
 ## Automated candidate results
 
@@ -135,9 +173,11 @@ Clean local package provenance:
 
 | Source revision | Archive SHA-256 | Deployment |
 |---|---|---|
+| `4a53b67ce04fd1adc164750b47e780c4bdde9ea6` | `a71ceaf53dae64c2c91545cdfcff5749c656ba69677411fb154c3a3e6e301f19` | Installed; eight-clone Tart native acceptance passed |
+| `8e07015cde200a41fee6b490da97a44437803d7f` | `63c697126d63d3be3160ce57848d0338d2dfd1fe04a2ebbd267e105103b510e6` | Installed; split-state browser trust and exact-version HTTP/fresh stdio MCP passed |
 | `aee89c1ffafb01faccc750b60d0e3470bf14fc97` | `2313602b2c380e5e74640c47ee6ad50d9c10d750f856a0949833a4489803cf35` | Installed; signed binary hashes retained in the private upgrade record |
-| `d2daf4ee613739686e2227a29e513d3e1a592c9b` | `6d4a01acb5baddf3d441f5c6f5e557125046ce45f74d4ccf03b37c1c46039c2b` | Packaged; installation waits for lease release |
-| `624bdfa7a88738809729e6889c679eaf0241eb78` | `be29654ef02f4ab6cd747b1815c2a72532717aaf2d423a2a4d8a93e4013634bb` | Keychain/UI fixes packaged; not installed; later acceptance-runner/doc changes require a new exact-source package |
+| `d2daf4ee613739686e2227a29e513d3e1a592c9b` | `6d4a01acb5baddf3d441f5c6f5e557125046ce45f74d4ccf03b37c1c46039c2b` | Historical package, superseded by later installations |
+| `624bdfa7a88738809729e6889c679eaf0241eb78` | `be29654ef02f4ab6cd747b1815c2a72532717aaf2d423a2a4d8a93e4013634bb` | Historical keychain/UI package, superseded by later installations |
 
 These rows are dated package snapshots. The keychain package includes the
 interrupted-inventory fix; subsequent source changes must be packaged again.
@@ -160,8 +200,8 @@ revocation alongside SSH, cross-key/image-key rejection, workload and artifacts.
 
 - Repeat exact-source local CI and clean packaging for subsequent code changes;
   remote CI is deferred by the operator. Existing package provenance is recorded above.
-- Install the latest supplemental candidate after the unrelated lease is released and accept node resource policy with disposable
-  node clones; preserve the passing `09ad696` Tart clone evidence above.
+- Install the node-inventory race correction in an idle pool and repeat HTPC
+  native/resource acceptance with disposable node clones.
 - Reconnect the actual owning MCP clients after installation and verify their
   version, runbooks and workflow; a fresh adapter alone cannot attest old sessions.
 - Complete permission migration for existing HTPC secured goldens after approval;

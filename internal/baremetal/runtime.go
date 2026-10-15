@@ -413,6 +413,9 @@ func (r *Runtime) runOn(ctx context.Context, n Node, cmd string) (string, error)
 	}
 	defer s.Close()
 	r.reached(n)
+	// An observation may consume the invalidation while the mutation is still
+	// running. Invalidate again on every outcome, including partial failures.
+	defer r.reached(n)
 	return s.Run(ctx, nodeCommand(n, cmd), "")
 }
 

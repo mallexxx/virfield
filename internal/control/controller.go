@@ -908,6 +908,11 @@ func (c *Controller) advance(ctx context.Context, l domain.Lease, j domain.Job) 
 		}
 		return c.dispatch(ctx, l, j, "clone_dispatched", func(ctx context.Context) error { return c.backend.Clone(ctx, t, l) })
 	case "cloned":
+		// The clone callback can complete after this tick's snapshot started.
+		// Only a subsequent observation can confirm its presence or absence.
+		if c.observation.At.Before(j.UpdatedAt) {
+			return nil
+		}
 		if !exists {
 			return c.attention(ctx, l, j, "vm_missing", "Cloned VM is missing from the selected runtime", false)
 		}
