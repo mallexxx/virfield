@@ -95,6 +95,11 @@ func sshServerWithForward(t *testing.T, model, user string, forward func(ssh.New
 								_ = conn.Wait()
 								return
 							}
+							if payload.Command == "progress-block" {
+								_, _ = io.WriteString(channel.Stderr(), "Credential isolation phase: rotate-account-password\n")
+								_ = conn.Wait()
+								return
+							}
 							out := model + "\n"
 							if payload.Command == "large" {
 								out = strings.Repeat("x", 100000)

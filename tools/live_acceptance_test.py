@@ -86,6 +86,48 @@ class AcceptanceSafetyTests(unittest.TestCase):
             self.assertEqual(run.results[0]['code'], 'backend_unavailable')
             self.assertNotIn('private-fixture-token', (run.destination / 'journal.json').read_text())
 
+    def test_only_owned_release_waits_for_running_operation_with_exact_key(self):
+        for owned in (True, False):
+            with self.subTest(owned=owned), tempfile.TemporaryDirectory() as folder:
+                run = self.make_run(Path(folder))
+                if owned:
+                    run.accepted.append(dict(id='lease-fixture'))
+                calls = []
+                class Busy:
+                    def open(self, request, timeout):
+                        calls.append((request.full_url, request.data, request.get_header('Idempotency-key')))
+                        if len(calls) == 1:
+                            failure = dict(error=dict(code='operation_in_progress', retryable=True))
+                            raise urllib.error.HTTPError(request.full_url, 409, 'busy', {}, io.BytesIO(json.dumps(failure).encode()))
+                        return io.BytesIO(b'{"released":true}')
+                run.http = Busy()
+                with patch.object(module.time, 'sleep'):
+                    if owned:
+                        self.assertTrue(run.api('leases/lease-fixture/release', {}, 'original-release')['released'])
+                        self.assertEqual(calls[0], calls[1])
+                    else:
+                        with self.assertRaises(urllib.error.HTTPError):
+                            run.api('leases/lease-fixture/release', {}, 'original-release')
+                        self.assertEqual(len(calls), 1)
+
+    def test_owned_release_does_not_replay_lost_reply_or_other_conflict(self):
+        for code in ('lost', 'idempotency_conflict'):
+            with self.subTest(code=code), tempfile.TemporaryDirectory() as folder:
+                run = self.make_run(Path(folder))
+                run.accepted.append(dict(id='lease-fixture'))
+                calls = []
+                class Rejected:
+                    def open(self, request, timeout):
+                        calls.append(request)
+                        if code == 'lost':
+                            raise urllib.error.URLError('unknown outcome')
+                        failure = dict(error=dict(code=code, retryable=True))
+                        raise urllib.error.HTTPError(request.full_url, 409, 'conflict', {}, io.BytesIO(json.dumps(failure).encode()))
+                run.http = Rejected()
+                with patch.object(module.time, 'sleep'), self.assertRaises((urllib.error.URLError, urllib.error.HTTPError)):
+                    run.api('leases/lease-fixture/release', {}, 'original-release')
+                self.assertEqual(len(calls), 1)
+
     def test_vm_mutations_and_nonretryable_tunnels_are_never_auto_replayed(self):
         for path, code, retryable in [('leases', 'backend_unavailable', True),
                                       ('leases/lease-fixture/tunnel', 'tunnel_unavailable', False)]:

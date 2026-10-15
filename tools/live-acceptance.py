@@ -86,8 +86,10 @@ class Acceptance:
         # for this known rejection; VM mutations and lost POST replies stay
         # journaled for inspection instead of being replayed automatically.
         tunnel = path.startswith('leases/') and path.endswith('/tunnel') and body is not None
-        attempts = 24 if tunnel else 3
-        retry_deadline = time.monotonic() + 120
+        owned_release = (body is not None and key is not None and
+                         any(path == 'leases/' + own['id'] + '/release' for own in self.accepted))
+        attempts = 241 if owned_release else (24 if tunnel else 3)
+        retry_deadline = time.monotonic() + (1200 if owned_release else 120)
         for attempt in range(attempts):
             try:
                 with self.http.open(request, timeout=30) as response:
@@ -107,7 +109,13 @@ class Acceptance:
                 read_retry = body is None and attempt < 2
                 tunnel_retry = (tunnel and error.code == 503 and code == 'backend_unavailable' and retryable
                                 and attempt < attempts - 1 and time.monotonic() + 5 < retry_deadline)
-                if not (read_retry or tunnel_retry):
+                # A failed pair can still have its other own preparer running.
+                # This typed rejection precedes cleanup dispatch; wait for that
+                # operation, then use the original durable release key/body.
+                release_retry = (owned_release and error.code == 409 and code == 'operation_in_progress'
+                                 and retryable and attempt < attempts - 1
+                                 and time.monotonic() + 5 < retry_deadline)
+                if not (read_retry or tunnel_retry or release_retry):
                     raise
                 time.sleep(5)
             except (TimeoutError, urllib.error.URLError):

@@ -95,6 +95,13 @@ func (e *Manager) Prepare(ctx context.Context, l domain.Lease) (domain.SSHConnec
 	input := strings.Join([]string{user, inherited.Password, c.Password, management, public, base64.StdEncoding.EncodeToString(c.HostPrivate), loginPassword(c.Password)}, "\n") + "\n"
 	out, err := g.RunMutation(ctx, "/bin/bash -c '"+strings.ReplaceAll(leaseScript, "'", "'\"'\"'")+"'", input)
 	if err != nil {
+		kind := "command_failed"
+		if errors.Is(err, context.DeadlineExceeded) {
+			kind = "deadline_exceeded"
+		} else if errors.Is(err, context.Canceled) {
+			kind = "canceled"
+		}
+		out = "Credential isolation failure: " + kind + "\n" + out
 		if saveErr := os.WriteFile(filepath.Join(scoped.Directory(l), "provision.log"), []byte(out), 0600); saveErr != nil {
 			return result, saveErr
 		}
@@ -156,6 +163,10 @@ func (e *Manager) Prepare(ctx context.Context, l domain.Lease) (domain.SSHConnec
 // No script, path or host shell is supplied by an API client.
 const leaseScript = `set -eu
 IFS= read -r user
+set +x
+vf_lease_phase() {
+  printf 'Credential isolation phase: %s %s\n' "$(/bin/date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" >&2
+}
 IFS= read -r old
 IFS= read -r new
 IFS= read -r management
@@ -165,21 +176,29 @@ IFS= read -r kcpassword
 umask 077
 mkdir -p ~/.ssh ~/workspace
 chmod 700 ~/.ssh ~/workspace
+vf_lease_phase rotate-account-password
 /usr/sbin/sysadminctl -newPassword "$new" -oldPassword "$old"
+vf_lease_phase verify-account-password
 /usr/bin/dscl . -authonly "$user" "$new" >/dev/null 2>&1
+vf_lease_phase configure-autologin
 ` + autologinScript + `
 # Retire only the inherited image bridge while rotating identities; the new
 # GUI preparer installs its lease bridge before readiness.
+vf_lease_phase rotate-host-key
 printf '%s' "$hostkey" | /usr/bin/base64 -D > ~/.ssh/virfield-host-key
 printf '%s\n' "$new" | sudo -S -p '' /usr/bin/install -m 600 ~/.ssh/virfield-host-key /etc/ssh/ssh_host_ed25519_key
 /bin/rm ~/.ssh/virfield-host-key
+vf_lease_phase configure-sshd
 printf '%s\n' "$new" | sudo -S -p '' /bin/sh -c '/bin/rm -f /etc/ssh/sshd_config.d/001-virfield-keychain.conf /etc/ssh/ssh_host_rsa_key /etc/ssh/ssh_host_rsa_key.pub /etc/ssh/ssh_host_ecdsa_key /etc/ssh/ssh_host_ecdsa_key.pub; /usr/bin/ssh-keygen -y -f /etc/ssh/ssh_host_ed25519_key > /etc/ssh/ssh_host_ed25519_key.pub; printf "HostKey /etc/ssh/ssh_host_ed25519_key\nPasswordAuthentication no\nKbdInteractiveAuthentication no\nChallengeResponseAuthentication no\nPermitRootLogin no\nAllowAgentForwarding no\n" > /etc/ssh/sshd_config.d/000-virfield.conf; chmod 600 /etc/ssh/sshd_config.d/000-virfield.conf; /usr/sbin/sshd -t'
+vf_lease_phase enable-screen-sharing
 printf '%s\n' "$new" | sudo -S -p '' /bin/launchctl enable system/com.apple.screensharing
 # Already loaded is fine; Prepare verifies the actual RFB protocol.
 printf '%s\n' "$new" | sudo -S -p '' /bin/launchctl bootstrap system /System/Library/LaunchDaemons/com.apple.screensharing.plist 2>/dev/null || true
+vf_lease_phase install-authorized-keys
 printf '%s\n%s\n' "$management" "$client" > ~/.ssh/authorized_keys.next
 chmod 600 ~/.ssh/authorized_keys.next
 mv ~/.ssh/authorized_keys.next ~/.ssh/authorized_keys
+vf_lease_phase complete
 `
 
 // Forget removes only daemon-generated files of a confirmed absent disposable lease.

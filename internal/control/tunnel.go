@@ -83,6 +83,9 @@ func (c *Controller) OpenTunnel(ctx context.Context, id, service string) (domain
 		return domain.Tunnel{}, domain.Err("lease_unavailable", "SSH tunnel requires a ready unexpired lease")
 	}
 	vm, exists := c.vm(l)
+	if !c.leaseObservationVerified(l, vm, exists) {
+		return domain.Tunnel{}, &domain.Error{Code: "backend_unavailable", Message: "Lease host or address is unverified; wait for inventory recovery", Retryable: true}
+	}
 	if !exists || vm.State != "running" || vm.IP != l.IP || vm.SSHPort != l.SSHPort {
 		return domain.Tunnel{}, domain.Err("lease_unavailable", "SSH tunnel requires a running VM at the lease address")
 	}

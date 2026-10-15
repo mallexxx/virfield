@@ -780,9 +780,17 @@ func (c *Controller) Tick(ctx context.Context) error {
 	for i, l := range ls {
 		if l.State == "ready" && !l.UpdatedAt.After(snapshotStarted) {
 			vm, exists := c.vm(l)
-			if !exists || vm.State != "running" || (c.leasePreparer != nil && (l.SSH == nil || vm.IP != l.IP || vm.SSHPort != l.SSHPort)) {
+			if !c.leaseObservationVerified(l, vm, exists) {
+				// A secondary runtime can return an unavailable host and cached
+				// VM identities without failing the entire fleet observation.
+				// Missing reachability is not evidence of an identity change.
+				delete(c.readyDrift, l.ID)
+			} else if !exists || vm.State != "running" || (c.leasePreparer != nil && (l.SSH == nil || vm.IP != l.IP || vm.SSHPort != l.SSHPort)) {
 				c.readyDrift[l.ID]++
 				if c.readyDrift[l.ID] >= 2 {
+					c.log.Warn("ready lease identity changed", "lease_id", l.ID, "host_id", vm.HostID,
+						"vm_exists", exists, "vm_state", vm.State, "lease_ip", l.IP, "observed_ip", vm.IP,
+						"lease_ssh_port", l.SSHPort, "observed_ssh_port", vm.SSHPort, "observed_at", vm.LastSeenAt)
 					l.State = "needs_attention"
 					l.IP = ""
 					l.SSHPort = 0
@@ -855,6 +863,31 @@ func (c *Controller) vm(l domain.Lease) (domain.VM, bool) {
 		}
 	}
 	return domain.VM{}, false
+}
+
+// An offline node's cached inventory, or a running VM with no observed address,
+// cannot prove identity drift. Keep the durable identity so verified recovery
+// does not need a destructive replacement. New tunnels still require verified
+// observations, and existing tunnels retain their address/state/expiry guards.
+func (c *Controller) leaseObservationVerified(l domain.Lease, vm domain.VM, exists bool) bool {
+	hostID := vm.HostID
+	if hostID == "" {
+		for _, container := range c.observation.StorageContainers {
+			if container.ID == l.Location {
+				hostID = container.HostID
+				break
+			}
+		}
+	}
+	for _, host := range c.observation.Hosts {
+		if host.ID == hostID || (hostID == "" && host.ID == l.Location) {
+			if host.Availability != "available" {
+				return false
+			}
+			break
+		}
+	}
+	return !exists || c.leasePreparer == nil || vm.State != "running" || vm.IP != ""
 }
 func (c *Controller) save(ctx context.Context, l domain.Lease, j domain.Job, typ, msg string) error {
 	l.UpdatedAt = c.now()

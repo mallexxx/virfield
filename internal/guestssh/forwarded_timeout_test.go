@@ -43,6 +43,24 @@ func TestGuestCommandTimeoutWorksOnForwardedConnections(t *testing.T) {
 	}
 }
 
+func TestGuestCommandTimeoutRetainsPrivateProgressOnForwardedConnection(t *testing.T) {
+	port, _ := sshServer(t, "VirtualMac2,1")
+	manager, lease := testImageGuest(t, port)
+	guest, err := manager.Connect(context.Background(), lease, "127.0.0.1", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer guest.Close()
+	guest.raw = withoutDeadlines{guest.raw}
+	out, err := guest.RunReader(context.Background(), time.Second, "progress-block", strings.NewReader(""))
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal("Blocked command lost its timeout", err)
+	}
+	if out != "Credential isolation phase: rotate-account-password\n" {
+		t.Fatal("Timeout discarded the last private mutation phase", out)
+	}
+}
+
 func TestGuestHandshakeTimeoutWorksWithoutSocketDeadlines(t *testing.T) {
 	previous := handshakeTimeout
 	handshakeTimeout = 30 * time.Millisecond

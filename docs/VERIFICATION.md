@@ -58,12 +58,46 @@ The first acquire's unknown reply was inspected against the journal and empty
 server inventory before retrying its exact key/body/SSH identity. Its next reply
 was a typed `backend_unavailable` rejection before reservation. A subsequent
 healthy, responsive interval admitted the same request and its second Sonoma.
-Both owned leases are provisioning; the full provider matrix remains pending.
+At that checkpoint both owned leases were provisioning; the full provider matrix remained pending.
 The original post-install diagnostic collector indexed the optional worker
 `purpose` field and produced collector errors once leases appeared. Those rows
 are not daemon outages; the corrected collector records a separate series.
 Private evidence: `/private/tmp/virfield-installed-htpc-native-29e2bc9-20261015`
 and `/private/tmp/virfield-inventory-watch-29e2bc9-r2-20261015`.
+
+The subsequent `29e2bc9` Sonoma pair failed. The first received
+`lease_ssh_failed` during credential isolation before native keychain acceptance;
+its private provision log was empty, while later pinned SSH/RFB diagnostics
+worked. A deterministic SSH regression shows why timeout logs could be empty:
+`RunReader` discarded bounded stdout/stderr when the context expired. Source now
+preserves those bytes privately and records a fixed failure class and timestamped
+credential phases without values. The exact first guest command that failed is
+not established; no mutation timeout was increased on this evidence.
+
+The second Sonoma became ready at `10:07:17 UTC`, then entered `vm_drift` at
+`10:09:25 UTC`. Fresh native Aqua/new SSH I/O subsequently passed without manual
+GUI unlock; the API state was not repaired. The actual drift observation was not
+retained, and a later inventory captured during cleanup cannot identify its cause.
+A deterministic regression nevertheless reproduced a concrete false-drift bug:
+secondary-runtime observation can succeed with an unavailable host and cached VM
+without an address; repeated ticks treated that unverified state as a permanent
+identity change. A running VM with an unknown address also incorrectly drifted.
+The new controller preserves the verified lease in both cases, resets the drift
+counter and blocks new tunnels with retryable `backend_unavailable`. Recovery
+needs no replacement; verified missing/stopped VMs and changed known IP/port still
+trigger drift. This does not retrospectively prove the cause of the older iPad
+Monterey event or the exact second Sonoma observation.
+
+Both exact own fixtures were released and tunnel revocation passed. The failed
+pair's cleanup also exposed a harness bug: releasing the still-running second
+preparer received typed `409 operation_in_progress`. Owned cleanup now waits
+boundedly only for that pre-dispatch rejection using its original key/body.
+Lost replies, foreign IDs and other conflicts are not automatically replayed.
+Full local CI (seventeen Python tests, Go vet and the race suite) and pinned
+Staticcheck passed for these source corrections; a new installed native repeat
+remains required.
+Evidence: the journal above, `virfield-a0bc-vm-drift-20261015.json`, and the private
+`virfield-drift-red/green-20261015.log` and `virfield-credential-progress-red-20261015.log`.
 
 An earlier code checkpoint installed `8c521fe`, version
 `0.0.0-desktop-preflight`. Subsequent runbook/acceptance-tool packages retain this

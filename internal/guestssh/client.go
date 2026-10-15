@@ -355,10 +355,10 @@ func (g *Client) RunReader(ctx context.Context, timeout time.Duration, command s
 	case <-ctx.Done():
 		g.Close()
 		<-done
-		return "", ctx.Err()
+		return out.String(), ctx.Err()
 	case err := <-done:
 		if ctx.Err() != nil {
-			return "", ctx.Err()
+			return out.String(), ctx.Err()
 		}
 		if err != nil {
 			// Output stays private to the image executor; never attach it to a
