@@ -46,7 +46,7 @@ func TestSchemaSevenSnapshotAndThirtyDayRetention(t *testing.T) {
 	}
 	defer s.Close()
 	var version int
-	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 7 {
+	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 8 {
 		t.Fatalf("schema version = %d: %v", version, err)
 	}
 	for _, name := range []string{"jobs_lease", "events_at"} {

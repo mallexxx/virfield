@@ -301,7 +301,7 @@ func (c *Controller) RecoverImage(ctx context.Context, id, key, name, action str
 		l.Error = nil
 		l.UpdatedAt = c.now()
 	case "delete":
-		j = domain.Job{ID: domain.NewID("job-"), LeaseID: l.ID, Kind: "image_delete", Phase: "queued", State: "queued", CreatedAt: c.now(), UpdatedAt: c.now(), Deadline: c.now().Add(5 * time.Minute)}
+		j = domain.Job{Transfer: j.Transfer, ID: domain.NewID("job-"), LeaseID: l.ID, Kind: "image_delete", Phase: "queued", State: "queued", CreatedAt: c.now(), UpdatedAt: c.now(), Deadline: c.now().Add(5 * time.Minute)}
 		l.State = "image_deleting"
 		l.Error = nil
 		l.UpdatedAt = c.now()

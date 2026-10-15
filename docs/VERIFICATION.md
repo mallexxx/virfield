@@ -43,16 +43,36 @@ differ from that package; requested Restart remains pending.
 Receipts: `virfield-standard-uitest-macos27-20261015`,
 `virfield-inventory-factory-a1a6bd9-20261015` and
 `virfield-broker-candidate-xctest-a1a6bd9-20261015` under private `/private/tmp`.
-The qualified new golden remains a separate static template. Automatic approval
-review rejected switching the global template without a separate user decision;
-its prepared private backup/idle/rollback script has **not run**. The old golden
-and original production routing remain intact. Automatic review also rejected
-pushing `a1a6bd9` under the earlier exact-commit approval; branch publication awaits
-an explicit answer. `0f8bc20` was pushed with the user's direct approval.
+The operator explicitly authorized the production route switch and foreign-log
+cleanup on 2026-10-15. `macos27` now selects the accepted
+`release-check-macos27-standard-v1` golden; the temporary duplicate template was
+removed. Private config backup, original golden and all eight image manifests
+were preserved across the idle daemon restart (PID 87631). A **default-template
+production Broker/Prism script-only run passed**: actual XCTest 1/0, retained
+`.xcresult`, verified artifact sizes/SHA-256, Story completion and cleanup done.
+Receipt: `virfield-broker-default-xctest-a1a6bd9-20261015`, run
+`run-fac6b0cde10fec26450dc38c4694d5ff`. No per-run image override, provider role,
+Human gate or chat message was used. Full Codex Story/denied-write remains open.
+`a1a6bd9` and documentation `cab85c5` are pushed to the working branch under the
+operator's explicit session-wide push authorization; no main/tag/release change.
 
-HTPC runroot cleanup and owning MCP Restart also await user action. iPad transfer,
-HTPC standard-policy cycles, the older Sonoma reboot failure and remaining
-hardening/client/provider gates below remain open. No full release acceptance.
+The HTPC speech log's 3,357,126,656 bytes were copied to a private same-node HDD
+backup, reread and SHA-256 verified before truncating only the original log.
+SHA-256: `90664f48489073a9f2e2b587433ebabeed337dff3f8b6af3e6af0895d0d6840d`.
+The operation freed 3,357,130,752 bytes in Podman runroot. Subsequent observation
+found the log growing again (12,322,482 bytes); the one-time cleanup does not
+establish a lasting logging fix. Sequoia then passed two full standard-account/native GUI/new SSH/reboot/new UUID/
+1920×1080/workspace/workload/artifact/RFB/release/revocation cycles; both workers
+were released. Sonoma repeats are running; the older Sonoma reboot failure and
+the complete matrix remain open. Receipt: `virfield-htpc-preserve-and-truncate-speech-log-20261015.log`;
+new matrix root: `virfield-htpc-standard-after-runroot-a1a6bd9-20261015`.
+
+Owning MCP Restart and iPad transfer remain open. F4 local transfer has a new
+source implementation: full local `make check`, final affected Go race tests,
+pinned Staticcheck 0.7.0, Govulncheck 1.6.0 (zero reachable) and Gitleaks 8.30.1
+working-tree scan passed. It is not installed or live accepted yet.
+The complete candidate and the remaining hardening/client/provider gates remain
+unaccepted.
 
 ## Standard password policy — installed, matrix acceptance partial
 

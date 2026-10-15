@@ -56,7 +56,7 @@ func TestMCPProxiesToAPIAndPreservesIdempotency(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list.Tools) != 18 {
+	if len(list.Tools) != 19 {
 		t.Fatal(len(list.Tools))
 	}
 	for _, tool := range list.Tools {

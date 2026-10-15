@@ -70,6 +70,9 @@ type Client struct {
 	capacity domain.HostCapacity
 	specMu   sync.Mutex
 	specs    map[string]vmSpec
+	// A transfer holds Tart's config lock. Inventory must not open/close that
+	// file: POSIX record locks are process-wide and any close releases them.
+	transfers map[string]bool
 }
 
 // vmSpec is a VM's static configuration, valid while its config.json is
@@ -266,7 +269,12 @@ func (c *Client) list(_ context.Context, container ContainerConfig) ([]listRow, 
 		if _, err := os.Stat(config); err != nil {
 			continue
 		}
-		running, err := runLocked(config)
+		c.specMu.Lock()
+		running, err := false, error(nil)
+		if !c.transfers[config] {
+			running, err = runLocked(config)
+		}
+		c.specMu.Unlock()
 		if err != nil {
 			return nil, err
 		}

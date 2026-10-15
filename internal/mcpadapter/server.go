@@ -69,6 +69,7 @@ func New(c *client.Client) *mcp.Server {
 	additive := false
 	addHelp(s)
 	addRegistryTools(s, c)
+	addTransferTool(s, c)
 	mcp.AddTool(s, &mcp.Tool{Name: "virfield_status", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}, Description: "Show runtime health, VM slot usage, active leases and durable jobs"}, func(ctx context.Context, _ *mcp.CallToolRequest, _ empty) (*mcp.CallToolResult, any, error) {
 		return result(c.Do(ctx, "GET", "status", nil, ""))
 	})

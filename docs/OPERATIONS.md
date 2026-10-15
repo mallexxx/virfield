@@ -61,7 +61,8 @@ A temporary ASIF size zero remains unknown and is reread even if config.json is
 unchanged; never override admission or rebuild a qualified golden to clear it.
 Node Podman also depends on its user runroot filesystem: available VM HDD bytes
 do not establish runroot capacity. The current HTPC speech-log/runroot incident
-and its separate cleanup approval are recorded in Verification.
+and its approved backup/truncate receipt are recorded in Verification; the log
+continues growing, so a lasting logging fix is still open.
 
 Physical-node and node-VM resource safety limitations are recorded in Verification.
 
@@ -352,7 +353,7 @@ resources. Updating source does not update installed help.
 
 Tools: `virfield_help`, `virfield_status`, `vm_acquire`, `vm_lease`, `vm_release`, `vm_renew`,
 `virfield_job`, `virfield_events`, `image_catalog`, `image_create`, `image_apple_auth`,
-`image_build`, `image_pull`, `image_publish`, `registry_sources`, `registry_resolve`,
+`image_build`, `image_transfer`, `image_pull`, `image_publish`, `registry_sources`, `registry_resolve`,
 `vm_tunnel`, `vm_tunnel_close`.
 
 `image_create`, `image_pull` and `image_publish` use Tart contracts described in

@@ -173,3 +173,35 @@ explicit authorization. Images in use are protected. Rebuilds never overwrite.
 Only [Verification](VERIFICATION.md) owns accepted combinations and release gates.
 An `image_ready` build is not a clone/workload acceptance run. Require a disposable
 clone, pinned SSH, exact guest checks, artifact export and confirmed release.
+
+## Verified local golden transfer
+
+`image_transfer` / `POST /api/v1/images/transfer` accepts
+`{"template":"SOURCE_TEMPLATE","id":"NEW_ID_AND_NAME","location":"DESTINATION_CONTAINER"}`
+with a stable `Idempotency-Key`. CLI:
+`virfield -token-file /PRIVATE/TOKEN -key STABLE_KEY image-transfer SOURCE_TEMPLATE NEW_ID DESTINATION_CONTAINER`.
+The source implementation requires an idle pool, a stopped verified managed
+standalone Tart image, another configured local storage and the full potential
+disk size plus existing growth reservations and safety reserve. It does not
+upload a managed golden or delete its source. Other providers, disk stacks,
+suspended VMs, unknown resources and existing destination IDs/names are refused.
+
+The journal pins source identity, profile and destination before dispatch. The
+copy holds Tart's runtime config lock, preserves UUID/MAC/NVRAM, copies private
+SSH identity and qualification evidence, and verifies source/copied file hashes
+and storage identities. Registration is atomic only after a fresh stopped
+runtime observation matches OS/resources. Source qualification remains dated
+source evidence; an actual destination worker/native/reboot/workload acceptance
+is a separate gate. The feature is not yet installed or live accepted.
+
+Interrupted/failed copies stay quarantined and reserve the source. Reusing the
+same request key returns the same operation; it never repeats the copy. Inspect
+the exact source, destination and job, and confirm no process remains in flight
+before `image-recover IMAGE_RECORD_ID EXACT_VM_NAME delete CONFIRM-NO-OPERATION-IN-FLIGHT`.
+Cleanup requires the matching destination ownership marker, including when a
+partial disk has no runtime config. A collision or missing marker is not adopted
+or deleted. Choose a new ID after confirmed cleanup; retry cannot skip copying
+or promote a partial destination. SQLite schema 8 prevents an older executor
+from treating a queued transfer as a normal worker clone. The pre-migration
+schema-7 snapshot is private and integrity checked; old-binary rollback requires
+that snapshot, not opening a schema-8 journal.

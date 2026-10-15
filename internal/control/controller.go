@@ -40,6 +40,7 @@ type Controller struct {
 	imageCatalog           ImageCatalog
 	imageLocations         map[string]bool
 	imageBuilder           ImageBuilder
+	imageTransferer        ImageTransferer
 	leasePreparer          LeasePreparer
 	mu                     sync.Mutex
 	store                  *store.Store
@@ -426,6 +427,9 @@ func (c *Controller) AcquireAs(ctx context.Context, key string, r domain.Acquire
 		return domain.Operation{}, err
 	}
 	for _, l := range ls {
+		if l.Purpose == "image" && l.State != "image_ready" && l.Source != nil && l.Source.Location == t.Location && l.Source.Name == t.Name {
+			return domain.Operation{}, domain.Err("image_in_use", "source golden is reserved by image maintenance")
+		}
 		if l.Purpose == "image" && l.State != "image_ready" && l.State != "released" && l.Key() == t.Location+"/"+t.Name {
 			return domain.Operation{}, domain.Err("image_in_use", "requested image is being built or deleted")
 		}
@@ -639,7 +643,7 @@ func (c *Controller) Recover(ctx context.Context) error {
 		if j.State != "running" {
 			continue
 		}
-		if j.Kind == "image_build" && strings.HasSuffix(j.Phase, "_dispatched") && j.Phase != "download_dispatched" {
+		if ((j.Kind == "image_build" || j.Kind == "image_transfer") && strings.HasSuffix(j.Phase, "_dispatched") && j.Phase != "download_dispatched") || j.Phase == "transfer_discard_dispatched" {
 			l, err := c.store.Lease(ctx, j.LeaseID)
 			if err != nil {
 				return err
@@ -917,6 +921,9 @@ func (c *Controller) advance(ctx context.Context, l domain.Lease, j domain.Job) 
 	if j.Kind == "image_build" {
 		return c.advanceImageBuild(ctx, l, j)
 	}
+	if j.Kind == "image_transfer" {
+		return c.advanceImageTransfer(ctx, l, j)
+	}
 	if j.Kind == "image_delete" {
 		return c.advanceImageDelete(ctx, l, j)
 	}
@@ -1106,7 +1113,9 @@ func (c *Controller) dispatch(ctx context.Context, l domain.Lease, j domain.Job,
 		}
 		l = fresh
 		if err != nil {
-			if phase == "clone_dispatched" {
+			if phase == "transfer_discard_dispatched" {
+				err = c.attention(saveCtx, l, j, "image_outcome_unknown", "Partial copy cleanup did not return confirmed success; inspect before any replay", true)
+			} else if phase == "clone_dispatched" {
 				err = c.attention(saveCtx, l, j, "clone_outcome_unknown", "Runtime create did not return confirmed success. Automatic replay and deletion are blocked.", true)
 			} else if phase == "start_dispatched" && definitiveMutation(err) {
 				l.StartRejected = true
@@ -1121,6 +1130,8 @@ func (c *Controller) dispatch(ctx context.Context, l domain.Lease, j domain.Job,
 			}
 		} else {
 			switch phase {
+			case "transfer_discard_dispatched":
+				j.Phase = "transfer_discard_done"
 			case "clone_dispatched":
 				l.CloneConfirmed = true
 				if provider.StartsOnClone(c.backend) {

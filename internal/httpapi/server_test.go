@@ -27,6 +27,7 @@ func TestFailureStatusMapping(t *testing.T) {
 	for code, want := range map[string]int{
 		"invalid_request": 400, "apple_auth_required": 409, "lease_unavailable": 409,
 		"backup_failed": 409, "guest_connect_failed": 502, "tunnel_unavailable": 503,
+		"image_transfer_mismatch": 409, "image_transfer_unsupported": 409, "image_outcome_unknown": 409, "image_transfer_failed": 502,
 		"unclassified_new_failure": 500,
 	} {
 		if got := statusForCode(code); got != want {

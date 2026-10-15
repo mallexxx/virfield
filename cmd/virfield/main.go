@@ -47,6 +47,7 @@ Registry: registry-sources | registry-resolve SOURCE REPOSITORY TAG
           image-pull ID SOURCE REPOSITORY TAG MACOS [XCODE]
           image-publish TEMPLATE_ID SOURCE REPOSITORY NEW_TAG
 Images:  image-catalog | image-create ID MACOS [XCODE]
+	 image-transfer SOURCE_TEMPLATE NEW_ID DESTINATION_LOCATION
          image-build TEMPLATE_ID | image-delete TEMPLATE_ID EXACT_VM_NAME
 Recover: resolve LEASE_ID VM_NAME CONFIRM-NO-OPERATION-IN-FLIGHT
          image-recover IMAGE_RECORD_ID EXACT_VM_NAME retry|delete CONFIRM-NO-OPERATION-IN-FLIGHT
@@ -101,6 +102,15 @@ Recovery requires prior inspection that no operation remains in flight.
 	method, path := "GET", ""
 	var body any
 	switch args[0] {
+	case "image-transfer":
+		if len(args) != 4 || *key == "" {
+			return errors.New("usage: -key STABLE_KEY image-transfer SOURCE_TEMPLATE NEW_ID DESTINATION_LOCATION")
+		}
+		r := domain.ImageTransferRequest{Template: args[1], ID: args[2], Location: args[3]}
+		if err := r.Validate(); err != nil {
+			return err
+		}
+		method, path, body = "POST", "images/transfer", r
 	case "registry-sources":
 		if len(args) != 1 {
 			return errors.New("usage: registry-sources")

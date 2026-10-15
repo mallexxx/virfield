@@ -77,6 +77,21 @@ func (c *Controller) DeleteImage(ctx context.Context, id, key, confirmName strin
 }
 func (c *Controller) advanceImageDelete(ctx context.Context, l domain.Lease, j domain.Job) error {
 	v, exists := c.vm(l)
+	if j.Transfer != nil && j.Phase == "queued" {
+		discard, ok := c.imageTransferer.(interface {
+			DiscardImageCopy(context.Context, domain.Lease) error
+		})
+		if !ok {
+			return c.attention(ctx, l, j, "image_transfer_unsupported", "Transfer cleanup executor is unavailable", true)
+		}
+		return c.dispatch(ctx, l, j, "transfer_discard_dispatched", func(ctx context.Context) error { return discard.DiscardImageCopy(ctx, l) })
+	}
+	if j.Transfer != nil && j.Phase != "transfer_discard_done" {
+		return nil
+	}
+	if j.Transfer != nil && exists {
+		return c.attention(ctx, l, j, "image_outcome_unknown", "Transfer cleanup did not prove destination absence; inspect before any replay", true)
+	}
 	if !exists {
 		if disposer, ok := c.leasePreparer.(interface{ ForgetImage(domain.Lease) error }); ok {
 			if err := disposer.ForgetImage(l); err != nil {

@@ -270,6 +270,7 @@ func run() error {
 			Archives:      xcodearchive.New(cfg.Runtime.Tart.Image.XcodeArchives, filepath.Join(cfg.StateDir, "apple-auth", "cookies.txt")),
 			Registry:      registryClient,
 		})
+		manager.SetImageTransferer(imageBuilder.(control.ImageTransferer))
 	}
 	if tartBackend != nil && cfg.Runtime.Tart.Image != nil {
 		if executable, execErr := os.Executable(); execErr == nil {

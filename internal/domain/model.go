@@ -115,6 +115,7 @@ type Lease struct {
 
 // Job is a persisted state machine. Phase is written before each external effect.
 type Job struct {
+	Transfer  *ImageTransfer  `json:"transfer,omitempty"`
 	Export    *RegistryExport `json:"export,omitempty"`
 	Image     *ImageProfile   `json:"image,omitempty"`
 	Progress  string          `json:"progress,omitempty"`

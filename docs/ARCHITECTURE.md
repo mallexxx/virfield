@@ -11,7 +11,7 @@ Broker/Runner own execution semantics.
 |---|---|
 | `cmd/virfieldd` | Config, single-owner locks, runtime wiring, API and shutdown |
 | `internal/control` | Lease/image admission, durable phases, reconciliation, expiry and cleanup |
-| `internal/store` | SQLite schema 7, atomic lease/job/event/request/template records, snapshots and retention |
+| `internal/store` | SQLite schema 8, atomic lease/job/event/request/template records, snapshots and retention; pre-migration snapshot protects older transfer-unaware executors |
 | `internal/provider`, `internal/fleet` | Runtime seam and local Tart + SSH-node routing |
 | `internal/tart`, `internal/tartimage` | Tart inventory/lifecycle and pinned Packer image adoption |
 | `internal/baremetal`, `internal/nodeimage`, `internal/wol` | SSH physical nodes, node VM overlays, securing goldens and wake packets |

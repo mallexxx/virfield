@@ -60,10 +60,10 @@ func (s *Store) migrate() error {
 	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
 		return err
 	}
-	if version > 7 {
+	if version > 8 {
 		return fmt.Errorf("database schema %d is newer than this binary", version)
 	}
-	if version == 7 {
+	if version == 8 {
 		return nil
 	}
 	if version > 0 {
@@ -71,14 +71,20 @@ func (s *Store) migrate() error {
 			return fmt.Errorf("pre-migration backup failed: %w", err)
 		}
 	}
+	// Older executors would interpret a queued transfer as a worker clone.
+	// Protect the new durable state machine even though table layouts agree.
+	if version == 7 {
+		_, err := s.db.Exec(`PRAGMA user_version=8`)
+		return err
+	}
 	if version == 5 || version == 6 {
-		_, err := s.db.Exec(`BEGIN IMMEDIATE; CREATE INDEX IF NOT EXISTS jobs_lease ON jobs(lease_id); CREATE INDEX IF NOT EXISTS events_at ON events(at); PRAGMA user_version=7; COMMIT;`)
+		_, err := s.db.Exec(`BEGIN IMMEDIATE; CREATE INDEX IF NOT EXISTS jobs_lease ON jobs(lease_id); CREATE INDEX IF NOT EXISTS events_at ON events(at); PRAGMA user_version=8; COMMIT;`)
 		return err
 	}
 	if version >= 1 && version <= 4 {
 		// Version 5 persists catalog templates and Xcode manifests. Older
 		// executors must not silently ignore the new provisioning requirements.
-		_, err := s.db.Exec(`BEGIN IMMEDIATE; CREATE TABLE templates (id TEXT PRIMARY KEY, body TEXT NOT NULL); CREATE INDEX IF NOT EXISTS jobs_lease ON jobs(lease_id); CREATE INDEX IF NOT EXISTS events_at ON events(at); PRAGMA user_version=7; COMMIT;`)
+		_, err := s.db.Exec(`BEGIN IMMEDIATE; CREATE TABLE templates (id TEXT PRIMARY KEY, body TEXT NOT NULL); CREATE INDEX IF NOT EXISTS jobs_lease ON jobs(lease_id); CREATE INDEX IF NOT EXISTS events_at ON events(at); PRAGMA user_version=8; COMMIT;`)
 		return err
 	}
 	_, err := s.db.Exec(`BEGIN IMMEDIATE;
@@ -91,7 +97,7 @@ func (s *Store) migrate() error {
  CREATE INDEX jobs_state ON jobs(state);
  CREATE INDEX jobs_lease ON jobs(lease_id);
  CREATE TABLE templates (id TEXT PRIMARY KEY, body TEXT NOT NULL);
- PRAGMA user_version=7;
+ PRAGMA user_version=8;
  COMMIT;`)
 	return err
 }

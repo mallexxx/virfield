@@ -28,7 +28,7 @@ func (s *Store) snapshotBeforeMigration(version int) error {
 	if !st.IsDir() || st.Mode().Perm()&0077 != 0 || !ok || int(owner.Uid) != os.Getuid() {
 		return fmt.Errorf("migration backup directory must be private and owned by the service user")
 	}
-	name := fmt.Sprintf("schema-%d-to-7-%s-%s.db", version, time.Now().UTC().Format("20060102T150405Z"), domain.NewID(""))
+	name := fmt.Sprintf("schema-%d-to-8-%s-%s.db", version, time.Now().UTC().Format("20060102T150405Z"), domain.NewID(""))
 	path := filepath.Join(dir, name)
 	if _, err := s.db.Exec(`VACUUM INTO ?`, path); err != nil {
 		_ = os.Remove(path)

@@ -41,8 +41,8 @@ The candidate is **not release accepted**.
 | 1 | Remove automatic account-password rotation | Installed; Samsung 2/2 passed; remaining matrix open | Tests and installed image/lease/reboot cycles retain `admin/admin`; SSH isolation and native GUI/new SSH key storage still pass; old-image handling preserves data |
 | 2 | Resolve current macOS 27 keychain and Sonoma reboot failures | Reproduced; causes not fully established | Bounded diagnosis, targeted correction and fresh full cycles on the exact installed candidate; no repeated unchanged VM/reboot attempts treated as a fix |
 | 3 | Package and accept the corrected guest policy | `a1a6bd9` installed; Samsung/new macOS27/factory passed, HTPC/iPad remain | Clean exact-source local CI/security/archive checks; idle-pool install with private backup; Tart macOS 27 and both Monterey inventories plus HTPC Sonoma/Sequoia native GUI/new SSH, actual reboot/new UUID, 1920×1080, workload/artifact/RFB/release/revocation |
-| 4 | Close client and production entrypoint acceptance | Owning MCP responds but serves stale guide; Restart and Broker repeat open | Actual connected clients serve current version/all four runbooks and complete their workflows; production Broker qualification/Story, independent tests, explicit denied-write and artifacts/settlement/cleanup |
-| 5 | Implement the five operator feedback items below | Added to this plan; not implemented | Each item's tests, live evidence and updated runbooks; verified-golden transfer can unblock the storage-constrained iPad repeat in step 3 |
+| 4 | Close client and production entrypoint acceptance | Owning MCP serves stale guide; default Broker script-only passed, full Story open | Actual connected clients serve current version/all four runbooks and complete their workflows; production Broker qualification/Story, independent tests, explicit denied-write and artifacts/settlement/cleanup |
+| 5 | Implement the five operator feedback items below | F4 source implementation under test; others not implemented | Each item's tests, live evidence and updated runbooks; verified-golden transfer can unblock the storage-constrained iPad repeat in step 3 |
 | 6 | Complete remaining hardening/debug/DR gates | Partial dated evidence only | Agreed scope below accepted separately; no promotion based solely on unit tests or another OS/version |
 
 The full current-candidate acceptance, verification and branch push precede general
@@ -56,7 +56,7 @@ acceptance. The latest instruction requires documenting all five items now.
 |---|---|
 | Service/install | `a1a6bd9` installed; approved Background → Standard migration retained; signing identity/config/keys/seven baseline images preserved; exact installed HTTP/fresh stdio checks passed |
 | Native Apple browser | Installed layout, Safari URL handoff and real Apple sign-in page passed using a synthetic link; no account login or authenticated download completion tested; Mach-O minimum 13 verified, no live macOS 13 host test |
-| HTPC Sequoia | Two full `f60efe3` + Standard native GUI/new SSH/reboot/display/workload/artifact/RFB/release cycles passed; these predate removal of password rotation |
+| HTPC Sequoia | Two fresh complete `a1a6bd9` standard-account/native GUI/new SSH/reboot/display/workload/artifact/RFB/release/revocation cycles passed after the approved runroot cleanup |
 | HTPC Sonoma | Initial native GUI/new SSH/display passed; no fresh boot UUID or returning SSH within the full 1,200-second reboot budget; owned fixture released, bounded logs/frame retained; cause unproven |
 | macOS 27 | Two standalone `f60efe3` attempts failed native login-keychain authentication with `-25293`; isolated native API fixtures passed in the same guest; original-copy candidate authentication failed; no established historical password/corruption cause; owned fixtures released |
 | Samsung Monterey | Two complete `0f8bc20` standard-password/native/reboot/Xcode 13.4.1/Swift/workspace/artifact/release cycles passed |
@@ -71,17 +71,19 @@ released. Fresh same-pinned security-v1 and exact UI-test goldens passed native
 post-reboot qualification; worker acceptance exposed cached ASIF disk size zero
 versus a fresh CLI 140 GB. The red/green-tested cache correction is installed and passed a fresh factory
 with observed zero-to-140-GB recovery without daemon restart plus two full clones.
-The new exact UI-test golden also passed two full worker cycles and a production
-Broker/Prism script-only XCTest run selected by per-run `image_id`; its default
-production template switch awaits separate approval and has not run. Full Codex
-Story/denied-write remains open. Pushing `a1a6bd9` also awaits the new explicit
-approval requested after automatic review rejected broader use of the earlier
-exact-commit consent; `0f8bc20` is already pushed.
+The new exact UI-test golden passed two full worker cycles and production
+Broker/Prism script-only XCTest both by explicit per-run `image_id` and, after
+the operator-approved idle route switch, through default `macos27`. The old
+golden and all eight image manifests remain preserved. Full Codex
+Story/denied-write remains open. `a1a6bd9` and `cab85c5` are pushed under explicit
+session-wide working-branch authorization.
 The new HTPC Sequoia attempt failed because an unrelated speech-dispatcher log
 filled `/run/user/1000`, preventing Podman metadata writes despite free HDD space.
-Its exact inspected partial clone was resolved/released; foreign log cleanup
-awaits explicit approval. Existing production macos27 routing/golden and seven
-baseline manifests remain intact; the separate new UI-test golden is retained.
+Its exact inspected partial clone was resolved/released. The operator then
+approved a same-node HDD backup, SHA-256 verification and truncation of only that
+log: 3,357,126,656 bytes preserved, 3.36 GB of runroot freed. The log grows again;
+a lasting logging fix is not established. Fresh standard-policy Sequoia passed 2/2 full cycles; Sonoma is
+running. Owning MCP Restart and iPad acceptance remain open.
 
 Older successful Tart/macOS 27/HTPC matrices remain dated evidence, not proof that
 these newer failures are fixed. Exact receipts and diagnostic boundaries are in
@@ -146,7 +148,8 @@ Current Tart acquire refuses cross-container clones before reservation. Registry
 pull/publication is not a local managed-golden transfer and must not upload one.
 The operator had to rebuild Monterey/Xcode in another container (~39 minutes).
 
-Add an explicit journaled copy/transfer to a new destination/name, preserving the
+A source implementation is under test; installation and live acceptance remain
+open. Add an explicit journaled copy/transfer to a new destination/name, preserving the
 source by default. Check full destination capacity and source-not-in-use rules;
 preserve image/recipe provenance, OS/build/security/toolchain verification and
 private identity mapping. Verify copied contents/hashes and destination runtime
