@@ -10,8 +10,8 @@ are distinct artifacts.
 
 ## Acceptance checkpoint (2026-10-15)
 
-The latest completed installation at this checkpoint is `7e9c5ad`, version
-`0.0.0-node-clock`. Factory capacity, node temporary-file permission, stable-TSC
+The latest completed installation at this checkpoint is `0838018`, version
+`0.0.0-workflow-readiness`. Factory capacity, node temporary-file permission, stable-TSC
 capability, console/GUI observations and virtual keyboard corrections are installed. Exact-source local
 `make check` and Staticcheck passed; security scan evidence is recorded below.
 HTTP and fresh stdio MCP passed
@@ -134,6 +134,28 @@ cap truncating the bounded five-minute guest GUI command. Source now uses the
 existing persisted job deadline for the whole sequence, retaining per-command
 caps, original overall preparation budgets and caller TTL. These orchestration
 changes still need a new installed workflow acceptance.
+They were subsequently installed as `0838018`; exact-version HTTP/fresh stdio MCP
+passed. Full local CI includes twelve Python tests and the Go race suite.
+
+Further deterministic real-SSH tests reproduced cancellation being ignored while
+the node peer withheld command-session or forwarding-channel acknowledgement.
+The waits occurred before the existing cancellation select. Source now closes the
+owning transport during channel creation cancellation and during a stalled
+handshake; it detaches cancellation before returning a completed forwarding
+connection. Red/green channel tests, canceled-handshake coverage and continued
+traffic after canceling a successful dial's creation context pass. This bounds
+node commands/probes without shortening an established tunnel's lifetime. It is
+not proof of the earlier payload-less HTTP503's precise cause. This correction
+still needs packaging, installation and provider workflow acceptance.
+
+The forwarded guest transport exposed a related reproduced defect:
+`x/crypto/ssh` channels reject socket deadlines, so ignoring `SetDeadline` left
+the guest command timeout ineffective there. Guest handshake and command limits
+now also use cancelable contexts, including channel creation; the dedicated node
+transport closes before its child channel so shutdown cannot wait on that peer.
+The command fixture without socket-deadline support failed on the old
+implementation; both command and banner timeout fixtures now pass with these bounds. Host-key and authentication
+rejections still fail without fallback; the wider guest/node race suites pass.
 
 The first factory attempt `image-b3dba0ef5874ab2b2d3e8ee4492e5270` failed before
 publication: APFS resize succeeded to 120 GB, then immediate root `df` still
@@ -323,6 +345,7 @@ Clean local package provenance:
 
 | Source revision | Archive SHA-256 | Deployment |
 |---|---|---|
+| `083801895ec9d78b80328645436801b4215dbfdb` | `a74d66420b935ab5a3e076e24a298458f93c76658de683957dcadc91f775f0e6` | Installed; exact MCP passed; outer SSH command budget now follows the existing job deadline |
 | `7e9c5ad6e2f1f331b102dc10819c5ca12d0bc37f` | `b848c75a6f97816f979c2107b8873edf623ff7430424e16f6e963082db9512b1` | Installed; exact MCP and two native Sonoma reboot cycles passed; overall runner stopped on desktop HTTP503 |
 | `edcb7563f8aa02a019ff4cb8e575d8daabc2bd2d` | `82b7f7199948ba117a58a4e5067f4b12c56ab7811919038f2eadda7f8a0f80c1` | Installed; exact MCP passed; both node clones initially ready, post-reboot acceptance still failed |
 | `2724f94ed52696e5482ad8431a19d1a62a427e0b` | `7cff304d53dd3a59a1aed59fe25907d88495043a66bbb7c3f64ad07813bbe6d4` | Installed; MCP and controller rollback/forward passed; node repeat exposed short GUI observation deadlines |
@@ -355,8 +378,8 @@ revocation alongside SSH, cross-key/image-key rejection, workload and artifacts.
 
 - Repeat exact-source local CI and clean packaging for subsequent code changes;
   remote CI is deferred by the operator. Existing package provenance is recorded above.
-- Install the corrected outer preparation deadline and acceptance runner in an
-  idle pool; complete HTPC native/resource/reboot/UI acceptance with disposable
+- Install node SSH channel cancellation correction in an idle pool; complete HTPC
+  native/resource/reboot/UI acceptance with disposable
   clones and repeat native Monterey acceptance for the guest changes.
   Node conversion privacy and overall preparation corrections are installed;
   factory roundtrip and controller-binary rollback/forward passed.

@@ -77,6 +77,8 @@ func sshDialer(signer ssh.Signer, port string) dialer {
 		if err != nil {
 			return nil, err
 		}
+		stop := context.AfterFunc(ctx, func() { raw.Close() })
+		defer stop()
 		deadline := time.Now().Add(10 * time.Second)
 		if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
 			deadline = d
@@ -85,9 +87,17 @@ func sshDialer(signer ssh.Signer, port string) dialer {
 		conn, chans, reqs, err := ssh.NewClientConn(raw, raw.RemoteAddr().String(), cfg)
 		if err != nil {
 			raw.Close()
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
 			return nil, err
 		}
 		_ = raw.SetDeadline(time.Time{})
+		stop()
+		if ctx.Err() != nil {
+			raw.Close()
+			return nil, ctx.Err()
+		}
 		key, _ := ssh.ParsePublicKey([]byte(presented))
 		host := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(key)))
 		return &sshSession{client: ssh.NewClient(conn, chans, reqs), host: host}, nil
@@ -131,11 +141,24 @@ func (s *sshSession) Dial(network, address string) (net.Conn, error) {
 
 // Run executes one fixed command; output is bounded and stays private.
 func (s *sshSession) Run(ctx context.Context, command, input string) (string, error) {
+	if ctx.Err() != nil {
+		return "", ctx.Err()
+	}
+	// NewSession waits for a channel-open reply too. Closing only after Run
+	// starts leaves that earlier wait outside the command's context bound.
+	stop := context.AfterFunc(ctx, s.Close)
+	defer stop()
 	session, err := s.client.NewSession()
 	if err != nil {
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
 		return "", err
 	}
 	defer session.Close()
+	if ctx.Err() != nil {
+		return "", ctx.Err()
+	}
 	var out boundedOutput
 	session.Stdin = strings.NewReader(input)
 	session.Stdout = &out

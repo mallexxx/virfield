@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -232,13 +233,17 @@ func (e *Manager) connectCredentials(ctx context.Context, l domain.Lease, ip str
 	if bootstrap && !c.Secured {
 		auth = append(auth, ssh.Password(user))
 	}
+	var hostRejected atomic.Bool
 	cfg := &ssh.ClientConfig{User: user, Auth: auth, Timeout: 10 * time.Second, HostKeyCallback: func(_ string, _ net.Addr, key ssh.PublicKey) error {
 		actual := key.Marshal()
 		if len(c.HostKey) == 0 {
 			c.HostKey = append([]byte(nil), actual...)
-			return SaveCredentials(e.CredentialPath(l), c)
+			err := SaveCredentials(e.CredentialPath(l), c)
+			hostRejected.Store(err != nil)
+			return err
 		}
 		if subtle.ConstantTimeCompare(actual, c.HostKey) != 1 {
+			hostRejected.Store(true)
 			return fmt.Errorf("guest host key changed")
 		}
 		return nil
@@ -252,18 +257,26 @@ func (e *Manager) connectCredentials(ctx context.Context, l domain.Lease, ip str
 		_ = os.WriteFile(filepath.Join(e.Directory(l), "ssh-connect.log"), []byte(err.Error()+"\n"), 0600)
 		return nil, domain.Err("guest_connect_failed", "Cannot connect to the guest SSH endpoint; inspect private ssh-connect.log")
 	}
-	handshakeDeadline := time.Now().Add(handshakeTimeout)
-	if d, ok := ctx.Deadline(); ok && d.Before(handshakeDeadline) {
-		handshakeDeadline = d
-	}
+	handshakeCtx, cancelHandshake := context.WithTimeout(ctx, handshakeTimeout)
+	defer cancelHandshake()
+	handshakeDeadline, _ := handshakeCtx.Deadline()
 	_ = raw.SetDeadline(handshakeDeadline)
-	stopCancellation := context.AfterFunc(ctx, func() { _ = raw.Close() })
+	// Forwarded SSH channels reject SetDeadline; the context is the actual
+	// handshake bound on both direct TCP and node-forwarded transports.
+	stopCancellation := context.AfterFunc(handshakeCtx, func() { _ = raw.Close() })
 	defer stopCancellation()
 	conn, chans, reqs, err := ssh.NewClientConn(raw, address, cfg)
 	if err != nil {
 		raw.Close()
 		if strings.Contains(err.Error(), "unable to authenticate") {
 			return nil, domain.Err("guest_authentication_failed", "Guest rejected the SSH credential")
+		}
+		if hostRejected.Load() {
+			return nil, domain.Err("guest_ssh_failed", "Guest authentication or pinned host key verification failed")
+		}
+		if errors.Is(handshakeCtx.Err(), context.DeadlineExceeded) {
+			_ = os.WriteFile(filepath.Join(e.Directory(l), "ssh-connect.log"), []byte(err.Error()+"\n"), 0600)
+			return nil, domain.Err("guest_connect_failed", "Guest SSH handshake timed out before readiness; inspect private ssh-connect.log")
 		}
 		// A forwarded port accepts TCP before the guest's sshd listens: a
 		// handshake dropped before the server spoke is not ready yet.
@@ -278,6 +291,13 @@ func (e *Manager) connectCredentials(ctx context.Context, l domain.Lease, ip str
 		}
 		return nil, domain.Err("guest_ssh_failed", "Guest authentication or pinned host key verification failed")
 	}
+	stopCancellation()
+	if handshakeCtx.Err() != nil {
+		conn.Close()
+		raw.Close()
+		return nil, domain.Err("guest_connect_failed", "Guest SSH handshake exceeded its readiness deadline")
+	}
+	cancelHandshake()
 	_ = raw.SetDeadline(time.Time{})
 	g := &Client{client: ssh.NewClient(conn, chans, reqs), raw: raw, diagnosticDir: e.Directory(l)}
 	model, err := g.Run(ctx, "/usr/sbin/sysctl -n hw.model", "")
@@ -303,17 +323,27 @@ func (g *Client) RunMutation(ctx context.Context, command, input string) (string
 }
 
 func (g *Client) RunReader(ctx context.Context, timeout time.Duration, command string, input io.Reader) (string, error) {
-	deadline := time.Now().Add(timeout)
-	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
-		deadline = d
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	if ctx.Err() != nil {
+		return "", ctx.Err()
 	}
+	stopCancellation := context.AfterFunc(ctx, g.Close)
+	defer stopCancellation()
+	deadline, _ := ctx.Deadline()
 	_ = g.raw.SetDeadline(deadline)
 	defer func() { _ = g.raw.SetDeadline(time.Time{}) }()
 	session, err := g.client.NewSession()
 	if err != nil {
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
 		return "", domain.Err("guest_command_failed", "Cannot open guest SSH session")
 	}
 	defer session.Close()
+	if ctx.Err() != nil {
+		return "", ctx.Err()
+	}
 	session.Stdin = input
 	// Fixed commands return only short probes. Bound even a compromised guest's output.
 	var out boundedOutput
@@ -327,6 +357,9 @@ func (g *Client) RunReader(ctx context.Context, timeout time.Duration, command s
 		<-done
 		return "", ctx.Err()
 	case err := <-done:
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
 		if err != nil {
 			// Output stays private to the image executor; never attach it to a
 			// public error, event or API response.

@@ -216,7 +216,20 @@ func (r *Runtime) DialGuest(ctx context.Context, l domain.Lease, _ string) (net.
 	if err != nil {
 		return nil, err
 	}
+	// A direct-tcpip channel can stall before Dial returns. Cancel its owning
+	// SSH session during creation, then detach cancellation before returning a
+	// successful tunnel: its I/O must outlive the short connection context.
+	stop := context.AfterFunc(ctx, s.Close)
+	defer stop()
 	conn, err := s.Dial("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(l.SSHPort)))
+	stop()
+	if ctx.Err() != nil {
+		if conn != nil {
+			conn.Close()
+		}
+		s.Close()
+		return nil, ctx.Err()
+	}
 	if err != nil {
 		s.Close()
 		return nil, err
@@ -231,9 +244,10 @@ type tunnelConn struct {
 }
 
 func (c *tunnelConn) Close() error {
-	err := c.Conn.Close()
+	// A channel close can wait for its SSH transport to write. Abort the
+	// dedicated owning transport first so cancellation cannot block there.
 	c.session.Close()
-	return err
+	return c.Conn.Close()
 }
 
 // imageNode validates an image VM name and returns its node. Image VMs live

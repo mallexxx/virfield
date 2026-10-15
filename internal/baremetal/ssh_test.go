@@ -159,10 +159,13 @@ func TestDialGuestTunnelsToNodeLoopbackPort(t *testing.T) {
 	address, port, _ := net.SplitHostPort(addr)
 	n := Node{ID: "htpc", Address: address, User: "bazzite", HostKeys: []string{authorized(host)}, OS: "linux", Arch: "amd64"}
 	r := New([]Node{n}, sshDialer(newSigner(t), port))
-	conn, err := r.DialGuest(context.Background(), domain.Lease{Location: "htpc", SSHPort: 22100}, "192.168.1.86:22100")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	conn, err := r.DialGuest(ctx, domain.Lease{Location: "htpc", SSHPort: 22100}, "192.168.1.86:22100")
 	if err != nil {
 		t.Fatal(err)
 	}
+	cancel() // A completed dial detaches from its short creation context.
 	defer conn.Close()
 	if _, err := conn.Write([]byte("ping")); err != nil {
 		t.Fatal(err)
