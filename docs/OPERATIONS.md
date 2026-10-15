@@ -437,9 +437,16 @@ qualification. This read-only preflight leaves credentials untouched on failure.
 Credential mutation failures retain bounded private stdout/stderr even after a
 deadline, plus a fixed failure class and secret-free timestamped phases in
 `leases/<id>/provision.log`. No command is automatically replayed after a timeout.
-Automatic login unlocks GUI access after reboot; every SSH
-command unlocks in its own Security audit session before executing the original
-command. The inherited login keychain's items are retained and its password is rotated to match the VM; this prevents OS services from leaving old login-keychain password dialogs on screen. Its native access is verified after lock/unlock with the new password. Tart clones and factory recipes request `1920x1080px` (72 PPI), independent of the host Retina scale. Point units, including an omitted unit, can leave Monterey at 3840×2160 without a 1920×1080 mode. The actual 1920×1080 desktop is selected and verified inside Aqua before native keychain acceptance. Shared physical nodes are not
+Aqua unlock is performed by the owned GUI agent. `RunAtLoad` can remain registered
+with zero runs and a speculative pending spawn after login. Qualification and
+post-reboot verification demand this agent without `-k`, leaving any running
+startup intact. The worker SSH bridge waits for Aqua registration and current
+scope/boot startup proof before executing the original command, then unlocks in
+its own Security audit session. This wait is bounded and does not consume the
+original command's stdin. Image bootstrap SSH is exempt so it can prepare the GUI.
+Only a completed automatic startup in the same scope, boot and Aqua audit session
+can be reused; explicit nonce-bearing native requests always run again.
+The inherited login keychain's items are retained and its password is rotated to match the VM; this prevents OS services from leaving old login-keychain password dialogs on screen. Its native access is verified after lock/unlock with the new password. Tart clones and factory recipes request `1920x1080px` (72 PPI), independent of the host Retina scale. Point units, including an omitted unit, can leave Monterey at 3840×2160 without a 1920×1080 mode. The actual 1920×1080 desktop is selected and verified inside Aqua before native keychain acceptance. Shared physical nodes are not
 modified by this VM preparation policy.
 
 Console, automatic startup and fresh native-result observations share one
@@ -449,6 +456,9 @@ SSH can precede the cold HDD Aqua login/agent by minutes; the caller's original
 operation/lease deadline still caps it. Cold agents have produced valid proof
 just after both an earlier 120-second guard and a five-minute verification bound.
 Native scope/boot/nonce and I/O checks remain mandatory.
+Time already spent in the worker SSH GUI gate is deducted from the native command
+budget, and an exhausted budget fails before another mutation phase. An SSH
+banner alone does not prove that the post-reboot GUI startup has completed.
 Before worker readiness, a separate bounded probe reads a complete RFB greeting
 from guest localhost:5900 through authenticated, pinned guest SSH. This starts and
 verifies Screen Sharing itself; launchd owning a LISTEN socket is insufficient.

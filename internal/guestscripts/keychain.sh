@@ -20,6 +20,12 @@ case "$(sysctl -n hw.model)" in VirtualMac*|iMacPro1,1) ;; *) exit 64 ;; esac
 # The caller's original operation/lease context still bounds the command.
 deadline=$((SECONDS+285))
 [[ "$mode" != verify ]] || deadline=$((SECONDS+585))
+# The worker SSH bridge may already have waited for this boot's Aqua startup.
+# Keep one command budget instead of giving the verification a second one.
+bridge_elapsed="${VIRFIELD_GUI_WAIT_ELAPSED:-0}"
+[[ "$bridge_elapsed" =~ ^[0-9]{1,3}$ ]] && (( bridge_elapsed <= 585 )) || exit 64
+deadline=$((deadline-bridge_elapsed))
+(( SECONDS < deadline )) || { echo 'GUI verification command budget was exhausted' >&2; exit 65; }
 for ((attempt=0; attempt<120; attempt++)); do
   [[ "$(stat -f %Su /dev/console)" == "$user" ]] && break
   sleep 1
@@ -143,9 +149,9 @@ boot="$(sysctl -n kern.bootsessionuuid)"
 export VIRFIELD_DISPLAY_MANAGED=0
 [[ "$(sysctl -n hw.model)" != VirtualMac* ]] || export VIRFIELD_DISPLAY_MANAGED=1
 phase() { printf '%s %s\n' "$(/bin/date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" > "$dir/phase"; }
-phase starting
 mode=ensure
 nonce="login-$boot"
+explicit_request=false
 if [[ -f "$dir/request" && ! -L "$dir/request" ]]; then
   { IFS= read -r requested_mode; IFS= read -r requested_nonce; IFS= read -r requested_boot; } < "$dir/request"
   rm "$dir/request"
@@ -153,9 +159,19 @@ if [[ -f "$dir/request" && ! -L "$dir/request" ]]; then
   if [[ "$requested_boot" == "$boot" ]]; then
     [[ "$requested_mode" == ensure || "$requested_mode" == verify ]] || exit 64
     [[ "$requested_nonce" =~ ^keychain-[a-f0-9]+$ ]] || exit 64
-    mode="$requested_mode"; nonce="$requested_nonce"
+    mode="$requested_mode"; nonce="$requested_nonce"; explicit_request=true
   fi
 fi
+aqua_session="$(/usr/bin/osascript -l JavaScript -e "ObjC.import('Security'); function run() { var sid=Ref(), attributes=Ref(); if (Number($.SessionGetInfo(4294967295, sid, attributes)) !== 0 || (Number(attributes[0]) & 16) === 0) throw new Error('Aqua session unavailable'); return String(Number(sid[0])); }")"
+[[ "$aqua_session" =~ ^[0-9]+$ ]] || exit 65
+# ai.virfield.agent-startup-once begin
+# A demand start can race a RunAtLoad instance that just completed. Reuse only
+# that same boot's automatic proof; explicit native requests always run anew.
+if [[ "$explicit_request" == false && -f "$dir/startup" && ! -L "$dir/startup" && "$(cat "$dir/startup")" == "$(printf '%s\n%s' "$scope" "$boot")" && -f "$dir/startup-session" && ! -L "$dir/startup-session" && "$(cat "$dir/startup-session")" == "$aqua_session" ]]; then
+  exit 0
+fi
+# ai.virfield.agent-startup-once end
+phase starting
 keychain="$HOME/Library/Keychains/virfield-$scope.keychain-db"
 [[ ! -L "$keychain" ]] || exit 65
 if [[ "$mode" == ensure ]]; then
@@ -261,6 +277,8 @@ chmod 600 "$dir/result.next"
 mv "$dir/result.next" "$dir/result"
 grep -q '"ready":true' "$dir/result" || exit 65
 if [[ "$mode" == ensure ]]; then
+  printf '%s\n' "$aqua_session" > "$dir/startup-session.next"
+  mv "$dir/startup-session.next" "$dir/startup-session"
   printf '%s\n%s\n' "$scope" "$boot" > "$dir/startup.next"
   mv "$dir/startup.next" "$dir/startup"
 fi
@@ -292,6 +310,33 @@ dir="$HOME/.virfield-keychain"
 [[ "$scope" =~ ^(image|lease)-[a-zA-Z0-9_.-]+$ && -n "$password" ]] || exit 65
 keychain="$HOME/Library/Keychains/virfield-$scope.keychain-db"
 [[ ! -L "$keychain" && "$(/usr/bin/stat -f %u:%Lp "$keychain")" == "$(/usr/bin/id -u):600" ]] || exit 65
+# ai.virfield.ssh-gui-startup begin
+gui_started=$SECONDS
+export VIRFIELD_GUI_WAIT_ELAPSED=0
+if [[ "$scope" == lease-* ]]; then
+  boot="$(/usr/sbin/sysctl -n kern.bootsessionuuid)"
+  expected="$(printf '%s\n%s' "$scope" "$boot")"
+  if [[ ! -f "$dir/startup" || -L "$dir/startup" || "$(cat "$dir/startup")" != "$expected" ]]; then
+    # RunAtLoad may remain registered with runs=0 as a speculative spawn after
+    # login. Demand the owned Aqua agent without killing an existing instance.
+    gui_deadline=$((SECONDS+585))
+    agent_requested=false
+    target="gui/$(/usr/bin/id -u)/ai.virfield.guest-keychain"
+    while (( SECONDS < gui_deadline )); do
+      [[ -f "$dir/startup" && ! -L "$dir/startup" && "$(cat "$dir/startup")" == "$expected" ]] && break
+      # SSH may answer before loginwindow creates its Aqua service domain.
+      # Wait for registration, then demand this instance once without -k.
+      if [[ "$agent_requested" == false ]] && /bin/launchctl print "$target" >/dev/null 2>&1; then
+        /bin/launchctl kickstart "$target"
+        agent_requested=true
+      fi
+      sleep 1
+    done
+    [[ -f "$dir/startup" && ! -L "$dir/startup" && "$(cat "$dir/startup")" == "$expected" ]] || { echo 'GUI startup proof is unavailable' >&2; exit 65; }
+  fi
+fi
+export VIRFIELD_GUI_WAIT_ELAPSED=$((SECONDS-gui_started))
+# ai.virfield.ssh-gui-startup end
 /usr/bin/security unlock-keychain -p "$password" "$keychain" >/dev/null
 if [[ -e "$HOME/Library/Keychains/login.keychain-db" ]]; then
   /usr/bin/security unlock-keychain -p "$password" "$HOME/Library/Keychains/login.keychain-db" >/dev/null
@@ -313,15 +358,25 @@ SSH
   printf '%s\n' "$password" | sudo -S -p '' /usr/sbin/sshd -t
 else
   # Wait for this boot's automatic agent. Old golden evidence is insufficient.
+  # ai.virfield.verify-startup begin
   expected="$(printf '%s\n%s' "$scope" "$boot")"
+  # RunAtLoad is a non-demand condition and can remain speculative indefinitely.
+  # Without -k, an already running startup is left intact.
+  startup_requested=false
   # Startup and the requested proof share one command deadline; neither phase
   # restarts that budget. Keep the exact scope/boot match on the automatic agent.
   while (( SECONDS < deadline )); do
-    [[ -f "$dir/startup" && "$(cat "$dir/startup")" == "$expected" ]] && break
+    [[ -f "$dir/startup" && ! -L "$dir/startup" && "$(cat "$dir/startup")" == "$expected" ]] && break
+    if [[ "$startup_requested" == false ]] && launchctl print "gui/$uid/$label" >/dev/null 2>&1; then
+      launchctl kickstart "gui/$uid/$label"
+      startup_requested=true
+    fi
     sleep 1
   done
-  [[ -f "$dir/startup" && "$(cat "$dir/startup")" == "$expected" ]] || { echo 'GUI agent did not publish fresh startup proof' >&2; exit 65; }
+  [[ -f "$dir/startup" && ! -L "$dir/startup" && "$(cat "$dir/startup")" == "$expected" ]] || { echo 'GUI agent did not publish fresh startup proof' >&2; exit 65; }
+  # ai.virfield.verify-startup end
 fi
+(( SECONDS < deadline )) || { echo 'GUI verification command budget was exhausted' >&2; exit 65; }
 [[ ! -L "$dir/result" && ! -L "$dir/request" && ! -L "$dir/agent.log" ]] || exit 65
 : > "$dir/agent.log"; chmod 600 "$dir/agent.log"
 rm -f "$dir/result"
@@ -330,6 +385,7 @@ chmod 600 "$dir/request.next"
 mv "$dir/request.next" "$dir/request"
 if [[ "$mode" == ensure ]]; then
   launchctl bootstrap "gui/$uid" "$plist"
+  launchctl kickstart "gui/$uid/$label"
 else
   # startup is written just before the login agent exits. Restart this owned
   # agent even in that brief overlap, so a verify request cannot be dropped.

@@ -124,6 +124,37 @@ passed. This source-only correction awaits an idle installation; it is not
 included in `750a896`.
 Evidence: `virfield-tunnel-continuity-red/green-20261015.log`.
 
+The first Sonoma's new reboot exposed a concrete startup cause rather than a
+long native I/O operation. Pinned read-only diagnostics showed a new boot UUID
+and a running Finder, but startup/result still belonged to the old boot. At
+`10:43:39 UTC`, `launchctl print gui/501/ai.virfield.guest-keychain` reported
+`state = not running`, `runs = 0`, never exited, and
+`pended nondemand spawn = speculative`. At `10:45:23 UTC`, one journaled
+`kickstart` without `-k` of that exact owned agent changed it to runs 1. Fresh
+native Aqua/new SSH proof and the real-reboot workflow then passed without manual
+GUI password entry. Both Sonoma fixtures completed their workloads/artifacts/RFB
+and were released. This is a demand-start experiment, not an unmodified `750a896`
+automatic-start PASS. The live helper also reads the repository's verification
+script at each probe, so later probes can include this source correction while
+the controller remains `750a896`; `acceptance-source-mix.json` records that scope.
+The Sequoia pair continues separately.
+
+Source now demands the existing agent during initial qualification and before
+waiting for post-reboot startup. Worker SSH waits for registration and current
+scope/boot proof before the original command, then unlocks its own audit session;
+image bootstrap SSH remains usable. A completed automatic run is reused only in
+the same scope, boot and Aqua audit session, preventing a duplicate demand race
+without skipping a new GUI login. Explicit native requests are never skipped.
+The SSH wait is deducted from the original verification budget; no timeout was
+increased. Real shell regressions cover deferred registration, one demand without
+killing a running agent, missing/failed startup, preserved stdin, image bootstrap,
+new audit sessions and exhausted inherited budgets. Targeted tests, full local
+CI (seventeen Python tests and Go vet/race) and pinned Staticcheck passed. A new
+installed worker-bridge repeat remains required. Private
+evidence: `first-sonoma-agent-registration.log`,
+`first-sonoma-agent-demand-start.log`, `first-sonoma-agent-demand-intervention.json`
+under the HTPC journal above.
+
 An earlier code checkpoint installed `8c521fe`, version
 `0.0.0-desktop-preflight`. Subsequent runbook/acceptance-tool packages retain this
 dated code-test provenance and carry their own exact `release.json` revision.
