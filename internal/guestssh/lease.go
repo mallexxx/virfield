@@ -13,6 +13,7 @@ import (
 
 	"github.com/mallexxx/virfield/internal/domain"
 	"github.com/mallexxx/virfield/internal/guestkeychain"
+	"github.com/mallexxx/virfield/internal/qualify"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -46,6 +47,14 @@ func (e *Manager) Prepare(ctx context.Context, l domain.Lease) (domain.SSHConnec
 	}
 
 	defer g.Close()
+	// SSH can become available before the inherited automatic GUI login has
+	// finished. As in image qualification, require a settled desktop before
+	// changing the account/autologin secret that loginwindow is consuming.
+	// This preflight is read-only: failure must leave inherited identities
+	// untouched and must not create a new secured lease identity.
+	if err := qualify.Desktop(ctx, g); err != nil {
+		return result, err
+	}
 	scoped := e.derive("leases")
 	if err := os.MkdirAll(scoped.Directory(l), 0700); err != nil {
 		return result, err

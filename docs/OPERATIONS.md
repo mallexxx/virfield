@@ -383,8 +383,10 @@ New node image conversion explicitly sets the OCI process umask to `0077`;
 the temporary qcow2 is private from creation and becomes mode `0400` before
 publication. Existing staging files are not overwritten; exact-name image
 deletion also removes that image's interrupted conversion file.
-Quotas and the HDD root are installed; two concurrent reservations were observed.
-Complete native node acceptance remains pending after HDD contention clears.
+Quotas and the private HDD root are installed; two concurrent reservations and
+two Sonoma native GUI/SSH reboot cycles passed on the dated candidate in
+[Verification](VERIFICATION.md). The complete current node workflow matrix
+remains open; consult that record for the latest reproduced failure and evidence.
 
 Backup snapshots SQLite, config, the owner-token hash and image credentials into
 an owner-only directory; five complete snapshots are retained. VM disks are not
@@ -404,7 +406,10 @@ become new requests after pruning. Migration snapshots are retained separately.
 The candidate prepares an owner-only default keychain named for each image/lease,
 an Aqua LaunchAgent (`ai.virfield.guest-keychain`) and a VM-only SSH command bridge
 (`/etc/ssh/sshd_config.d/001-virfield-keychain.conf`). Guest state is private under
-`~/.virfield-keychain`. Automatic login unlocks GUI access after reboot; every SSH
+`~/.virfield-keychain`. Worker preparation first requires the inherited Finder
+desktop to settle before rotating account/autologin credentials, matching image
+qualification. This read-only preflight leaves credentials untouched on failure.
+Automatic login unlocks GUI access after reboot; every SSH
 command unlocks in its own Security audit session before executing the original
 command. The inherited login keychain's items are retained and its password is rotated to match the VM; this prevents OS services from leaving old login-keychain password dialogs on screen. Its native access is verified after lock/unlock with the new password. Tart clones and factory recipes request `1920x1080px` (72 PPI), independent of the host Retina scale. Point units, including an omitted unit, can leave Monterey at 3840×2160 without a 1920×1080 mode. The actual 1920×1080 desktop is selected and verified inside Aqua before native keychain acceptance. Shared physical nodes are not
 modified by this VM preparation policy.
@@ -420,4 +425,6 @@ removes its private directory. Public API errors/events never contain these logs
 Do not mark ready on a CLI unlock exit code: native application-style key storage
 must work in both contexts. Do not replace a keychain on an active user's lease or
 reset application databases; prepare a new disposable lease after deployment.
-The existing daemon remains installed until the operator-approved lease wait ends.
+The lease wait ended and signed candidates were installed through the existing
+launchd service. Keep source, installed-package and already-connected-client
+acceptance separate; [Verification](VERIFICATION.md) records their exact scope.

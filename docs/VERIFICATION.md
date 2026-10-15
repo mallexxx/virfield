@@ -10,8 +10,8 @@ are distinct artifacts.
 
 ## Acceptance checkpoint (2026-10-15)
 
-The latest completed installation at this checkpoint is `0838018`, version
-`0.0.0-workflow-readiness`. Factory capacity, node temporary-file permission, stable-TSC
+The latest completed installation at this checkpoint is `c85a899`, version
+`0.0.0-ssh-bounds`. Factory capacity, node temporary-file permission, stable-TSC
 capability, console/GUI observations and virtual keyboard corrections are installed. Exact-source local
 `make check` and Staticcheck passed; security scan evidence is recorded below.
 HTTP and fresh stdio MCP passed
@@ -146,7 +146,8 @@ connection. Red/green channel tests, canceled-handshake coverage and continued
 traffic after canceling a successful dial's creation context pass. This bounds
 node commands/probes without shortening an established tunnel's lifetime. It is
 not proof of the earlier payload-less HTTP503's precise cause. This correction
-still needs packaging, installation and provider workflow acceptance.
+was subsequently packaged and installed as `c85a899`; provider workflow
+acceptance remains open.
 
 The forwarded guest transport exposed a related reproduced defect:
 `x/crypto/ssh` channels reject socket deadlines, so ignoring `SetDeadline` left
@@ -156,6 +157,39 @@ transport closes before its child channel so shutdown cannot wait on that peer.
 The command fixture without socket-deadline support failed on the old
 implementation; both command and banner timeout fixtures now pass with these bounds. Host-key and authentication
 rejections still fail without fallback; the wider guest/node race suites pass.
+
+Installed `c85a899` passed exact-source full local CI (twelve Python tests,
+Go vet/race), Staticcheck, Gitleaks (215 commits) and HTTP/fresh stdio MCP
+exact-version/all-four-runbooks/resources/status. Its next concurrent node run
+failed before keychain agent installation: one Sonoma console login did not
+become ready within 120 seconds. Both owned failed fixtures were released.
+The cause is not established by that error alone. Two additional owned Sonoma
+fixtures then passed native Aqua/new SSH I/O before/after real reboot, fresh boot
+UUID/nonce, 1920x1080, exact OS/build/SIP, distinct host keys, cross-key refusal,
+workloads, artifacts and RFB. Their starts were staggered; this does not replace
+the repeat of simultaneous cold boot. The second fixture's inherited console was
+already `admin` with Finder running before credential rotation, so that run did
+not reproduce an autologin race. No manual GUI unlock was used. Evidence:
+`/private/tmp/virfield-installed-htpc-native-c85a899-20261015` and
+`/private/tmp/virfield-console-retained-c85a899-20261015`.
+
+Inspection also found worker preparation rotating account/autologin credentials
+immediately after SSH availability, unlike image qualification's prior desktop
+barrier. Source now requires the same settled Finder desktop before any worker
+credential mutation or secured lease identity creation. A real-SSH regression
+with an absent desktop fails on the old source and passes with the barrier;
+image credentials remain byte-identical. This closes the missing ordering
+precondition, without claiming it caused the earlier console-login failure.
+The installed provider matrix must be repeated with this correction.
+
+The physical HTPC lease passed on `c85a899`: acquire/replay, exclusive-host
+refusal of a second lease, pinned SSH workload, artifact export and release.
+After release its own workspace was absent, the baseline `authorized_keys` hash
+was unchanged and the caller key was rejected. The physical node's SSH service
+remained available as required; an initial runner assertion that its direct
+port must close was corrected through read-only post-release verification.
+No physical host reboot was dispatched. Evidence:
+`/private/tmp/virfield-installed-htpc-host-c85a899-20261015/journal.json`.
 
 The first factory attempt `image-b3dba0ef5874ab2b2d3e8ee4492e5270` failed before
 publication: APFS resize succeeded to 120 GB, then immediate root `df` still
