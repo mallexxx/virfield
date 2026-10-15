@@ -165,8 +165,14 @@ dialog. A running Finder or successful native I/O alone does not prove this.
 Confirmed `vm_drift` cannot currently be restored to `ready` in place. Operator
 resolve queues cleanup; never call it to preserve a workspace. Unverified
 temporary inventory is handled separately and can recover without replacing a
-ready lease. Non-destructive drift revalidation, durable drift/tunnel reasons and
-an optional legacy iOS profile remain planned. Explicit verified local transfer
+ready lease. Non-destructive drift revalidation and an optional legacy iOS
+profile remain planned. The F2 source candidate adds bounded typed diagnostics
+to `virfield_events`: expected/observed endpoints before drift, backend cause
+codes/fingerprints and separate listener/stream reasons. Filter by lease ID;
+retain the cursor, allow ID gaps and inspect the latest 32 records per kind.
+Records survive VM cleanup until normal retention. Payloads, credentials and
+desktop URLs are excluded; an unclassified error fingerprint is not a proven
+root cause. F2 is not yet installed/live accepted. Explicit verified local transfer
 is installed/live accepted on a45655f; inspect current tool metadata before use.
 The F3 source candidate adds `resource_admission` to status and `error.admission`
 to refusals: CPU/RAM, each storage's observed free, reserved full growth, requested

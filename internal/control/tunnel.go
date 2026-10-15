@@ -17,6 +17,10 @@ import (
 // Screen Sharing, which authenticates with the lease password. They never
 // terminate a protocol or accept caller-selected destinations.
 type tunnel struct {
+	service        string
+	closeReason    string
+	lifecycle      *sync.WaitGroup
+	record         func(domain.Diagnostic)
 	closed         bool
 	paused         bool
 	listener       net.Listener
@@ -59,11 +63,15 @@ func (c *Controller) desktopURL(l domain.Lease, address string) (string, error) 
 	return u.String(), nil
 }
 
-func (t *tunnel) close() {
-	t.listener.Close()
+func (t *tunnel) close(reason string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if t.closed {
+		return
+	}
 	t.closed = true
+	t.closeReason = reason
+	t.listener.Close()
 	for c := range t.connections {
 		c.Close()
 	}
@@ -74,6 +82,9 @@ func (c *Controller) OpenTunnel(ctx context.Context, id, service string) (domain
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.tunnelsClosed {
+		return domain.Tunnel{}, domain.Err("service_stopping", "Tunnels are closed for daemon shutdown")
+	}
 	l, err := c.store.Lease(ctx, id)
 	if err != nil {
 		return domain.Tunnel{}, err
@@ -106,7 +117,13 @@ func (c *Controller) OpenTunnel(ctx context.Context, id, service string) (domain
 	if err != nil {
 		return domain.Tunnel{}, domain.Err("tunnel_unavailable", "Cannot allocate loopback tunnel")
 	}
-	t := &tunnel{listener: ln, connections: map[net.Conn]bool{}, lease: l}
+	t := &tunnel{listener: ln, connections: map[net.Conn]bool{}, lease: l, service: service, lifecycle: &c.tunnelWG}
+	t.record = func(d domain.Diagnostic) {
+		expected := expectedIdentity(t.lease)
+		d.Expected = &expected
+		d.Service = service
+		c.recordDiagnostic(l.ID, d)
+	}
 	t.verifyEndpoint = func() bool {
 		c.mu.Lock()
 		defer c.mu.Unlock()
@@ -126,6 +143,8 @@ func (c *Controller) OpenTunnel(ctx context.Context, id, service string) (domain
 		return domain.Tunnel{}, err
 	}
 	c.tunnels[key] = t
+	c.listenerDiagnosticLocked(t, "opened", "ready")
+	c.tunnelWG.Add(1)
 	go t.serve()
 	return tunnel, nil
 }
@@ -151,7 +170,8 @@ func (c *Controller) CloseTunnel(ctx context.Context, id, service string) error 
 	}
 	key := tunnelKey(id, service)
 	if t := c.tunnels[key]; t != nil {
-		t.close()
+		t.close("explicit_close")
+		c.listenerDiagnosticLocked(t, "closed", "explicit_close")
 		delete(c.tunnels, key)
 	}
 	return nil
@@ -160,8 +180,25 @@ func (c *Controller) reconcileTunnels(ls []domain.Lease) {
 	for key, t := range c.tunnels {
 		keep := false
 		paused := false
+		reason := "lease_unavailable"
 		for _, l := range ls {
-			if l.ID != t.lease.ID || l.State != "ready" || l.IP != t.lease.IP || l.SSHPort != t.lease.SSHPort || !l.ExpiresAt.After(c.now()) {
+			if l.ID != t.lease.ID {
+				continue
+			}
+			if !l.ExpiresAt.After(c.now()) {
+				reason = "expiry"
+				break
+			}
+			if l.State == "released" || l.State == "releasing" {
+				reason = "release"
+				break
+			}
+			if l.Error != nil && l.Error.Code == "vm_drift" {
+				reason = "verified_drift"
+				break
+			}
+			if l.State != "ready" || l.IP != t.lease.IP || l.SSHPort != t.lease.SSHPort {
+				reason = "endpoint_changed"
 				continue
 			}
 			vm, exists := c.vm(l)
@@ -176,35 +213,59 @@ func (c *Controller) reconcileTunnels(ls []domain.Lease) {
 				keep = true
 				break
 			}
+			reason = "verified_endpoint_change"
 		}
 		if !keep {
-			t.close()
+			t.close(reason)
+			c.listenerDiagnosticLocked(t, "closed", reason)
 			delete(c.tunnels, key)
 		} else {
 			t.mu.Lock()
+			changed := t.paused != paused
 			t.paused = paused
 			t.mu.Unlock()
+			if changed {
+				action, reason := "resumed", "inventory_verified"
+				if paused {
+					action, reason = "paused", "inventory_unverified"
+				}
+				c.listenerDiagnosticLocked(t, action, reason)
+			}
 		}
 	}
 }
 func (c *Controller) closeTunnels() {
 	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.tunnelsClosed = true
 	for id, t := range c.tunnels {
-		t.close()
+		t.close("daemon_shutdown")
+		c.listenerDiagnosticLocked(t, "closed", "daemon_shutdown")
 		delete(c.tunnels, id)
+	}
+	c.mu.Unlock()
+	done := make(chan struct{})
+	go func() { c.tunnelWG.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(20 * time.Second):
+		c.log.Error("tunnel diagnostics did not drain before shutdown deadline")
 	}
 }
 
 func (c *Controller) pauseTunnels() {
 	for _, t := range c.tunnels {
 		t.mu.Lock()
+		changed := !t.paused
 		t.paused = true
 		t.mu.Unlock()
+		if changed {
+			c.listenerDiagnosticLocked(t, "paused", "backend_unavailable")
+		}
 	}
 }
 
 func (t *tunnel) serve() {
+	defer t.lifecycle.Done()
 	for {
 		in, err := t.listener.Accept()
 		if err != nil {
@@ -212,48 +273,153 @@ func (t *tunnel) serve() {
 		}
 		t.mu.Lock()
 		if t.closed || t.paused || t.clients >= 32 {
+			reason := "connection_limit"
+			if t.closed {
+				reason = t.closeReason
+			} else if t.paused {
+				reason = "listener_paused"
+			}
 			t.mu.Unlock()
 			in.Close()
+			t.record(domain.Diagnostic{Kind: "tunnel.stream", Action: "rejected", Reason: reason, Summary: "Tunnel connection rejected: " + reason})
 			continue
 		}
 		t.connections[in] = true
 		t.clients++
 		t.mu.Unlock()
+		t.lifecycle.Add(1)
 		go func() {
+			defer t.lifecycle.Done()
+			d := domain.Diagnostic{Kind: "tunnel.stream", Action: "terminated", Reason: "peer_eof"}
+			defer func() {
+				t.mu.Lock()
+				forced := t.closeReason
+				t.mu.Unlock()
+				if forced != "" {
+					d.Reason = forced
+					d.BackendError = nil
+				}
+				d.Summary = "Tunnel stream terminated: " + d.Reason
+				t.record(d)
+			}()
 			defer func() { in.Close(); t.mu.Lock(); delete(t.connections, in); t.clients--; t.mu.Unlock() }()
 			if t.verifyEndpoint != nil && !t.verifyEndpoint() {
+				d.Reason = "endpoint_unverified"
 				return
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			out, err := t.dial(ctx)
 			cancel()
 			if err != nil {
+				d.Reason = "upstream_dial_failure"
+				d.BackendError = diagnosticError(err)
 				return
 			}
 			defer out.Close()
 			if t.verifyEndpoint != nil && !t.verifyEndpoint() {
+				d.Reason = "endpoint_changed"
 				return
 			}
 			t.mu.Lock()
 			if t.closed || t.paused {
+				d.Reason = "listener_paused"
 				t.mu.Unlock()
 				return
 			}
 			t.connections[out] = true
 			t.mu.Unlock()
 			defer func() { t.mu.Lock(); delete(t.connections, out); t.mu.Unlock() }()
-			done := make(chan struct{})
+			done := make(chan copyResult, 1)
+			failures := make(chan copyResult, 1)
+			cleanup := make(chan struct{})
+			recordFailure := func(result copyResult) {
+				if result.err != nil {
+					select {
+					case failures <- result:
+					default:
+					}
+				}
+			}
 			go func() {
-				io.Copy(out, in)
+				result := copyEndpoints(out, in, "guest", "client")
+				select {
+				case <-cleanup:
+				default:
+					recordFailure(result)
+				}
+				if result.err != nil {
+					out.Close()
+				}
 				if tcp, ok := out.(*net.TCPConn); ok {
 					tcp.CloseWrite()
 				}
-				close(done)
+				done <- result
 			}()
-			io.Copy(in, out)
+			result := copyEndpoints(in, out, "client", "guest")
+			recordFailure(result)
+			close(cleanup)
 			in.Close()
 			out.Close()
-			<-done
+			up := <-done
+			d.BytesToGuest, d.BytesToClient = up.bytes, result.bytes
+			select {
+			case failure := <-failures:
+				d.Reason = "client_io"
+				if failure.side == "guest" {
+					d.Reason = "upstream_io"
+				}
+				d.Direction = failure.direction
+				d.BackendError = diagnosticError(failure.err)
+			default:
+			}
 		}()
 	}
+}
+
+func (c *Controller) listenerDiagnosticLocked(t *tunnel, action, reason string) {
+	expected := expectedIdentity(t.lease)
+	c.recordDiagnosticLocked(t.lease.ID, domain.Diagnostic{Kind: "tunnel.listener", Action: action, Reason: reason, Summary: "Tunnel listener " + action + ": " + reason, Service: t.service, Expected: &expected})
+}
+
+type copyResult struct {
+	bytes           int64
+	err             error
+	side, direction string
+}
+type observedReader struct {
+	source io.Reader
+	err    error
+}
+
+func (r *observedReader) Read(p []byte) (int, error) {
+	n, err := r.source.Read(p)
+	if err != nil && err != io.EOF {
+		r.err = err
+	}
+	return n, err
+}
+
+type observedWriter struct {
+	destination io.Writer
+	err         error
+}
+
+func (w *observedWriter) Write(p []byte) (int, error) {
+	n, err := w.destination.Write(p)
+	if err != nil {
+		w.err = err
+	} else if n < len(p) {
+		w.err = io.ErrShortWrite
+	}
+	return n, err
+}
+func copyEndpoints(dst, src net.Conn, dstSide, srcSide string) copyResult {
+	r := &observedReader{source: src}
+	w := &observedWriter{destination: dst}
+	n, err := io.Copy(w, r)
+	side := srcSide
+	if w.err != nil {
+		side = dstSide
+	}
+	return copyResult{bytes: n, err: err, side: side, direction: srcSide + "_to_" + dstSide}
 }

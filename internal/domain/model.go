@@ -83,29 +83,30 @@ func (r AcquireRequest) Validate() error {
 
 // Lease holds capacity until cleanup is confirmed, including after expiry/failure.
 type Lease struct {
-	Owner                   string         `json:"owner,omitempty"`
-	Portable                bool           `json:"portable,omitempty"`
-	Resources               Resources      `json:"resources"`
-	Source                  *Template      `json:"source,omitempty"`
-	ImageID                 string         `json:"image_id,omitempty"`
-	SSHPublicKey            string         `json:"ssh_public_key,omitempty"`
-	SSH                     *SSHConnection `json:"ssh,omitempty"`
-	ImageManifest           string         `json:"image_manifest,omitempty"`
-	LegacyUUID              string         `json:"legacy_uuid,omitempty"`
-	Purpose                 string         `json:"purpose,omitempty"`
-	ID                      string         `json:"id"`
-	VMName                  string         `json:"vm_name"`
-	Location                string         `json:"location"`
-	Template                string         `json:"template"`
-	Provider                string         `json:"provider,omitempty"`
-	GuestUser               string         `json:"guest_user,omitempty"`
-	GuestHome               string         `json:"guest_home,omitempty"`
-	State                   string         `json:"state"`
-	CloneConfirmed          bool           `json:"clone_confirmed"`
-	StartPending            bool           `json:"start_pending"`
-	StartRejected           bool           `json:"start_rejected,omitempty"`
-	StartAbsentObservations int            `json:"start_absent_observations,omitempty"`
-	IP                      string         `json:"ip,omitempty"`
+	VerifiedRuntime         *RuntimeIdentity `json:"verified_runtime,omitempty"`
+	Owner                   string           `json:"owner,omitempty"`
+	Portable                bool             `json:"portable,omitempty"`
+	Resources               Resources        `json:"resources"`
+	Source                  *Template        `json:"source,omitempty"`
+	ImageID                 string           `json:"image_id,omitempty"`
+	SSHPublicKey            string           `json:"ssh_public_key,omitempty"`
+	SSH                     *SSHConnection   `json:"ssh,omitempty"`
+	ImageManifest           string           `json:"image_manifest,omitempty"`
+	LegacyUUID              string           `json:"legacy_uuid,omitempty"`
+	Purpose                 string           `json:"purpose,omitempty"`
+	ID                      string           `json:"id"`
+	VMName                  string           `json:"vm_name"`
+	Location                string           `json:"location"`
+	Template                string           `json:"template"`
+	Provider                string           `json:"provider,omitempty"`
+	GuestUser               string           `json:"guest_user,omitempty"`
+	GuestHome               string           `json:"guest_home,omitempty"`
+	State                   string           `json:"state"`
+	CloneConfirmed          bool             `json:"clone_confirmed"`
+	StartPending            bool             `json:"start_pending"`
+	StartRejected           bool             `json:"start_rejected,omitempty"`
+	StartAbsentObservations int              `json:"start_absent_observations,omitempty"`
+	IP                      string           `json:"ip,omitempty"`
 	// SSHPort is the guest SSH port on IP; 0 means 22.
 	SSHPort   int       `json:"ssh_port,omitempty"`
 	ExpiresAt time.Time `json:"expires_at"`
@@ -131,12 +132,13 @@ type Job struct {
 	Error     *Error          `json:"error,omitempty"`
 }
 type Event struct {
-	ID      int64     `json:"event_id"`
-	LeaseID string    `json:"lease_id"`
-	JobID   string    `json:"job_id,omitempty"`
-	Type    string    `json:"type"`
-	Message string    `json:"message"`
-	At      time.Time `json:"at"`
+	Diagnostic *Diagnostic `json:"diagnostic,omitempty"`
+	ID         int64       `json:"event_id"`
+	LeaseID    string      `json:"lease_id"`
+	JobID      string      `json:"job_id,omitempty"`
+	Type       string      `json:"type"`
+	Message    string      `json:"message"`
+	At         time.Time   `json:"at"`
 }
 type Operation struct {
 	Lease    Lease `json:"lease"`

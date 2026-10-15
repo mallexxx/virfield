@@ -416,6 +416,27 @@ This operator cleanup resolution is absent from MCP. Image recovery uses its sep
 in [Image pipeline](IMAGE-PIPELINE.md#recovery). Destructive cleanup needs explicit
 operator/user authorization and exact-name confirmation.
 
+The F2 source candidate adds typed `diagnostic` objects to the existing events
+API/CLI/`virfield_events`, filtered by `lease_id`. `lease.drift` atomically retains
+expected/observed identity, address, SSH port, resources, state and observation
+times before clearing the live endpoint. New readiness also saves its verified
+runtime identity. `tunnel.listener` records opened/paused/resumed/closed;
+`tunnel.stream` separately records rejection or termination, transport direction
+and byte counts. Reasons distinguish explicit close, release, expiry, verified
+endpoint change, daemon shutdown, upstream dial/I/O, client I/O and normal EOF.
+An I/O error induced by our own cleanup is not an upstream-failure diagnosis.
+
+`backend.observation` records failure/recovery. Known errno/context reasons and
+typed error codes are retained; unstructured original errors retain only type
+and SHA-256 fingerprint for private-log correlation. Their raw text can contain
+arguments or payloads and is never exported as a cause. No SSH credentials,
+desktop URLs or stream contents are recorded. Unknown causes stay unknown.
+Each lease retains the latest 32 records of each of four diagnostic kinds
+(at most 128), independently of VM cleanup; normal 30-day history retention still
+applies. Event IDs/cursors remain monotonic and may have gaps after truncation;
+save `next_cursor` and inspect the retained window. This source change is not yet
+installed or live accepted; consult Verification for deployment scope.
+
 ## Quotas and backups
 
 Tart resource admission counts external VMs and reservations, including full

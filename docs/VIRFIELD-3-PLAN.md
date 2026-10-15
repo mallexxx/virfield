@@ -43,7 +43,7 @@ The candidate is **not release accepted**.
 | 2 | Resolve current macOS 27 keychain and Sonoma reboot failures | Reproduced; causes not fully established | Bounded diagnosis, targeted correction and fresh full cycles on the exact installed candidate; no repeated unchanged VM/reboot attempts treated as a fix |
 | 3 | Package and accept the corrected guest policy | `a45655f` installed; Samsung/new macOS27/factory, both HTPC profiles and transferred iPad Monterey passed | Clean exact-source local CI/security/archive checks; idle-pool install with private backup; Tart macOS 27 and both Monterey inventories plus HTPC Sonoma/Sequoia native GUI/new SSH, actual reboot/new UUID, 1920×1080, workload/artifact/RFB/release/revocation |
 | 4 | Close client and production entrypoint acceptance | Owning MCP stale/user cannot Restart now; default Broker script-only passed; full Story waiting for Telegram owner approval | Actual connected clients serve current version/all four runbooks and complete their workflows; production Broker qualification/Story, independent tests, explicit denied-write and artifacts/settlement/cleanup |
-| 5 | Implement the five operator feedback items below | F4 installed/live accepted; F3 source checks in progress; F1/F2/F5 remain | Each item's tests, live evidence and updated runbooks |
+| 5 | Implement the five operator feedback items below | F4 installed/live accepted; F3 a2aab20 checked/pushed/archived; F2 source checks in progress; F1/F5 remain | Each item's tests, live evidence and updated runbooks |
 | 6 | Complete remaining hardening/debug/DR gates | Partial dated evidence only | Agreed scope below accepted separately; no promotion based solely on unit tests or another OS/version |
 
 The full current-candidate acceptance, verification and branch push precede general
@@ -102,8 +102,8 @@ these newer failures are fixed. Exact receipts and diagnostic boundaries are in
 
 ## Operator feedback backlog
 
-All five items were explicitly requested on 2026-10-15. They are delivery work,
-not existing API promises. Order below follows recovery/diagnosis, resource
+All five items were explicitly requested on 2026-10-15. Implementation and live
+acceptance are tracked separately in each item below. Order follows recovery/diagnosis, resource
 explanation, image portability and optional toolchain support.
 
 ### F1 — recover a drifted lease without deleting its VM
@@ -125,9 +125,13 @@ retain a workspace checksum through a reproduced drift/recovery cycle.
 
 ### F2 — retain drift and tunnel-close diagnostics
 
-Current drift warnings log expected/observed addresses and state, but the durable
-event is generic and endpoint fields are cleared. Tunnel close/copy errors have
-no durable cause record. The historical Monterey drift's exact cause is unknown.
+The F2 source candidate persists typed expected/observed snapshots atomically
+before drift clears addresses. Separate bounded listener/stream events record
+pause/resume and explicit close/release/expiry/endpoint change/shutdown/upstream
+I/O; known errno/context causes and original error fingerprints are safe to
+export. Tests cover restart, cleanup persistence, privacy and normal EOF versus
+actual upstream reset. Full checks, packaging and live acceptance remain.
+The historical Monterey drift's exact cause is still unknown.
 
 Persist bounded expected/observed identity, IP, SSH port, state, observation time
 and original backend error before transition. Record listener pause/resume/close
@@ -143,8 +147,9 @@ The F3 source candidate now shares quota evaluation between controller admission
 and fresh node rechecks, exposes structured estimates/refusals to status/CLI/MCP
 and shows the selected estimate in Console. Overlay/golden device observations,
 one-byte boundaries, cache, fallback, overflow and same-lease wait/resume tests
-are included. Full local CI and final affected race tests passed; security,
-packaging, idle installation and live acceptance remain separate gates.
+are included. `a2aab20` passed full local CI, affected race/security, archive and
+fresh stdio MCP/runbook checks and is pushed. Idle installation and live
+acceptance remain separate gates; an active production Story prevents upgrade.
 
 Return and display the admission snapshot per host/storage: observed free,
 already reserved growth, requested full potential size, safety reserve, remaining

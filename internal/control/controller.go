@@ -25,8 +25,10 @@ import (
 
 type Backend = provider.Runtime
 type Controller struct {
-	registry ImageRegistry
-	tunnels  map[string]*tunnel
+	registry      ImageRegistry
+	tunnels       map[string]*tunnel
+	tunnelsClosed bool
+	tunnelWG      sync.WaitGroup
 	// dialDesktop replaces desktop dialing in tests.
 	dialDesktop            func(context.Context, domain.Lease) (net.Conn, error)
 	resourceLimits         *domain.ResourceLimits
@@ -547,7 +549,12 @@ func (c *Controller) Release(ctx context.Context, id, key string) (domain.Operat
 func (c *Controller) queueCleanup(ctx context.Context, l domain.Lease, key, fp string) (domain.Operation, error) {
 	for _, service := range []string{"ssh", "desktop"} {
 		if t := c.tunnels[tunnelKey(l.ID, service)]; t != nil {
-			t.close()
+			reason := "release"
+			if !l.ExpiresAt.After(c.now()) {
+				reason = "expiry"
+			}
+			t.close(reason)
+			c.listenerDiagnosticLocked(t, "closed", reason)
 			delete(c.tunnels, tunnelKey(l.ID, service))
 		}
 	}
@@ -745,11 +752,21 @@ func (c *Controller) Tick(ctx context.Context) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if obsErr != nil {
+		firstFailure := c.observation.Error == nil && ctx.Err() == nil
 		if c.observation.Error == nil && ctx.Err() == nil {
-			c.log.Warn("runtime observation failed; admission paused", "provider", provider.Name(c.backend), "error", obsErr)
+			c.log.Warn("runtime observation failed; admission paused", "provider", provider.Name(c.backend), "error", diagnosticError(obsErr))
 		}
 		c.observation.Error = &domain.Error{Code: "backend_unavailable", Message: "Cannot verify " + provider.Name(c.backend) + " inventory; starts and cleanup are paused.", Retryable: true}
 		c.pauseTunnels()
+		if firstFailure {
+			if leases, err := c.store.Leases(context.WithoutCancel(ctx)); err == nil {
+				for _, lease := range leases {
+					if lease.Purpose != "image" && lease.State == "ready" {
+						c.recordDiagnosticLocked(lease.ID, domain.Diagnostic{Kind: "backend.observation", Action: "failed", Reason: "backend_unavailable", Summary: "Backend observation failed; verified endpoint retained and new connections paused", BackendError: diagnosticError(obsErr)})
+					}
+				}
+			}
+		}
 		return nil
 	}
 	if o.HostMax < 1 || o.HostUsed < 0 || o.At.IsZero() {
@@ -783,6 +800,9 @@ func (c *Controller) Tick(ctx context.Context) error {
 		return err
 	}
 	for i, l := range ls {
+		if recovered && l.Purpose != "image" && l.State == "ready" {
+			c.recordDiagnosticLocked(l.ID, domain.Diagnostic{Kind: "backend.observation", Action: "recovered", Reason: "inventory_verified", Summary: "Backend observation recovered; endpoint verification remains required"})
+		}
 		if l.State == "ready" && !l.UpdatedAt.After(snapshotStarted) {
 			vm, exists := c.vm(l)
 			if !c.leaseObservationVerified(l, vm, exists) {
@@ -797,11 +817,13 @@ func (c *Controller) Tick(ctx context.Context) error {
 						"vm_exists", exists, "vm_state", vm.State, "lease_ip", l.IP, "observed_ip", vm.IP,
 						"lease_ssh_port", l.SSHPort, "observed_ssh_port", vm.SSHPort, "observed_at", vm.LastSeenAt)
 					l.State = "needs_attention"
+					expected := expectedIdentity(l)
+					observed := runtimeIdentity(vm, exists, c.observation.At)
 					l.IP = ""
 					l.SSHPort = 0
 					l.Error = domain.Err("vm_drift", "Ready VM identity, address or running state changed; release the lease")
 					l.UpdatedAt = c.now()
-					if err := c.store.Save(ctx, l, nil, "", "", "lease.drift", l.Error.Message); err != nil {
+					if err := c.store.SaveDiagnostic(ctx, l, domain.Diagnostic{Version: 1, Kind: "lease.drift", Action: "confirmed", Reason: "verified_drift", Summary: l.Error.Message, At: c.now(), Expected: &expected, Observed: &observed, ObservationAt: c.observation.At, ObservationVerified: true}); err != nil {
 						return err
 					}
 					ls[i] = l
@@ -1001,6 +1023,8 @@ func (c *Controller) advance(ctx context.Context, l domain.Lease, j domain.Job) 
 				return c.attention(ctx, l, j, "guest_identity_failed", "Guest address changed after SSH verification; release this lease", false)
 			}
 			l.State = "ready"
+			identity := runtimeIdentity(v, true, c.observation.At)
+			l.VerifiedRuntime = &identity
 			l.StartPending = false
 			l.IP = v.IP
 			l.SSHPort = v.SSHPort

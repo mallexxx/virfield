@@ -214,7 +214,7 @@ func (s *Store) Save(ctx context.Context, l domain.Lease, j *domain.Job, key, fp
 func (s *Store) SaveImage(ctx context.Context, l domain.Lease, j *domain.Job, key, fp, typ, message string, t domain.Template) error {
 	return s.save(ctx, l, j, key, fp, typ, message, &t)
 }
-func (s *Store) save(ctx context.Context, l domain.Lease, j *domain.Job, key, fp, typ, message string, t *domain.Template) error {
+func (s *Store) save(ctx context.Context, l domain.Lease, j *domain.Job, key, fp, typ, message string, t *domain.Template, diagnostic ...*domain.Diagnostic) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -262,6 +262,11 @@ func (s *Store) save(ctx context.Context, l domain.Lease, j *domain.Job, key, fp
 	if _, err = tx.ExecContext(ctx, `INSERT INTO events(lease_id,job_id,type,message,at) VALUES(?,?,?,?,?)`, l.ID, jid, typ, message, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
 		return err
 	}
+	if len(diagnostic) > 0 && diagnostic[0] != nil {
+		if _, err = tx.ExecContext(ctx, `DELETE FROM events WHERE lease_id=? AND type=? AND id NOT IN (SELECT id FROM events WHERE lease_id=? AND type=? ORDER BY id DESC LIMIT 32)`, l.ID, typ, l.ID, typ); err != nil {
+			return err
+		}
+	}
 	return tx.Commit()
 }
 func (s *Store) Events(ctx context.Context, after int64, leaseID string, limit int) ([]domain.Event, error) {
@@ -284,6 +289,13 @@ func (s *Store) Events(ctx context.Context, after int64, leaseID string, limit i
 		e.At, err = time.Parse(time.RFC3339Nano, at)
 		if err != nil {
 			return nil, err
+		}
+		if diagnosticEvent(e.Type) {
+			var d domain.Diagnostic
+			if json.Unmarshal([]byte(e.Message), &d) == nil && d.Version == 1 {
+				e.Diagnostic = &d
+				e.Message = d.Summary
+			}
 		}
 		out = append(out, e)
 	}

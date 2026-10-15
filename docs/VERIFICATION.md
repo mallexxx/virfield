@@ -56,8 +56,14 @@ cache and preserved-lease waiting/resumption tests pass. CLI/MCP retain structur
 refusals. Actual Console JavaScript checks also exposed/fixed Automatic submitting
 the literal `Automatic`; it now submits the empty destination and refreshes
 strict choices when the template changes. Full local `make check` and final
-affected race tests passed; pinned Staticcheck/Govulncheck and staged-secret scan
-are separate final checks. Logs: `virfield-resource-admission-final-check-20261016.log`,
+affected race tests, pinned Staticcheck 0.7.0/Govulncheck 1.6.0 (zero reachable),
+Gitleaks 8.30.1 (staged and 240 commits) and Linux budget cross-build passed.
+`a2aab208f74e320e8343d2a2a0d41a2cd8da8231` is pushed; candidate archive
+`0.0.0-resource-admission` SHA-256 is
+`7c51880aca65673d8e7cd0736f418779406be1521d87d38118fe14aa9f39a3d1`.
+Exact archive source/binary hashes, fresh stdio version/19 tools/new metadata and
+all four packaged help/resources passed against the existing a45655f daemon;
+this does not accept new F3 daemon behavior. Logs: `virfield-resource-admission-final-check-20261016.log`,
 `virfield-resource-admission-final-affected-20261016.log` and
 `virfield-resource-admission-console-20261016.log`. It is not installed/live
 accepted by a45655f receipts; do not restart the daemon during the active Story.
@@ -66,6 +72,18 @@ The Telegram prompt's message and published controls were independently confirme
 from a private ephemeral DB/WAL snapshot, with the production volume read-only,
 network disabled and only this run's safe metadata projected. Receipt:
 `virfield-story-telegram-delivery-20261016.json`. The owner has not yet answered.
+
+F2 source now has bounded typed event diagnostics and verified runtime baselines.
+Targeted race tests passed for drift snapshots before endpoint clearing, every
+forced listener/stream cause, backend pause/resume, original error fingerprints,
+restart/cleanup persistence, exclusion of credentials/payloads and actual upstream
+reset versus graceful EOF. Receipt: `virfield-diagnostics-coverage-20261016.log`.
+Full local CI, final affected race/API/MCP checks, pinned Staticcheck 0.7.0 and
+Govulncheck 1.6.0 (zero reachable) also passed. Staged-secret scan, packaging and
+live acceptance remain; these changes are not installed. Logs:
+`virfield-diagnostics-full-check-20261016.log` and
+`virfield-diagnostics-final-affected-20261016.log`.
+Historical drift and Sonoma-stall causes remain unproven.
 
 ## Earlier transfer checkpoint — 3d667d2 (2026-10-16)
 
