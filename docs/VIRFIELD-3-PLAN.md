@@ -4,8 +4,8 @@ Reconciled 2026-10-15 against source, installed receipts and live API. This is t
 maintained checklist. [Verification](VERIFICATION.md) owns test evidence and
 release acceptance; [Operations](OPERATIONS.md) owns deployed commands.
 The candidate branch is `codex/retire-lume-release-hardening`; `main` has not been
-promoted. `0f8bc20` / `0.0.0-standard-account` is installed; a reproduced ASIF
-zero-size cache correction is pending packaging/live acceptance. Documentation
+promoted. `a1a6bd9` / `0.0.0-standard-account-inventory` is installed; the ASIF
+zero-size cache correction passed a fresh factory/two clone live proof. Documentation
 commits do not install binaries or update an already-running MCP process.
 The candidate is **not release accepted**.
 
@@ -40,7 +40,7 @@ The candidate is **not release accepted**.
 |---|---|---|---|
 | 1 | Remove automatic account-password rotation | Installed; Samsung 2/2 passed; remaining matrix open | Tests and installed image/lease/reboot cycles retain `admin/admin`; SSH isolation and native GUI/new SSH key storage still pass; old-image handling preserves data |
 | 2 | Resolve current macOS 27 keychain and Sonoma reboot failures | Reproduced; causes not fully established | Bounded diagnosis, targeted correction and fresh full cycles on the exact installed candidate; no repeated unchanged VM/reboot attempts treated as a fix |
-| 3 | Package and accept the corrected guest policy | `0f8bc20` installed, partial acceptance; new ASIF cache fix pending | Clean exact-source local CI/security/archive checks; idle-pool install with private backup; Tart macOS 27 and both Monterey inventories plus HTPC Sonoma/Sequoia native GUI/new SSH, actual reboot/new UUID, 1920×1080, workload/artifact/RFB/release/revocation |
+| 3 | Package and accept the corrected guest policy | `a1a6bd9` installed; Samsung/new macOS27/factory passed, HTPC/iPad remain | Clean exact-source local CI/security/archive checks; idle-pool install with private backup; Tart macOS 27 and both Monterey inventories plus HTPC Sonoma/Sequoia native GUI/new SSH, actual reboot/new UUID, 1920×1080, workload/artifact/RFB/release/revocation |
 | 4 | Close client and production entrypoint acceptance | Owning MCP responds but serves stale guide; Restart and Broker repeat open | Actual connected clients serve current version/all four runbooks and complete their workflows; production Broker qualification/Story, independent tests, explicit denied-write and artifacts/settlement/cleanup |
 | 5 | Implement the five operator feedback items below | Added to this plan; not implemented | Each item's tests, live evidence and updated runbooks; verified-golden transfer can unblock the storage-constrained iPad repeat in step 3 |
 | 6 | Complete remaining hardening/debug/DR gates | Partial dated evidence only | Agreed scope below accepted separately; no promotion based solely on unit tests or another OS/version |
@@ -54,7 +54,7 @@ acceptance. The latest instruction requires documenting all five items now.
 
 | Area | Verified state as of 2026-10-15 |
 |---|---|
-| Service/install | `0f8bc20` installed; approved Background → Standard migration retained; signing identity/config/keys/seven baseline images preserved; exact installed HTTP/fresh stdio checks passed |
+| Service/install | `a1a6bd9` installed; approved Background → Standard migration retained; signing identity/config/keys/seven baseline images preserved; exact installed HTTP/fresh stdio checks passed |
 | Native Apple browser | Installed layout, Safari URL handoff and real Apple sign-in page passed using a synthetic link; no account login or authenticated download completion tested; Mach-O minimum 13 verified, no live macOS 13 host test |
 | HTPC Sequoia | Two full `f60efe3` + Standard native GUI/new SSH/reboot/display/workload/artifact/RFB/release cycles passed; these predate removal of password rotation |
 | HTPC Sonoma | Initial native GUI/new SSH/display passed; no fresh boot UUID or returning SSH within the full 1,200-second reboot budget; owned fixture released, bounded logs/frame retained; cause unproven |
@@ -63,13 +63,20 @@ acceptance. The latest instruction requires documenting all five items now.
 | iPad Monterey | Earlier complete native/reboot and Xcode/Swift receipts retained; fresh repeat storage-constrained, not accepted on the new policy; Monterey here is macOS 12.7.6, not macOS 13 |
 | Factory/private GHCR | Complete fresh public-base factory → private portable push → pull → clone workload → cleanup passed on `2f23ae6`; preserve receipt, repeat only for relevant pipeline changes; no managed golden uploaded |
 | Restore/rollback | Live controller-state restore and signed controller-binary rollback/forward passed; VM disks and complete package/client rollback remain outside those receipts |
-| Actual owning MCP | This chat responds but serves an older guide; requested Restart pending; exact `0f8bc20` HTTP/fresh stdio passed |
+| Actual owning MCP | This chat responds but serves an older guide; requested Restart pending; exact `a1a6bd9` HTTP/fresh stdio passed |
 | Existing HTPC file modes | Optional owner-only permission proposal unapproved; files unchanged; not required for VM functionality and not a keychain/reboot fix |
 
 The new `0f8bc20` existing macOS 27 clone still fails login copy-auth and was
 released. Fresh same-pinned security-v1 and exact UI-test goldens passed native
 post-reboot qualification; worker acceptance exposed cached ASIF disk size zero
-versus a fresh CLI 140 GB. A red/green-tested cache correction awaits installation.
+versus a fresh CLI 140 GB. The red/green-tested cache correction is installed and passed a fresh factory
+with observed zero-to-140-GB recovery without daemon restart plus two full clones.
+The new exact UI-test golden also passed two full worker cycles and a production
+Broker/Prism script-only XCTest run selected by per-run `image_id`; its default
+production template switch awaits separate approval and has not run. Full Codex
+Story/denied-write remains open. Pushing `a1a6bd9` also awaits the new explicit
+approval requested after automatic review rejected broader use of the earlier
+exact-commit consent; `0f8bc20` is already pushed.
 The new HTPC Sequoia attempt failed because an unrelated speech-dispatcher log
 filled `/run/user/1000`, preventing Podman metadata writes despite free HDD space.
 Its exact inspected partial clone was resolved/released; foreign log cleanup

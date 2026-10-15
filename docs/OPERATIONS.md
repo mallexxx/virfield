@@ -56,6 +56,13 @@ Tart checks directory availability and fresh allocatable capacity with `statfs`
 on every refresh. It reuses the verified volume UUID only for the same kernel
 filesystem ID, device and mount point; a changed mount needs a new lookup. A
 failed or interrupted lookup never substitutes an older identity.
+Only complete Tart VM specs with a positive virtual disk size are cached.
+A temporary ASIF size zero remains unknown and is reread even if config.json is
+unchanged; never override admission or rebuild a qualified golden to clear it.
+Node Podman also depends on its user runroot filesystem: available VM HDD bytes
+do not establish runroot capacity. The current HTPC speech-log/runroot incident
+and its separate cleanup approval are recorded in Verification.
+
 Physical-node and node-VM resource safety limitations are recorded in Verification.
 
 Config/token/state must belong to the daemon account. Tokens and credential files

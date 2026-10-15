@@ -8,6 +8,52 @@ The working branch is `codex/retire-lume-release-hardening`; `main` is not promo
 The [implementation plan](VIRFIELD-3-PLAN.md) owns delivery order and all five new
 operator feedback items.
 
+## Installed inventory correction — a1a6bd9 (2026-10-15)
+
+Installed source `a1a6bd96913189809fb6f81ae4f059698f327de6`, version
+`0.0.0-standard-account-inventory`; archive SHA-256
+`a651e881f16a758a3235100072173158ffae5153b67ab578cbd92387c24ca55e`.
+Complete local CI/race, red/green ASIF regressions, pinned Staticcheck,
+Govulncheck and Gitleaks (235 commits) passed. Idle install preserved signing/FDA,
+configuration, keys and all eight image records (seven originals plus the new
+candidate). Exact installed HTTP/fresh stdio, four runbooks/resources/status and
+anonymous 401 passed in 1.01 seconds. All four actual owning-client runbooks still
+differ from that package; requested Restart remains pending.
+
+- **macOS 27 UI-test candidate: PASS 2/2** complete worker cycles on the retained
+  new golden, with standard account authentication before/after real reboot,
+  native GUI/new SSH WhenUnlocked I/O, fresh boot UUID/nonces, unlocked console,
+  1920×1080, Xcode 27.0/27A266a and Swift compile/run, workspace checksum,
+  artifact hash, RFB before/after, independent SSH-key rejection and confirmed
+  release/revocation. Its exact original `uitest-27-v1` profile was qualified on
+  `0f8bc20`; the inventory-only correction does not change that recipe/guest code.
+- **ASIF live factory correction: PASS.** A new public-base factory produced an
+  observed disk size zero, then 140,000,000,000 bytes after stop, without daemon
+  restart. Two full standard-account/native/reboot/workload/artifact/RFB/release
+  clone cycles passed; temporary factory/workers were deleted and all eight
+  baseline image manifests remained unchanged. This directly accepts recovery
+  of an incomplete cached size, not just a restart clearing the old cache.
+- **Production Broker/Prism script-only candidate workflow: PASS.** The supported
+  per-run `image_id` selected the new verified golden while leaving the global
+  `macos27` template unchanged. Actual bootstrap/Callee/XCTest completed with one
+  passing test, hashed artifact export, retained `.xcresult`, Story completion
+  and cleanup done. No provider role or Human gate ran. This does not accept the
+  default template, full Codex Story, explicit denied-write or credential reuse.
+
+Receipts: `virfield-standard-uitest-macos27-20261015`,
+`virfield-inventory-factory-a1a6bd9-20261015` and
+`virfield-broker-candidate-xctest-a1a6bd9-20261015` under private `/private/tmp`.
+The qualified new golden remains a separate static template. Automatic approval
+review rejected switching the global template without a separate user decision;
+its prepared private backup/idle/rollback script has **not run**. The old golden
+and original production routing remain intact. Automatic review also rejected
+pushing `a1a6bd9` under the earlier exact-commit approval; branch publication awaits
+an explicit answer. `0f8bc20` was pushed with the user's direct approval.
+
+HTPC runroot cleanup and owning MCP Restart also await user action. iPad transfer,
+HTPC standard-policy cycles, the older Sonoma reboot failure and remaining
+hardening/client/provider gates below remain open. No full release acceptance.
+
 ## Standard password policy — installed, matrix acceptance partial
 
 The operator requires the standard VM **`admin` / `admin`** account and explicitly
@@ -63,8 +109,8 @@ RFB/release. Older passing cycles below used the previous password policy.
   config. Candidate source now caches only positive disk sizes, with red/green
   zero/absent-disk regressions and a positive-cache reuse assertion. Complete local
   `make check`, pinned Staticcheck and Govulncheck passed for this correction.
-  Package/live acceptance is pending; do not rebuild the qualified golden
-  merely to change the cache.
+  Subsequent package/live acceptance is recorded above; the qualified golden
+  was preserved and its build was not replayed.
 - HTPC: exact new Sequoia clone failed before overlay creation. Read-only pinned
   `qemu-img info` established Podman `no space left on device` in its runroot:
   `/run/user/1000` had 4,096 bytes free, while the HDD had 2,885,316,886,528 bytes
@@ -169,8 +215,8 @@ execution; the last Broker-tested candidate was `614daf5`. All three owned lease
 were released. Exact run/job/lease bindings, deployment provenance and timestamps
 remain in the private Obsidian incident register and Broker evidence.
 
-Broker has not repeated its production macos27 path on `f60efe3` after Standard
-migration. The two standalone `f60efe3` failures above establish native login-auth
+Before the candidate script-only acceptance above, Broker had not repeated its
+production macos27 path on `f60efe3` after Standard migration. The two standalone `f60efe3` failures above establish native login-auth
 failure on that deployment; they are not Broker Story runs and do not identify
 the old three attempts' unrecorded substage. The generic public error alone proves
 no particular password, OAuth or cache cause. Broker's own working MCP help/status
@@ -213,8 +259,8 @@ the plist's macOS 13 minimum; Mach-O metadata/build check passed, not a live mac
 
 | Required work | State / closure criterion |
 |---|---|
-| Standard VM password implementation | Source implemented; package and accept it; test/preserve `admin/admin`, retained keychain data and independent SSH isolation; define compatible handling of previously rotated images |
-| Current native VM matrix | Diagnose/fix macOS 27 keychain and Sonoma reboot; build/install exact clean corrected package in idle pool and pass relevant Tart/HTPC cycles; Sequoia old-policy 2/2 does not accept new policy |
+| Standard VM password implementation | Installed; Samsung and new macOS 27 cycles passed; finish HTPC/iPad acceptance; test/preserve `admin/admin`, retained keychain data and independent SSH isolation; define compatible handling of previously rotated images |
+| Current native VM matrix | New macOS 27 candidate 2/2 and cache factory passed; global route awaits approval. Old golden remains preserved/unrepaired. Finish HTPC/iPad standard-policy cycles and diagnose Sonoma reboot; Sequoia old-policy 2/2 is dated evidence |
 | iPad repeat | Restore adequate full-growth-plus-reserve storage or accept verified-golden transfer first; no reserve weakening or foreign deletion |
 | Owning clients and Broker entrypoint | Current actual MCP version/runbooks/workflows; Broker macos27 criteria above; fresh stdio/HTTP alone insufficient |
 | Apple authenticated download | Real exact-job sign-in/cookie handoff/download completion untested; synthetic GUI smoke already passed |
