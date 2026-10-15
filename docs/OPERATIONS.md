@@ -374,6 +374,9 @@ space on both golden and overlay storage; unavailable metrics refuse admission.
 Clone/start/commit recheck after wake. Status exposes separate `node_resources`.
 Existing probe records need a successful new observation before VM admission.
 These are VM reservations; physical-account workloads are not CPU/RAM sandboxed.
+Node QEMU disks use `cache=writeback` with threaded I/O so concurrent cold boots
+can share the host page cache on HDD storage. Guest cache flushes remain enabled;
+this is the standard QEMU writeback mode ([QEMU cache options](https://www.qemu.org/docs/master/system/invocation.html)).
 The implementation is in the new source candidate; live node acceptance is pending.
 
 Backup snapshots SQLite, config, the owner-token hash and image credentials into

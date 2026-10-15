@@ -4,7 +4,7 @@ package baremetal
 // `sh -c <script> sh <scope> <vm> <args...>`: scope is leases or images, the
 // VM name is a validated lease or image name, and every other argument is a
 // validated configuration value. Each script touches only
-// $HOME/virfield/<scope>/<vm>, the container virfield-<vm> and, for commit,
+// ${VF_VM_HOME:-$HOME/virfield}/<scope>/<vm>, the container virfield-<vm> and, for commit,
 // one new file in the goldens directory, and each is idempotent.
 
 const vmDirs = `set -eu
@@ -63,6 +63,7 @@ if [ "$running" != true ]; then
   vf_hold "$d" "${9:-}"
   podman run -d --name "$c" --device /dev/kvm --device /dev/net/tun --cap-add NET_ADMIN \
     -e DISK_FMT=qcow2 -e "DISK_SIZE=$8" -e "RAM_SIZE=$7G" -e "CPU_CORES=$6" -e USER_PORTS=22,5900 -e VNC_PORT=5950 \
+    -e DISK_CACHE=writeback -e DISK_IO=threads \
     -p "$5:$p:22" ${10:+-p "${10}:5900"} -v "$d/storage:/storage:Z" -v "$3:$3:ro,z" -v "$3/$g.opencore.plist:/custom.plist:ro,z" \
     --stop-timeout 30 "$4" >/dev/null
 fi

@@ -41,6 +41,21 @@ snapshot started after clone completion. Regression tests, full local CI and
 Staticcheck passed. Installation and repeated HTPC acceptance are pending.
 Evidence: `/private/tmp/virfield-installed-htpc-native-8e07015-20261015`.
 
+The correction was subsequently installed as `2f46faa`; exact-version HTTP/fresh
+stdio MCP passed. Two concurrent HTPC clones passed clone/start with durable
+8 CPU / 16 GiB RAM / 200 GiB disk reservations on private HDD workspaces.
+They did not reach guest SSH before the ten-minute operation deadline: the
+framebuffer showed macOS boot progress, while host I/O pressure was high and the
+container used direct I/O (`cache=none`). Both owned fixtures were released.
+The new candidate uses QEMU's standard flush-preserving `writeback` cache and
+threaded I/O; its effect on native boot/readiness still needs live verification.
+Evidence: `/private/tmp/virfield-installed-htpc-native-2f46faa-20261015`.
+
+The old owning MCP adapter was identified by the sole new API socket from this
+session's completed read-only status request and stopped without touching other
+adapters. The client did not reconnect automatically and now requires an explicit
+reconnect; HTTP/fresh stdio acceptance does not replace this gate.
+
 Factory/private GHCR roundtrip, current-client reconnection, live controller
 restore/rollback and existing HTPC golden permission migration remain open.
 The following sections retain dated evidence from earlier candidates.
