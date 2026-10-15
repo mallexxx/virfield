@@ -457,10 +457,11 @@ A custom scoped default can leave Spotlight password dialogs queued before the
 owned Aqua agent starts, even if that agent subsequently unlocks it.
 Native SecKeychainUnlock/ChangePassword authenticates each old-password candidate
 with user interaction disabled in that same caller. A wrong password returns
-`errSecAuthFailed`; only that error permits a fallback. The GUI `security` CLI can
-hang in a password dialog and is not used for this authentication. Secrets are
-read from the private identity file, not command arguments.
-The preparer does not deliberately lock the login keychain; an artificial lock can leave an
+`errSecAuthFailed`; only that error permits a fallback. The GUI `security` CLI
+[locks the keychain internally before password change](https://github.com/apple-oss-distributions/SecurityTool/blob/main/keychain_set_settings.c)
+and is not used for this authentication. Secrets are read from the private
+identity file, not command arguments.
+Wrong password candidates never lock the original login keychain; a lock can leave an
 OS client's password dialog open even after a successful unlock. Successful rekey
 is followed by native WhenUnlocked add/read/delete with the new password. A
 desktop overlay cannot select another password, and failed I/O after successful
@@ -468,6 +469,14 @@ authentication fails preparation without trying another secret. Full readiness
 separately requires an available Aqua window snapshot with no visible Keyboard
 Setup Assistant or SecurityAgent window. An already queued OS password dialog is
 not dismissed by native I/O success; preserve diagnostics and fail readiness.
+An inconsistent cached login keychain can report unlocked while correct-password
+authentication and native I/O both return `errSecAuthFailed`. Only after the
+password authenticates against a temporary owner-only copy of the on-disk
+keychain may the preparer perform one native lock/unlock to refresh the original
+cache, then rekey it. Password change on the copy proves the secret even if its
+unlock was a no-op. The copy is removed in a `finally` block, original items are
+retained, and a refresh failure never selects another password. Separate native
+I/O and unobstructed desktop checks still apply afterwards.
 It also requires the current, logged-in console to be unlocked; Finder and an
 Aqua audit session can remain alive behind the lock screen. Automation disables
 both general and per-host screensaver idle time. Account/autologin preparation
@@ -507,6 +516,11 @@ before closing its provisioning connection. It omits the identity/password file
 and keychain contents. A failed GUI installation can make the new SSH bridge
 unavailable, so collect this host log before releasing the owned fixture: cleanup
 removes its private directory. Public API errors/events never contain these logs.
+Native attempts record only candidate mode, substage and status. The agent's
+private exit receipt includes scope, boot, mode, nonce, exit code and phase; the
+installer fails promptly only for its exact request instead of waiting five
+minutes after the agent has exited. A stale boot/nonce receipt cannot abort a new
+verification.
 Do not mark ready on a CLI unlock exit code: native application-style key storage
 must work in both contexts. Do not replace a keychain on an active user's lease or
 reset application databases; prepare a new disposable lease after deployment.

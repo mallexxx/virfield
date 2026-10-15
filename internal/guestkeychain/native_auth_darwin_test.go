@@ -28,9 +28,9 @@ func TestNativeLoginAuthenticationDoesNotPromptAndPreservesItems(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct {
-		name           string
-		locked, public bool
-	}{{"unlocked", false, false}, {"locked", true, false}, {"public base", true, true}} {
+		name                  string
+		locked, public, stale bool
+	}{{"unlocked", false, false, false}, {"locked", true, false, false}, {"public base", true, true, false}, {"stale unlocked cache", false, false, true}, {"stale locked cache", true, false, true}} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
 			keychain := filepath.Join(dir, "disposable.keychain-db")
@@ -60,12 +60,24 @@ func TestNativeLoginAuthenticationDoesNotPromptAndPreservesItems(t *testing.T) {
 			if tc.public {
 				previous = "incorrect-previous-fixture"
 			}
-			if err := os.WriteFile(js, []byte(script), 0600); err != nil {
+			caller := script
+			if tc.stale {
+				// Inject only the stale original-cache response reproduced live.
+				// Copy authentication, the guarded cache refresh, password change
+				// and preservation of the original item still use real native APIs.
+				probe := "status = Number($.SecKeychainUnlock(keychain, length(candidate), candidate, true));"
+				if strings.Count(caller, probe) != 2 {
+					t.Fatal("Missing original/refresh unlock calls")
+				}
+				caller = strings.Replace(caller, probe, "status = -25293; // injected stale original-cache response", 1)
+			}
+			if err := os.WriteFile(js, []byte(caller), 0600); err != nil {
 				t.Fatal(err)
 			}
 			if err := os.WriteFile(identity, []byte("lease-fixture\n"+password+"\n"+previous+"\n"), 0600); err != nil {
 				t.Fatal(err)
 			}
+			var refreshed, validated bool
 			call := func(mode string) (bool, bool, int) {
 				t.Helper()
 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -75,14 +87,24 @@ func TestNativeLoginAuthenticationDoesNotPromptAndPreservesItems(t *testing.T) {
 					Authenticated bool `json:"authenticated"`
 					TryNext       bool `json:"try_next"`
 					Status        int  `json:"status"`
+					Validated     bool `json:"cache_refresh_validated"`
+					Refreshed     bool `json:"cache_refreshed"`
 				}
 				if err != nil || json.Unmarshal(out, &result) != nil || strings.Contains(string(out), password) || strings.Contains(string(out), old) {
 					t.Fatal("Native auth failed, prompted or disclosed a credential", err)
+				}
+				refreshed, validated = result.Refreshed, result.Validated
+				copies, err := filepath.Glob(filepath.Join(dir, ".login-auth-*.keychain-db"))
+				if err != nil || len(copies) != 0 {
+					t.Fatal("Private authentication copy was retained", err)
 				}
 				return result.Authenticated, result.TryNext, result.Status
 			}
 			if ok, next, status := call("current"); ok || !next || status != -25293 {
 				t.Fatal("Wrong current password accepted or did not fail noninteractively", ok, next, status)
+			}
+			if refreshed || validated {
+				t.Fatal("Wrong password was allowed to refresh the original cache")
 			}
 			mode := "previous"
 			if tc.public {
@@ -93,6 +115,9 @@ func TestNativeLoginAuthenticationDoesNotPromptAndPreservesItems(t *testing.T) {
 			}
 			if ok, next, status := call(mode); !ok || next || status != 0 {
 				t.Fatal("Correct native migration failed", ok, next, status)
+			}
+			if tc.stale && (!validated || !refreshed) {
+				t.Fatal("Stale original cache was not refreshed after real copy authentication")
 			}
 			command("lock-keychain", keychain)
 			command("unlock-keychain", "-p", password, keychain)

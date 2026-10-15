@@ -10,47 +10,71 @@ are distinct artifacts.
 
 ## Acceptance checkpoint (2026-10-15)
 
-Current deployment is `f8b64f5` / `0.0.0-console-readiness`, installed at
-12:20 UTC in a verified idle pool with private backup, the previous signing/FDA
-identity, configuration, keys and all seven baseline image manifests preserved.
-Exact installed HTTP/fresh stdio version, all four runbooks/resources, discovery,
-status and anonymous 401 passed in 1.32 seconds. The actual owning MCP transport
-closed after its old process was terminated and did not reconnect automatically;
-the requested manual Virfield MCP Restart has not been confirmed. It is not an
-accepted current client.
+Current deployment is `03b0d23` / `0.0.0-native-login-auth`, installed in a
+verified idle pool with private backup, the previous signing/FDA identity,
+configuration, keys and all seven baseline image manifests preserved. Exact
+installed HTTP/fresh stdio version, all four runbooks/resources, discovery, status
+and anonymous 401 passed in 1.26 seconds. Full local CI (seventeen Python tests,
+Go vet and the complete race suite), pinned Staticcheck 0.7.0 and Gitleaks (227
+commits) passed for that commit. The actual owning MCP transport closed after its
+old process was terminated and did not reconnect automatically. The user confirmed
+manual Virfield MCP Restart, but the subsequent owning-client help call still
+returned `Transport closed`. Fresh stdio is not current-client acceptance.
 
-Fresh native acceptance failed. The first Sonoma's preflight failed about seventy
-seconds after `ssh_started`, before worker credentials existed; its exact original
-backend error was not retained. A later Finder/Keyboard Setup Assistant screenshot
-does not prove the timeout's cause. Both matrix fixtures were released and SSH
-revocation passed. A separate owned Sonoma trace proved that the SSH caller's
-Quartz session follows the real login from root/waiting to admin/desktop. The
-stale-Quartz-context hypothesis is disproven. That clone and a fresh Samsung
-Monterey both then hung in GUI `login-rekey` for five minutes. Their private phase
-logs establish the stalled stage; a failure cannot count as native acceptance.
+Fresh native `03b0d23` acceptance failed: both Sonoma fixtures and one Samsung
+Monterey failed in GUI `login-rekey`. All three were released and SSH revocation
+passed; the Sequoia pair was not dispatched. Earlier `f8b64f5` phase logs established
+failed readiness after a five-minute installer wait, but did not prove that its
+CLI or native caller hung. A later live Monterey trace caught the owned Aqua
+agent already exited with code 65 almost immediately. The installer kept waiting
+for a result that would never appear. Earlier Sonoma preflight failure's exact
+backend cause remains unknown. Its later Finder screenshot is not proof of that
+cause. A separate trace disproved the stale-Quartz-context hypothesis: the SSH
+caller's Quartz session followed the real root/waiting to admin/desktop login.
 
-The subsequent source correction replaces the GUI `security` CLI password-change
-call with native SecKeychainUnlock/ChangePassword and disables interaction in
-that same caller. Only `errSecAuthFailed` permits trying another credential; UI
-or later native I/O failures never do. Production JXA tests use three disposable
-explicit-path keychains (locked, unlocked and public-base fallback), retain an
-existing item, reject wrong passwords promptly, verify the new password after a
-lock, and verify idempotence. The user's real login/default is never changed.
-Worker preflight now retains bounded private `leases/ID/desktop.log` with the
-deadline, command budget, duration, partial observations and original error, even
-before worker credentials exist. These changes require a new clean package and
-fresh installed acceptance; `f8b64f5` receipts do not certify them.
-Full local CI (seventeen Python tests, Go vet and the complete race suite), pinned
-Staticcheck 0.7.0 and documentation checks passed for this correction. The retained
-diagnostic Sonoma was released after its private phase log, native console trace
-and framebuffer were saved; the 12:59 UTC snapshot had no worker leases or jobs
-and still contained all seven image-ready baseline records.
+Native unlock rejected all known candidates on the original login keychain,
+while the same production caller passed on an isolated keychain inside Monterey.
+Guest identity credentials matched controller/image credentials; five retained
+image-credential backups contained the same source secret. The original reported
+unlocked (flags 7) yet returned `-25293` for authentication and SecItem add. Its
+private on-disk copy authenticated with the current password. Direct password
+change on the original also failed. One native lock/unlock with that already
+validated password completed in 58 milliseconds and restored authentication plus
+native add/read/delete. This establishes inconsistent cached keychain state and
+a working refresh, without establishing every internal macOS mechanism or all
+historical drift causes. No original items were deleted. Diagnostic-only import
+and Ref failures were collector errors, not product failures.
 
-Private evidence: `virfield-installed-htpc-native-f8b64f5-coexist-20261015`,
-`virfield-installed-samsung-monterey-f8b64f5-20261015`, and
-`virfield-own-node-console-trace-f8b64f5-20261015` under `/private/tmp`.
-Full release acceptance remains open. The following deployment paragraphs are
-dated checkpoints superseded by this current record.
+The next source correction validates a failing password on a temporary owner-only
+on-disk copy before allowing one original-cache refresh. Wrong passwords never
+lock the original; failed refresh does not select another password. Native tests
+cover locked/unlocked/public-base fixtures and injected stale-cache responses
+with real copy authentication, refresh, cleanup and existing-item preservation.
+The agent records native substages/all attempts and propagates an exact
+scope/boot/mode/nonce exit receipt promptly; stale failures cannot abort a new
+request. These changes still require a clean package and fresh installed matrix.
+A staged second account rotation on the diagnostic Monterey preserved a fixture
+item and passed full native Aqua I/O, unlocked console, no visible assistants or
+SecurityAgent, and 1920×1080. That run did not reproduce the cache fault and is not
+clean installed acceptance. Its account password was changed again, deliberately
+leaving its controller credential stale until exact-fixture cleanup. That fixture
+was released with its original journaled identity and release key. Do not use
+that diagnostic for acceptance or replay its account mutations. The subsequent
+13:52 UTC status contained no worker leases or jobs and all seven baseline images.
+The correction passed the full local CI and pinned Staticcheck 0.7.0; five native
+authentication cases passed, including the two injected stale-cache cases.
+
+Worker preflight retains bounded private `leases/ID/desktop.log` with deadline,
+command budget, duration, partial observations and original error even before
+worker credentials exist; it does not overwrite the golden's diagnostics.
+Private evidence under `/private/tmp`: `virfield-installed-htpc-native-f8b64f5-coexist-20261015`,
+`virfield-installed-samsung-monterey-f8b64f5-20261015`,
+`virfield-installed-htpc-native-03b0d23-coexist-20261015`,
+`virfield-installed-samsung-monterey-03b0d23-20261015`, and
+`virfield-monterey-auth-channel-03b0d23-20261015`.
+
+Full release acceptance remains open. The following paragraphs are dated
+checkpoints superseded by this current record.
 
 Deployment snapshot at 09:47 UTC: `558a6cb` / `0.0.0-cold-reboot-checkpoint`
 is installed with its original signing/FDA identity, private backup and all seven

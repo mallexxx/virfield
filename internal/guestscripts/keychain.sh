@@ -182,6 +182,7 @@ JXA
   cat > "$dir/login-auth.js" <<'AUTH'
 ObjC.import('Foundation'); ObjC.import('Security');
 ObjC.bindFunction('SecKeychainOpen', ['int', ['char *', 'id *']]);
+ObjC.bindFunction('SecKeychainLock', ['int', ['id']]);
 ObjC.bindFunction('SecKeychainUnlock', ['int', ['id', 'unsigned int', 'char *', 'bool']]);
 ObjC.bindFunction('SecKeychainChangePassword', ['int', ['id', 'unsigned int', 'char *', 'unsigned int', 'char *']]);
 function run(argv) {
@@ -195,16 +196,64 @@ function run(argv) {
     argv[2] === 'user' ? String(ObjC.unwrap($.NSUserName())) : null;
   if (!password || candidate === null) throw new Error('Invalid login authentication request');
   if (!candidate) return JSON.stringify({authenticated:false, try_next:true, skipped:true});
-  function result(status, retry) { return JSON.stringify({authenticated:status === 0, try_next:retry, status:status}); }
+  var stage = 'open', validated = false, refreshed = false;
+  function result(status, retry) { return JSON.stringify({authenticated:status === 0, try_next:retry, status:status, stage:stage, candidate_mode:argv[2], cache_refresh_validated:validated, cache_refreshed:refreshed}); }
   function length(value) { return Number($(value).lengthOfBytesUsingEncoding($.NSUTF8StringEncoding)); }
+  function rekey(keychain, old, next) { return Number($.SecKeychainChangePassword(keychain, length(old), old, length(next), next)); }
+  function authenticateCopy() {
+    // Account rotation can leave the original cached keychain reporting
+    // unlocked while both correct-password authentication and SecItem I/O fail.
+    // Prove the password against the on-disk database before refreshing that
+    // cache. Wrong candidates must never lock the original login keychain.
+    var manager = $.NSFileManager.defaultManager;
+    var directory = String(ObjC.unwrap($(argv[1]).stringByDeletingLastPathComponent));
+    var copy = directory + '/.login-auth-' + String(ObjC.unwrap($.NSUUID.UUID.UUIDString)) + '.keychain-db';
+    stage = 'copy-create';
+    if (!manager.copyItemAtPathToPathError(argv[0], copy, null)) return -36;
+    try {
+      var permissions = $.NSDictionary.dictionaryWithObjectForKey($.NSNumber.numberWithUnsignedLong(384), $.NSFilePosixPermissions);
+      if (!manager.setAttributesOfItemAtPathError(permissions, copy, null)) return -36;
+      stage = 'copy-open';
+      var reference = Ref(), status = Number($.SecKeychainOpen(copy, reference));
+      if (status !== 0) return status;
+      stage = 'copy-unlock';
+      status = Number($.SecKeychainUnlock(reference[0], length(candidate), candidate, true));
+      if (status !== 0) return status;
+      stage = 'copy-authenticate';
+      // Unlock can return success for a wrong password on an unlocked keychain.
+      // Password change still authenticates it; only the disposable copy changes.
+      return rekey(reference[0], candidate, candidate);
+    } finally {
+      if (!manager.removeItemAtPathError(copy, null)) throw new Error('Private authentication copy cleanup failed');
+    }
+  }
   var reference = Ref(), status = Number($.SecKeychainOpen(argv[0], reference));
   if (status !== 0) return result(status, false);
   var keychain = reference[0];
+  stage = 'unlock';
   status = Number($.SecKeychainUnlock(keychain, length(candidate), candidate, true));
-  if (status !== 0) return result(status, status === -25293);
   // ChangePassword authenticates the old secret even if already unlocked.
-  status = Number($.SecKeychainChangePassword(keychain, length(candidate), candidate, length(password), password));
+  if (status === 0) {
+    stage = 'rekey';
+    status = rekey(keychain, candidate, password);
+  }
+  if (status === -25293) {
+    status = authenticateCopy();
+    if (status !== 0) return result(status, status === -25293);
+    validated = true;
+    stage = 'cache-lock';
+    status = Number($.SecKeychainLock(keychain));
+    if (status !== 0) return result(status, false);
+    stage = 'cache-unlock';
+    status = Number($.SecKeychainUnlock(keychain, length(candidate), candidate, true));
+    if (status !== 0) return result(status, false);
+    stage = 'cache-rekey';
+    status = rekey(keychain, candidate, password);
+    if (status !== 0) return result(status, false);
+    refreshed = true;
+  }
   if (status !== 0) return result(status, status === -25293);
+  stage = 'final-unlock';
   status = Number($.SecKeychainUnlock(keychain, length(password), password, true));
   return result(status, false);
 }
@@ -222,7 +271,7 @@ dir="$HOME/.virfield-keychain"
 boot="$(sysctl -n kern.bootsessionuuid)"
 export VIRFIELD_DISPLAY_MANAGED=0
 [[ "$(sysctl -n hw.model)" != VirtualMac* ]] || export VIRFIELD_DISPLAY_MANAGED=1
-phase() { printf '%s %s\n' "$(/bin/date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" > "$dir/phase"; }
+phase() { vf_phase="$1"; printf '%s %s\n' "$(/bin/date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" > "$dir/phase"; }
 mode=ensure
 nonce="login-$boot"
 explicit_request=false
@@ -236,6 +285,17 @@ if [[ -f "$dir/request" && ! -L "$dir/request" ]]; then
     mode="$requested_mode"; nonce="$requested_nonce"; explicit_request=true
   fi
 fi
+report_exit() {
+  code=$?
+  trap - EXIT
+  if (( code != 0 )) && [[ ! -L "$dir/failure" && ! -L "$dir/failure.next" ]]; then
+    printf '%s\n%s\n%s\n%s\n%s\n%s\n' "$scope" "$boot" "$mode" "$nonce" "$code" "${vf_phase:-startup}" > "$dir/failure.next"
+    chmod 600 "$dir/failure.next"
+    mv "$dir/failure.next" "$dir/failure"
+  fi
+  exit "$code"
+}
+trap report_exit EXIT
 aqua_session="$(/usr/bin/osascript -l JavaScript -e "ObjC.import('Security'); function run() { var sid=Ref(), attributes=Ref(); if (Number($.SessionGetInfo(4294967295, sid, attributes)) !== 0 || (Number(attributes[0]) & 16) === 0) throw new Error('Aqua session unavailable'); return String(Number(sid[0])); }")"
 [[ "$aqua_session" =~ ^[0-9]+$ ]] || exit 65
 # ai.virfield.agent-startup-once begin
@@ -269,13 +329,16 @@ if [[ "$mode" == ensure ]]; then
     [[ ! -L "$login" ]] || exit 65
     ready=false
     attempt=0
+    : > "$dir/login-auth-attempts"
     for candidate in current previous user; do
       attempt=$((attempt+1))
       # Changing the password authenticates the old secret even when unlocked.
       # Never lock the real login keychain just to test a candidate: OS clients
       # can leave a persistent modal unlock request during that artificial gap.
-      phase login-rekey
+      phase "login-rekey-$candidate"
       /usr/bin/osascript -l JavaScript "$dir/login-auth.js" "$login" "$dir/identity" "$candidate" > "$dir/login-auth-result"
+      cat "$dir/login-auth-result" >> "$dir/login-auth-attempts"
+      printf '\n' >> "$dir/login-auth-attempts"
       if ! grep -q '"authenticated":true' "$dir/login-auth-result"; then
         grep -q '"try_next":true' "$dir/login-auth-result" && continue
         exit 65
@@ -481,6 +544,12 @@ while (( SECONDS < deadline )); do
   if [[ -f "$dir/result" ]]; then
     cat "$dir/result"
     exit 0
+  fi
+  # An exited agent will never publish a successful result. Match this exact
+  # request, so a prior boot or nonce cannot abort a fresh verification.
+  if [[ -f "$dir/failure" && ! -L "$dir/failure" && "$(head -n 4 "$dir/failure")" == "$(printf '%s\n%s\n%s\n%s' "$scope" "$boot" "$mode" "$nonce")" ]]; then
+    echo 'GUI keychain agent exited unsuccessfully; inspect its private failure and phase records' >&2
+    exit 65
   fi
   sleep 1
 done
