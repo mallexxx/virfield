@@ -25,8 +25,8 @@ API, artifact store or workflow engine. Physical hosts are shared-account lab
 resources, not disposable/multi-tenant VM substitutes.
 
 The operator's VM account decision is standard `admin/admin`; removing automatic
-random password rotation is removed in candidate source, with installed acceptance
-pending; installed `f60efe3` still uses the earlier policy.
+random password rotation is removed in standard-account candidates (`0f8bc20`
+and later), with the remaining per-profile installed acceptance still open.
 SSH key isolation and native GUI/new SSH acceptance remain part of Virfield.
 Recovery of a confirmed drifted lease without deletion, durable drift/tunnel
 diagnostics, complete resource refusal arithmetic, verified local golden transfer

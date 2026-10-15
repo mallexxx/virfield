@@ -145,18 +145,18 @@ an active lease's key for another lease. No generic workload, artifact uploader,
 Xcode project scheme or repository checkout is inferred by the VM manager.
 
 The approved VM account policy is standard **`admin/admin`**, without automatic
-random password rotation. Candidate source implements this; installed `f60efe3`
-still uses the earlier policy, and old secured goldens can retain generated
-credentials. New clones convert a known old account to the standard password
-without modifying the source golden; unknown keychain credentials fail readiness. Do not infer that an existing image already has the standard password
+random password rotation. Standard-account candidates (`0f8bc20` and later)
+implement this; older secured goldens can retain generated credentials. New clones convert a known old account to the standard password
+without modifying the source golden; unknown keychain credentials fail readiness.
+Do not infer that an existing image already has the standard password
 or reset its keychain. SSH remains pinned/key-only, with separate management and
 caller keys and cross-lease/inherited-key rejection.
 
-VM preparation independently verifies GUI and SSH keychain access. Installed
-`f60efe3` preserves/rekeys the login default to its current generated VM password
+VM preparation independently verifies GUI and SSH keychain access. It
+preserves/migrates the login default to the configured standard VM password
 and unlocks in Aqua and before SSH commands; ordinary `ssh`, `scp` and
-`xcodebuild` need no manual keychain unlock. This describes current mechanics, not
-completion of the approved password-policy change. Old goldens/leases can lack
+`xcodebuild` need no manual keychain unlock. These mechanics do not imply full
+acceptance on every provider/profile. Old goldens/leases can lack
 the bridge; inspect [Verification](VERIFICATION.md) for exact deployment/results.
 Readiness also requires an unlocked console and no visible keychain password
 dialog. A running Finder or successful native I/O alone does not prove this.

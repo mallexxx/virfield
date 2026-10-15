@@ -6,12 +6,12 @@ separate old LaunchDaemon was disabled and booted out on 2026-10-14, its rollbac
 are archived. Current defects and acceptance limits are in
 [Verification](VERIFICATION.md). Orchard is not deployment-ready.
 
-## Standard VM account policy — candidate source
+## Standard VM account policy
 
 The operator requires standard **`admin/admin`**, with no automatic random account
-password rotation. Candidate source uses the configured account name as its
-password; installed `f60efe3` still uses generated passwords. Source/live acceptance
-are separate. For old images, a new journaled disposable clone authenticates the
+password rotation. Standard-account candidates (`0f8bc20` and later) use the
+configured account name as its password. Samsung Monterey has two complete live
+cycles; other profiles still require their own acceptance. For old images, a new journaled disposable clone authenticates the
 standard password first, and only if needed authenticates the recorded inherited
 password before converting that clone to the standard account. It verifies the
 result and preserves/migrates keychain items. Existing golden disks and credential
@@ -22,9 +22,10 @@ Do not reset a login keychain or overwrite a golden to force the standard passwo
 Per-image/lease management and caller keys, fresh VM host keys, pinning and
 key-only SSH remain required. Physical shared accounts are unaffected.
 
-Later rotation/rekey descriptions in this runbook explain the installed candidate
-only; they are not instructions to add account rotation to the next implementation.
-Native GUI/new SSH I/O and actual reboot still need acceptance after that change.
+Older rotation descriptions are dated mechanics of `f60efe3` and earlier.
+New VM accounts retain the standard password; compatible login-keychain migration
+still preserves items. Native GUI/new SSH I/O and actual reboot need per-profile
+acceptance. A successful fresh image does not repair an older unknown keychain.
 
 ## Paths
 
@@ -169,8 +170,8 @@ and `/dev/net/tun`.
   `{"node": {"golden": "<bootstrap name>"}, "macos": …, "build": …,
   "disable_sip": true}` (`POST /api/v1/images/<template>/build`). The job
   clones the bootstrap golden into `<VM storage root>/images/<template>`, publishes
-  its SSH on the node loopback only, still rotates the password in installed
-  `f60efe3` (pending removal under the approved policy above), installs the
+  its SSH on the node loopback only, retains the standard account password
+  (converting only a known legacy password inside the new clone), installs the
   management key, turns password SSH off and sets auto-login, verifies
   version, SIP, desktop and password after a reboot, and commits the clone as
   `<goldens_dir>/<template>.qcow2` (owner-only read mode 0400). Rebuilding needs a new

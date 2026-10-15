@@ -8,7 +8,7 @@ The working branch is `codex/retire-lume-release-hardening`; `main` is not promo
 The [implementation plan](VIRFIELD-3-PLAN.md) owns delivery order and all five new
 operator feedback items.
 
-## Standard password policy — source implemented, acceptance pending
+## Standard password policy — installed, matrix acceptance partial
 
 The operator requires the standard VM **`admin` / `admin`** account and explicitly
 rejected automatic random account-password rotation. Candidate source now creates
@@ -16,8 +16,9 @@ standard account credentials and never changes an already-standard password. A
 new disposable clone of an old image authenticates its inherited password before
 a one-time conversion to the standard password. Existing golden credentials are
 never silently rewritten; in-place securing of a legacy golden is refused before
-mutation. Installed `f60efe3` still uses the old policy. The new policy has not yet
-been packaged, installed or accepted.
+mutation. `0f8bc20` / `0.0.0-standard-account` was packaged, installed with a
+private backup and accepted on Samsung Monterey in two complete cycles. The
+remaining profile/client matrix is open.
 Existing secured images may retain generated credentials; do not assume they
 already accept the standard password or modify them outside a journaled migration.
 
@@ -37,7 +38,47 @@ reboot, standard account authentication, automatic login and native GUI/new SSH
 `WhenUnlocked` add/read/data comparison/delete, plus display/workload/artifact/
 RFB/release. Older passing cycles below used the previous password policy.
 
-## Acceptance checkpoint (2026-10-15)
+## Standard-account checkpoint — 0f8bc20 (2026-10-15)
+
+- Package `0.0.0-standard-account`, archive SHA-256
+  `b8805029ef847f28b0eea2d87af36203d480746cf08e6f08fe754ac28ce0d9a5`;
+  idle install preserved signing/FDA identity, config/keys and all seven baseline
+  manifests. Exact installed HTTP/fresh stdio, all four runbooks/resources,
+  status and anonymous 401 passed in 1.13 seconds. This chat's owning MCP responds
+  but serves an older guide; its requested Restart is pending.
+- Samsung Monterey 12.7.6 / Xcode 13.4.1: **PASS 2/2** complete cycles with actual
+  `admin/admin` authentication before/after reboot, fresh boot UUID/native GUI/new
+  SSH I/O, 1920×1080, workspace checksum, Swift compile/run, artifact hash, RFB,
+  cross-key rejection, release and revocation. Receipt root
+  `virfield-standard-account-native-20261015/monterey-xcode-13.4.1`.
+- Existing macOS 27 golden: native login copy authentication still fails with
+  `-25293`; exact own clone released after bounded evidence. A fresh same-pinned
+  public-base `security-v1` image passed native/reboot qualification, then worker
+  admission refused `resource_unknown` before allocation; own temporary image
+  deleted. A separate exact `uitest-27-v1` golden also passed full qualification
+  including Xcode 27.0/27A266a and native post-reboot checks; workers await the
+  inventory fix below. Production template and old golden remain unchanged.
+- Fresh ASIF golden admission defect **reproduced**: API caches `disk_bytes=0`
+  indefinitely while fresh stopped `tart get` reports `Disk: 140`, with unchanged
+  config. Candidate source now caches only positive disk sizes, with red/green
+  zero/absent-disk regressions and a positive-cache reuse assertion. Complete local
+  `make check`, pinned Staticcheck and Govulncheck passed for this correction.
+  Package/live acceptance is pending; do not rebuild the qualified golden
+  merely to change the cache.
+- HTPC: exact new Sequoia clone failed before overlay creation. Read-only pinned
+  `qemu-img info` established Podman `no space left on device` in its runroot:
+  `/run/user/1000` had 4,096 bytes free, while the HDD had 2,885,316,886,528 bytes
+  free. The unrelated speech-dispatcher log used 3,357,126,656 bytes. The inspected
+  own partial clone was resolved/released without replay. Backup/truncation of
+  that foreign log awaits separate approval; no foreign files were changed.
+  This is distinct from the older Sonoma reboot failure, which remains open.
+
+Private roots: `virfield-standard-account-factory-20261015`,
+`virfield-standard-uitest-macos27-20261015` and the per-profile native root above.
+A new static test template was added with a private config backup during idle;
+all seven original goldens/manifests and production routing were preserved.
+
+## Previous installed checkpoint — f60efe3 (2026-10-15)
 
 | Artifact / operation | Evidence and boundary |
 |---|---|
@@ -53,11 +94,11 @@ RFB/release. Older passing cycles below used the previous password policy.
 | Lume | Runtime/factory/wrapper/build/install paths removed; old separate service disabled/unloaded; latest retained check at 14:07 UTC confirmed port 7777 closed; rollback files preserved |
 
 This documentation revision changes embedded help in the next build only. The
-running `f60efe3` package still serves its own older embedded runbooks. New code
+previous `f60efe3` package served its own older embedded runbooks. New code
 requires fresh exact-source local checks and a clean package; no source-only
 change is an installed fix. Remote CI remains deferred by the operator.
 
-### Current native provider results
+### Dated native provider results before the standard-account candidate
 
 | Profile / tested code | Result | Scope and remaining work |
 |---|---|---|
@@ -71,7 +112,7 @@ change is an installed fix. Remote CI remains deferred by the operator.
 
 Monterey in these records is **macOS 12.7.6 with Xcode 13.4.1**, not macOS 13
 (Ventura). Neither historical workload success nor an image-ready record accepts
-the candidate standard-password implementation, which is not installed yet.
+the whole standard-password provider matrix.
 
 Private receipt directories under `/private/tmp` retain request keys, exact owned
 identities and bounded evidence:

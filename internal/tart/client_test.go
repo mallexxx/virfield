@@ -50,6 +50,33 @@ func (r *fakeRunner) StartDetached(home string, args []string) error {
 	return nil
 }
 
+// Tart can report zero/absent Disk while ASIF is held by a running builder.
+// config.json does not change when the stopped disk becomes readable again.
+func TestIncompleteDiskSpecIsRefreshedWithoutConfigChange(t *testing.T) {
+	for _, incomplete := range []string{`"Disk":0`, `"Other":0`} {
+		t.Run(incomplete, func(t *testing.T) {
+			home := tartHome(t, "golden")
+			key := home + "|get golden --format json"
+			runner := &fakeRunner{responses: map[string]string{key: `{"OS":"darwin","CPU":4,"Memory":8192,` + incomplete + `}`}}
+			client := &Client{runner: runner}
+			container := ContainerConfig{ID: "local", Path: home}
+			first, err := client.spec(context.Background(), container, "golden")
+			if err != nil || first.disk != 0 {
+				t.Fatal("Incomplete disk did not remain unknown", err)
+			}
+			runner.responses[key] = `{"OS":"darwin","CPU":4,"Memory":8192,"Disk":140}`
+			second, err := client.spec(context.Background(), container, "golden")
+			if err != nil || second.disk != 140_000_000_000 || len(runner.calls) != 2 {
+				t.Fatal("Incomplete ASIF size poisoned the unchanged-config cache", second.disk, len(runner.calls), err)
+			}
+			third, err := client.spec(context.Background(), container, "golden")
+			if err != nil || third.disk != second.disk || len(runner.calls) != 2 {
+				t.Fatal("Verified disk size was not cached", third.disk, len(runner.calls), err)
+			}
+		})
+	}
+}
+
 type interruptedIPRunner struct{ cancel context.CancelFunc }
 
 func (r interruptedIPRunner) Run(ctx context.Context, _ string, args []string) ([]byte, error) {

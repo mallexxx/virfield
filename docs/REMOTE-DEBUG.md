@@ -74,6 +74,6 @@ blocks golden verification instead of publishing a slow debugging image.
 This does not establish current Tart debug acceptance. Its pending acceptance
 must use the corrected installed guest policy, including the operator-required
 standard `admin/admin`, pinned key-only SSH and verified native key storage;
-automatic random password rotation is still present in current `f60efe3` and is
-removed in candidate source, with installed acceptance tracked in the
+automatic random password rotation was removed in `0f8bc20`, with the remaining
+per-profile installed acceptance tracked in the
 [maintained plan](VIRFIELD-3-PLAN.md).

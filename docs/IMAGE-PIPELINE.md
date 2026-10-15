@@ -56,9 +56,8 @@ client-controlled quota bypass.
 Tart stages are `resolve → build → qualify → stop`. Resolve downloads the pinned
 upstream into the selected container before any Packer VM build, with automatic
 cache pruning disabled. A failed source download can retry resolve without replaying
-a VM mutation. Installed `f60efe3` qualification still rotates the account
-password as well as installing private SSH keys; the approved replacement policy
-below removes account-password rotation. Qualification reboots and verifies exact
+a VM mutation. Standard-account qualification retains `admin/admin` and installs
+private SSH keys; legacy golden data is preserved under the policy below. Qualification reboots and verifies exact
 OS/build, SIP, desktop, disk state, account authentication and, for Xcode profiles, signature/version/first launch/Swift
 and DeviceSupport. Base profiles do not require Xcode or host DeviceSupport.
 UI-test recipes additionally verify their automation tools and permission probes.
@@ -78,8 +77,7 @@ encryption at rest when FileVault is off because its clone keeps machine identit
 This is different from the retired Lume portable-disk contract.
 
 The operator requires **`admin/admin`**, without automatic random account-password
-rotation. Candidate source implements this; installed `f60efe3` still uses the
-earlier policy. Previously secured images retain their recorded credentials.
+rotation. Standard-account candidates (`0f8bc20` and later) implement this. Previously secured images retain their recorded credentials.
 Only a new journaled disposable clone converts its known inherited account to
 the standard password, verifies it and migrates the keychain while preserving
 items. Already-standard accounts are authenticated without password change.
@@ -90,12 +88,12 @@ per-image/lease management keys, caller-key isolation, fresh VM host keys and
 pinned key-only SSH; inherited image/cross-lease keys must be rejected. Physical
 host leases add only one caller key to the configured shared account.
 
-The following keychain mechanics describe installed `f60efe3`, not acceptance of
-the candidate standard-password implementation, which is not installed yet.
+The following keychain mechanics are retained with the standard account policy;
+profile-specific live acceptance remains required.
 
 VM qualification and lease preparation install an additional private keychain
 named for the image/lease and an Aqua login LaunchAgent. They preserve/rekey the
-inherited login keychain to the current private VM password and keep login as the
+inherited login keychain to the configured standard VM password and keep login as the
 default and first search entry across boots. This lets loginwindow unlock it
 before Spotlight and other early OS clients, which can otherwise queue password
 dialogs for a custom default before the owned agent starts. The agent verifies

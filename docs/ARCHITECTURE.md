@@ -50,8 +50,8 @@ Shared sleep holds are reference-counted; foreign holds are retained. VM cleanup
 requires confirmed container removal before deleting overlays or releasing holds.
 
 The approved VM account policy is standard `admin/admin`, without automatic
-random account-password rotation. Candidate source implements this policy;
-installed `f60efe3` still uses the earlier policy. Old golden credentials remain
+random account-password rotation. Standard-account candidates (`0f8bc20` and
+later) implement this policy. Old golden credentials remain
 unchanged; a new disposable clone can convert its known old account once. Distinct SSH keys and host
 pins remain required; a standard console password is not a tenant-isolation
 boundary. Existing keychain items, workspaces and goldens must be preserved.

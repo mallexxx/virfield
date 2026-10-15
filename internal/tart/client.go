@@ -329,7 +329,7 @@ func (c *Client) spec(ctx context.Context, container ContainerConfig, name strin
 		c.specMu.Lock()
 		cached, ok := c.specs[key]
 		c.specMu.Unlock()
-		if ok && cached.modified.Equal(info.ModTime()) && cached.size == info.Size() {
+		if ok && cached.disk > 0 && cached.modified.Equal(info.ModTime()) && cached.size == info.Size() {
 			return cached, nil
 		}
 	}
@@ -350,7 +350,11 @@ func (c *Client) spec(ctx context.Context, container ContainerConfig, name strin
 	if raw.Disk != nil {
 		spec.disk = int64(*raw.Disk * 1_000_000_000)
 	}
-	if statErr == nil {
+	// A running ASIF can temporarily report no virtual disk size. Stopping
+	// the VM does not change config.json, so caching that incomplete response
+	// would permanently block worker admission after a successful image build.
+	// Unknown stays unknown for this observation; only complete specs are cached.
+	if statErr == nil && spec.disk > 0 {
 		spec.modified, spec.size = info.ModTime(), info.Size()
 		c.specMu.Lock()
 		if c.specs == nil {
