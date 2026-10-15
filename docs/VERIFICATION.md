@@ -136,6 +136,16 @@ Logs: `virfield-f5-final-check-20261016.log`,
 `virfield-f5-profile-tests-20261016.log` and
 `virfield-f5-fixture-deployment-20261016.log`.
 
+A final transfer/revalidation integration review reproduced a new source-only
+POSIX-lock regression: opening/closing config.json for fresh hardware identity
+could release this process's active transfer lock. The external Python lock
+contender made the added regression fail. Identity reads now share the transfer
+mutex and return unknown while it owns the descriptor; inventory never opens that
+file under its own transfer lock. This supersedes the uninstalled 87955e4/dab2c33
+archives for installation. Red/green logs:
+`virfield-f1-transfer-lock-red-20261016.log` and
+`virfield-f1-transfer-lock-green-20261016.log`. Installed a45655f is unaffected.
+
 ## Earlier transfer checkpoint — 3d667d2 (2026-10-16)
 
 Source `3d667d27687d58a7f8178feee2f90f5349143323` is installed and pushed,

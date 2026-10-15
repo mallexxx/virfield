@@ -28,6 +28,9 @@ func TestLocalImageCopyPreservesIdentityAndLockAcrossInventory(t *testing.T) {
 			if _, err := c.list(context.Background(), ContainerConfig{Path: src}); err != nil {
 				t.Fatal(err)
 			}
+			if id := c.currentRuntimeIdentity(filepath.Join(dir, "config.json")); id != "" {
+				t.Fatal("transfer identity should be unverified while its config is locked")
+			}
 			cmd := exec.Command("/usr/bin/python3", "-c", `import fcntl,sys
 f=open(sys.argv[1],'r+')
 try: fcntl.lockf(f,fcntl.LOCK_EX|fcntl.LOCK_NB)

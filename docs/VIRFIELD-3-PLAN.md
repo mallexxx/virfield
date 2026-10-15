@@ -115,7 +115,9 @@ checks verify fresh runtime/image provenance, management authentication, pinned
 SSH, server acceptance of the existing caller key, account/key policy, OS/SIP and
 unlocked desktop. Tart hardware identity and node overlay device/inode detect
 same-name replacements. No preparation, credentials, workspace or deadline change
-is allowed; a different address is accepted only after these checks.
+is allowed; a different address is accepted only after these checks. Final review
+also reproduced/fixed fresh identity reads releasing an active transfer's POSIX
+lock; reads now share its mutex and remain unknown while that lock is held.
 
 Affected race/SSH-server tests pass for lost replies, owner isolation, restarts
 under the original deadline, replacements, missing credentials, unchanged files,

@@ -10,6 +10,18 @@ import (
 	"syscall"
 )
 
+func (c *Client) currentRuntimeIdentity(path string) string {
+	// POSIX locks are process-wide: closing any descriptor for this file
+	// releases our transfer's lock. Serialize opening/closing with acquisition
+	// and return unknown while the transfer owns the existing descriptor.
+	c.specMu.Lock()
+	defer c.specMu.Unlock()
+	if c.transfers[path] {
+		return ""
+	}
+	return runtimeIdentity(path)
+}
+
 // Read hardware identity freshly even when sizing is cached. Display changes,
 // serialization and a VM restart do not change it; replacing a same-name VM
 // with another ECID/MAC must not inherit a ready lease's authority.
