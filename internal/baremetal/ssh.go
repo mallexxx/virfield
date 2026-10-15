@@ -52,6 +52,18 @@ func (r *Runtime) Prepare(ctx context.Context, l domain.Lease) (domain.SSHConnec
 	return domain.SSHConnection{User: n.User, Port: 22, HostKey: s.HostKey(), ClientKeyFingerprint: ssh.FingerprintSHA256(client)}, nil
 }
 
+func (r *Runtime) Revalidate(ctx context.Context, l domain.Lease) error {
+	if l.ImageID == "" {
+		return domain.Err("revalidation_unsupported", "Physical account leases do not support VM revalidation")
+	}
+	if validator, ok := r.guests.(interface {
+		Revalidate(context.Context, domain.Lease) error
+	}); ok {
+		return validator.Revalidate(ctx, l)
+	}
+	return domain.Err("revalidation_unsupported", "Node VM guest revalidator is unavailable")
+}
+
 // SSHDialer authenticates with Virfield's node management key and accepts
 // only the node's configured host keys.
 func SSHDialer(signer ssh.Signer) dialer { return sshDialer(signer, "22") }

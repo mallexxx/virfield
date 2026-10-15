@@ -115,7 +115,7 @@ func (p authPrincipal) permits(r *http.Request) bool {
 			switch parts[4] {
 			case "tunnel":
 				return r.Method == "POST" || r.Method == "DELETE"
-			case "release":
+			case "release", "revalidate":
 				return r.Method == "POST"
 			case "expiry":
 				return r.Method == "PUT"

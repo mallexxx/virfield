@@ -185,6 +185,19 @@ func (p *routedPreparer) Prepare(ctx context.Context, l domain.Lease) (domain.SS
 	return p.primary.Prepare(ctx, l)
 }
 
+func (p *routedPreparer) Revalidate(ctx context.Context, l domain.Lease) error {
+	owner := p.primary
+	if routed, ok := p.byProvider[l.Provider]; ok {
+		owner = routed
+	}
+	if validator, ok := owner.(interface {
+		Revalidate(context.Context, domain.Lease) error
+	}); ok {
+		return validator.Revalidate(ctx, l)
+	}
+	return domain.Err("revalidation_unsupported", "Runtime does not support read-only VM revalidation")
+}
+
 // Forget and ForgetImage remove private lease and image credentials; the
 // controller calls them after confirmed deletion. A lease's credentials
 // belong to its runtime; image credentials live with the primary.

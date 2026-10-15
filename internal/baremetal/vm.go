@@ -22,10 +22,11 @@ type VMConfig struct {
 // vmRecord is one VM folder on a node: a lease clone (scope leases) or an
 // image-securing clone (scope images).
 type vmRecord struct {
-	Scope  string `json:"scope"`
-	State  string `json:"state"`
-	Golden string `json:"golden"`
-	Port   int    `json:"port"`
+	RuntimeID string `json:"runtime_id,omitempty"`
+	Scope     string `json:"scope"`
+	State     string `json:"state"`
+	Golden    string `json:"golden"`
+	Port      int    `json:"port"`
 	// SSH is true once the guest's SSH banner answers on Port.
 	SSH       bool             `json:"ssh"`
 	Resources domain.Resources `json:"resources,omitempty"`
@@ -135,7 +136,7 @@ func vmObservations(n Node, p probe, reachable bool, used *int) []domain.VM {
 		vms = append(vms, domain.VM{Name: name, Location: n.ID, Provider: providerName, HostID: n.ID, ContainerID: n.ID, OS: "macOS", State: "stopped", LastSeenAt: p.at, Resources: resources})
 	}
 	for name, rec := range p.vms {
-		vm := domain.VM{Name: name, Location: n.ID, Provider: providerName, HostID: n.ID, ContainerID: n.ID, OS: "macOS", State: rec.State, SSHPort: rec.Port, LastSeenAt: p.at}
+		vm := domain.VM{RuntimeID: rec.RuntimeID, Name: name, Location: n.ID, Provider: providerName, HostID: n.ID, ContainerID: n.ID, OS: "macOS", State: rec.State, SSHPort: rec.Port, LastSeenAt: p.at}
 		vm.Resources = rec.Resources
 		if rec.State == "running" {
 			*used++
@@ -152,7 +153,7 @@ func vmObservations(n Node, p probe, reachable bool, used *int) []domain.VM {
 // parseVMLine reads "vm=<scope> <name> <state> <port> <golden> <ssh 0|1>".
 func parseVMLine(value string) (string, vmRecord, bool) {
 	f := strings.Fields(value)
-	if (len(f) != 6 && len(f) != 9) || (f[5] != "0" && f[5] != "1") || (f[0] != "leases" && f[0] != "images") || !domain.ValidName(f[1]) || (f[2] != "running" && f[2] != "stopped") || !domain.ValidName(f[4]) {
+	if (len(f) != 6 && len(f) != 9 && len(f) != 10) || (f[5] != "0" && f[5] != "1") || (f[0] != "leases" && f[0] != "images") || !domain.ValidName(f[1]) || (f[2] != "running" && f[2] != "stopped") || !domain.ValidName(f[4]) {
 		return "", vmRecord{}, false
 	}
 	port, err := strconv.Atoi(f[3])
@@ -160,10 +161,20 @@ func parseVMLine(value string) (string, vmRecord, bool) {
 		return "", vmRecord{}, false
 	}
 	record := vmRecord{Scope: f[0], State: f[2], Port: port, Golden: f[4], SSH: f[5] == "1"}
-	if len(f) == 9 {
+	if len(f) >= 9 {
 		record.Resources.CPU, _ = strconv.Atoi(f[6])
 		record.Resources.MemoryBytes, _ = strconv.ParseInt(f[7], 10, 64)
 		record.Resources.DiskBytes, _ = strconv.ParseInt(f[8], 10, 64)
+	}
+	if len(f) == 10 && strings.HasPrefix(f[9], "node-file-v1:") {
+		parts := strings.Split(strings.TrimPrefix(f[9], "node-file-v1:"), ":")
+		if len(parts) == 2 {
+			_, devErr := strconv.ParseUint(parts[0], 10, 64)
+			inode, inoErr := strconv.ParseUint(parts[1], 10, 64)
+			if devErr == nil && inoErr == nil && inode > 0 {
+				record.RuntimeID = f[9]
+			}
+		}
 	}
 	return f[1], record, true
 }

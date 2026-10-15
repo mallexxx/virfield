@@ -50,6 +50,8 @@ Images:  image-catalog | image-create ID MACOS [XCODE]
 	 image-transfer SOURCE_TEMPLATE NEW_ID DESTINATION_LOCATION
          image-build TEMPLATE_ID | image-delete TEMPLATE_ID EXACT_VM_NAME
 Recover: resolve LEASE_ID VM_NAME CONFIRM-NO-OPERATION-IN-FLIGHT
+         revalidate LEASE_ID EXACT_VM_NAME EXISTING_IDENTITY_DIRECTORY
+         revalidate-proof LEASE_ID EXACT_VM_NAME EXISTING_IDENTITY_DIRECTORY
          image-recover IMAGE_RECORD_ID EXACT_VM_NAME retry|delete CONFIRM-NO-OPERATION-IN-FLIGHT
 Host:    backup | config-check ABSOLUTE_CONFIG | init DIRECTORY TEMPLATE VM LOCATION
 
@@ -229,6 +231,34 @@ Recovery requires prior inspection that no operation remains in flight.
 			return err
 		}
 		body = domain.AcquireRequest{Template: args[1], TTLSeconds: ttl, SSHPublicKey: canonical, DestinationLocation: *location}
+	case "revalidate", "revalidate-proof":
+		if len(args) != 4 || !domain.ValidName(args[1]) || !domain.ValidName(args[2]) || *key == "" {
+			return errors.New("usage: -key STABLE_KEY revalidate[-proof] LEASE_ID EXACT_VM_NAME EXISTING_IDENTITY_DIRECTORY")
+		}
+		data, err := c.Do(context.Background(), "GET", "leases/"+args[1], nil, "")
+		if err != nil {
+			return err
+		}
+		var lease domain.Lease
+		if err := json.Unmarshal(data, &lease); err != nil {
+			return err
+		}
+		if lease.VMName != args[2] {
+			return errors.New("exact VM name does not match this lease")
+		}
+		proof, err := client.SignRevalidation(lease, args[3], *key)
+		if err != nil {
+			return err
+		}
+		if args[0] == "revalidate-proof" {
+			encoded, err := json.Marshal(proof)
+			if err != nil {
+				return err
+			}
+			fmt.Println(string(encoded))
+			return nil
+		}
+		method, path, body = "POST", "leases/"+args[1]+"/revalidate", proof
 	case "desktop":
 		print := len(args) == 3 && args[2] == "--print"
 		if (len(args) != 2 && !print) || !domain.ValidName(args[1]) {

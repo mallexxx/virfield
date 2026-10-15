@@ -650,6 +650,19 @@ func (c *Controller) Recover(ctx context.Context) error {
 		if j.State != "running" {
 			continue
 		}
+		if j.Kind == "lease_revalidate" {
+			l, err := c.store.Lease(ctx, j.LeaseID)
+			if err != nil {
+				return err
+			}
+			j.State = "queued"
+			j.Phase = "queued"
+			j.Progress = "Resuming the same bounded read-only revalidation after restart"
+			if err := c.save(ctx, l, j, "lease.revalidation_resumed", j.Progress); err != nil {
+				return err
+			}
+			continue
+		}
 		if ((j.Kind == "image_build" || j.Kind == "image_transfer") && strings.HasSuffix(j.Phase, "_dispatched") && j.Phase != "download_dispatched") || j.Phase == "transfer_discard_dispatched" {
 			l, err := c.store.Lease(ctx, j.LeaseID)
 			if err != nil {
@@ -761,7 +774,7 @@ func (c *Controller) Tick(ctx context.Context) error {
 		if firstFailure {
 			if leases, err := c.store.Leases(context.WithoutCancel(ctx)); err == nil {
 				for _, lease := range leases {
-					if lease.Purpose != "image" && lease.State == "ready" {
+					if lease.Purpose != "image" && (lease.State == "ready" || lease.State == "revalidating") {
 						c.recordDiagnosticLocked(lease.ID, domain.Diagnostic{Kind: "backend.observation", Action: "failed", Reason: "backend_unavailable", Summary: "Backend observation failed; verified endpoint retained and new connections paused", BackendError: diagnosticError(obsErr)})
 					}
 				}
@@ -800,7 +813,7 @@ func (c *Controller) Tick(ctx context.Context) error {
 		return err
 	}
 	for i, l := range ls {
-		if recovered && l.Purpose != "image" && l.State == "ready" {
+		if recovered && l.Purpose != "image" && (l.State == "ready" || l.State == "revalidating") {
 			c.recordDiagnosticLocked(l.ID, domain.Diagnostic{Kind: "backend.observation", Action: "recovered", Reason: "inventory_verified", Summary: "Backend observation recovered; endpoint verification remains required"})
 		}
 		if l.State == "ready" && !l.UpdatedAt.After(snapshotStarted) {
@@ -810,7 +823,7 @@ func (c *Controller) Tick(ctx context.Context) error {
 				// VM identities without failing the entire fleet observation.
 				// Missing reachability is not evidence of an identity change.
 				delete(c.readyDrift, l.ID)
-			} else if !exists || vm.State != "running" || (c.leasePreparer != nil && (l.SSH == nil || vm.IP != l.IP || vm.SSHPort != l.SSHPort)) {
+			} else if !exists || vm.State != "running" || (l.VerifiedRuntime != nil && l.VerifiedRuntime.RuntimeID != "" && !l.VerifiedRuntime.Matches(vm)) || (c.leasePreparer != nil && (l.SSH == nil || vm.IP != l.IP || vm.SSHPort != l.SSHPort)) {
 				c.readyDrift[l.ID]++
 				if c.readyDrift[l.ID] >= 2 {
 					c.log.Warn("ready lease identity changed", "lease_id", l.ID, "host_id", vm.HostID,
@@ -821,7 +834,7 @@ func (c *Controller) Tick(ctx context.Context) error {
 					observed := runtimeIdentity(vm, exists, c.observation.At)
 					l.IP = ""
 					l.SSHPort = 0
-					l.Error = domain.Err("vm_drift", "Ready VM identity, address or running state changed; release the lease")
+					l.Error = domain.Err("vm_drift", "Ready VM identity, address or running state changed; inspect diagnostics, then explicitly revalidate or release the lease")
 					l.UpdatedAt = c.now()
 					if err := c.store.SaveDiagnostic(ctx, l, domain.Diagnostic{Version: 1, Kind: "lease.drift", Action: "confirmed", Reason: "verified_drift", Summary: l.Error.Message, At: c.now(), Expected: &expected, Observed: &observed, ObservationAt: c.observation.At, ObservationVerified: true}); err != nil {
 						return err
@@ -840,7 +853,9 @@ func (c *Controller) Tick(ctx context.Context) error {
 				hasCleanup = true
 			}
 		}
-		if l.Purpose != "image" && !l.ExpiresAt.After(c.now()) && l.State != "releasing" && l.State != "quarantined" && !hasCleanup && !c.active[l.ID] {
+		// Read-only revalidation can be canceled durably at expiry. Its active
+		// goroutine still prevents cleanup dispatch until the check has drained.
+		if l.Purpose != "image" && !l.ExpiresAt.After(c.now()) && l.State != "releasing" && l.State != "quarantined" && !hasCleanup && (!c.active[l.ID] || l.State == "revalidating") {
 			if _, err := c.queueCleanup(ctx, l, "", ""); err != nil {
 				return err
 			}
@@ -861,7 +876,7 @@ func (c *Controller) Tick(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if recovered {
+		if recovered && j.Kind != "lease_revalidate" {
 			j.Deadline = j.Deadline.Add(outage)
 			if !j.Deadline.After(snapshotStarted) {
 				budget := 10 * time.Minute
@@ -898,6 +913,9 @@ func (c *Controller) vm(l domain.Lease) (domain.VM, bool) {
 // observations, and existing tunnels retain their address/state/expiry guards.
 func (c *Controller) leaseObservationVerified(l domain.Lease, vm domain.VM, exists bool) bool {
 	if c.healthy() != nil {
+		return false
+	}
+	if exists && vm.State == "running" && l.VerifiedRuntime != nil && l.VerifiedRuntime.RuntimeID != "" && !runtimeIdentity(vm, true, c.observation.At).Complete() {
 		return false
 	}
 	hostID := vm.HostID
@@ -939,6 +957,9 @@ func (c *Controller) attention(ctx context.Context, l domain.Lease, j domain.Job
 	return c.save(ctx, l, j, "job.needs_attention", msg)
 }
 func (c *Controller) advance(ctx context.Context, l domain.Lease, j domain.Job) error {
+	if j.Kind == "lease_revalidate" {
+		return c.advanceRevalidation(ctx, l, j)
+	}
 	v, exists := c.vm(l)
 	if !j.Deadline.After(c.now()) {
 		return c.attention(ctx, l, j, "operation_timeout", "Operation deadline exceeded. Slot remains reserved until cleanup is confirmed.", j.Phase == "clone_dispatched")
@@ -954,6 +975,9 @@ func (c *Controller) advance(ctx context.Context, l domain.Lease, j domain.Job) 
 	}
 	if j.Kind == "cleanup" {
 		return c.cleanup(ctx, l, j, v, exists)
+	}
+	if j.Kind != "prepare" {
+		return c.attention(ctx, l, j, "invalid_job", "Unknown executable job kind; no runtime operation was performed", true)
 	}
 	switch j.Phase {
 	case "queued":

@@ -99,7 +99,7 @@ func (c *Controller) OpenTunnel(ctx context.Context, id, service string) (domain
 	if !c.leaseObservationVerified(l, vm, exists) {
 		return domain.Tunnel{}, &domain.Error{Code: "backend_unavailable", Message: "Lease host or address is unverified; wait for inventory recovery", Retryable: true}
 	}
-	if !exists || vm.State != "running" || vm.IP != l.IP || vm.SSHPort != l.SSHPort {
+	if !exists || vm.State != "running" || vm.IP != l.IP || vm.SSHPort != l.SSHPort || !leaseRuntimeMatches(l, vm) {
 		return domain.Tunnel{}, domain.Err("lease_unavailable", "SSH tunnel requires a running VM at the lease address")
 	}
 	// Only VM leases have a guest desktop signed in with a lease password.
@@ -128,7 +128,7 @@ func (c *Controller) OpenTunnel(ctx context.Context, id, service string) (domain
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		vm, exists := c.vm(l)
-		return c.tunnels[key] == t && c.leaseObservationVerified(l, vm, exists) && exists && vm.State == "running" && vm.IP == l.IP && vm.SSHPort == l.SSHPort
+		return c.tunnels[key] == t && c.leaseObservationVerified(l, vm, exists) && exists && vm.State == "running" && vm.IP == l.IP && vm.SSHPort == l.SSHPort && leaseRuntimeMatches(l, vm)
 	}
 	t.dial = func(ctx context.Context) (net.Conn, error) {
 		dialer := net.Dialer{Timeout: 5 * time.Second}
@@ -209,11 +209,14 @@ func (c *Controller) reconcileTunnels(ls []domain.Lease) {
 				keep, paused = true, true
 				break
 			}
-			if exists && vm.State == "running" && vm.IP == l.IP && vm.SSHPort == l.SSHPort {
+			if exists && vm.State == "running" && vm.IP == l.IP && vm.SSHPort == l.SSHPort && leaseRuntimeMatches(l, vm) {
 				keep = true
 				break
 			}
 			reason = "verified_endpoint_change"
+			if exists && !leaseRuntimeMatches(l, vm) {
+				reason = "verified_identity_change"
+			}
 		}
 		if !keep {
 			t.close(reason)

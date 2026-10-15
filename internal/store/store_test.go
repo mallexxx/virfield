@@ -152,7 +152,7 @@ func TestUpgradeImageJournalKeepsExistingRecords(t *testing.T) {
 		t.Fatal(events, err)
 	}
 	var version int
-	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 8 {
+	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != SchemaVersion {
 		t.Fatal(version, err)
 	}
 }
@@ -235,10 +235,10 @@ func TestSchemaFiveUpgradePreservesRecordsAndProtectsNewReaders(t *testing.T) {
 		t.Fatal(op, err)
 	}
 	var version int
-	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 8 {
+	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != SchemaVersion {
 		t.Fatal(version, err)
 	}
-	if _, err := s.db.Exec(`PRAGMA user_version=9`); err != nil {
+	if _, err := s.db.Exec(`PRAGMA user_version=10`); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.migrate(); err == nil {

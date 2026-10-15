@@ -43,7 +43,7 @@ The candidate is **not release accepted**.
 | 2 | Resolve current macOS 27 keychain and Sonoma reboot failures | Reproduced; causes not fully established | Bounded diagnosis, targeted correction and fresh full cycles on the exact installed candidate; no repeated unchanged VM/reboot attempts treated as a fix |
 | 3 | Package and accept the corrected guest policy | `a45655f` installed; Samsung/new macOS27/factory, both HTPC profiles and transferred iPad Monterey passed | Clean exact-source local CI/security/archive checks; idle-pool install with private backup; Tart macOS 27 and both Monterey inventories plus HTPC Sonoma/Sequoia native GUI/new SSH, actual reboot/new UUID, 1920×1080, workload/artifact/RFB/release/revocation |
 | 4 | Close client and production entrypoint acceptance | Owning MCP stale/user cannot Restart now; default Broker script-only passed; full Story waiting for Telegram owner approval | Actual connected clients serve current version/all four runbooks and complete their workflows; production Broker qualification/Story, independent tests, explicit denied-write and artifacts/settlement/cleanup |
-| 5 | Implement the five operator feedback items below | F4 installed/live accepted; F3 a2aab20 checked/pushed/archived; F2 source checks in progress; F1/F5 remain | Each item's tests, live evidence and updated runbooks |
+| 5 | Implement the five operator feedback items below | F4 installed/live accepted; F3 a2aab20 and F2 89344ef checked/pushed/archived; F1 implemented with full CI/affected race/static/vulnerability checks passing, packaging pending; F5 remains | Each item's tests, live evidence and updated runbooks |
 | 6 | Complete remaining hardening/debug/DR gates | Partial dated evidence only | Agreed scope below accepted separately; no promotion based solely on unit tests or another OS/version |
 
 The full current-candidate acceptance, verification and branch push precede general
@@ -108,20 +108,22 @@ explanation, image portability and optional toolchain support.
 
 ### F1 — recover a drifted lease without deleting its VM
 
-Current transient unavailable-host/unknown-address handling preserves a ready
-lease and verified streams. Once two verified contradictory observations mark
-`vm_drift`, however, there is no operation to return that lease to `ready`.
-The existing operator `resolve` schedules cleanup; it is not recovery-in-place.
+The F1 source candidate implements durable `lease_revalidate`, HTTP/CLI and
+`vm_revalidate` (20th MCP tool). Original caller-key proof binds the lease, exact
+VM name and stable request key without transferring the private key. Read-only
+checks verify fresh runtime/image provenance, management authentication, pinned
+SSH, server acceptance of the existing caller key, account/key policy, OS/SIP and
+unlocked desktop. Tart hardware identity and node overlay device/inode detect
+same-name replacements. No preparation, credentials, workspace or deadline change
+is allowed; a different address is accepted only after these checks.
 
-Implement an explicit durable revalidation operation for the exact owned,
-unexpired lease. Check runtime identity, image/provenance, running state, SSH
-host pin and existing management/caller authentication before restoring access.
-Preserve lease/VM identity, workspace, keys and deadline; do not rerun normal
-preparation, rotate credentials, clone or delete. A new address may be accepted
-only after identity and pinned SSH are reverified. Deny ambiguous/in-flight,
-released/expired, foreign or mismatched targets. Test lost replies, replay,
-controller restart, changed identity and expiry races. Live acceptance must
-retain a workspace checksum through a reproduced drift/recovery cycle.
+Affected race/SSH-server tests pass for lost replies, owner isolation, restarts
+under the original deadline, replacements, missing credentials, unchanged files,
+expiry/callback races and same-endpoint tunnel revocation. Schema 9 protects the
+new job kind from older executors and snapshots schema 8 privately before upgrade.
+Legacy leases lacking a verified runtime baseline and physical hosts fail safely.
+Final source/security/archive checks, idle installation and live checksum-preserving
+drift/recovery remain open. Installed a45655f still has cleanup-only `resolve`.
 
 ### F2 — retain drift and tunnel-close diagnostics
 
@@ -130,7 +132,9 @@ before drift clears addresses. Separate bounded listener/stream events record
 pause/resume and explicit close/release/expiry/endpoint change/shutdown/upstream
 I/O; known errno/context causes and original error fingerprints are safe to
 export. Tests cover restart, cleanup persistence, privacy and normal EOF versus
-actual upstream reset. Full checks, packaging and live acceptance remain.
+actual upstream reset. `89344ef` passed full local CI, final affected race/security,
+archive and fresh stdio/runbook checks and is pushed. Installation and live
+acceptance remain; the active production Story prevents a daemon upgrade.
 The historical Monterey drift's exact cause is still unknown.
 
 Persist bounded expected/observed identity, IP, SSH port, state, observation time

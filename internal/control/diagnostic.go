@@ -17,7 +17,7 @@ func runtimeIdentity(vm domain.VM, exists bool, at time.Time) domain.RuntimeIden
 	if parsed := net.ParseIP(vm.IP); parsed != nil {
 		ip = parsed.String()
 	}
-	return domain.RuntimeIdentity{VMName: vm.Name, Location: vm.Location, Provider: vm.Provider, HostID: vm.HostID, ContainerID: vm.ContainerID, OS: vm.OS, Resources: vm.Resources, State: vm.State, IP: ip, SSHPort: vm.SSHPort, Exists: exists, ObservedAt: at, LastSeenAt: vm.LastSeenAt}
+	return domain.RuntimeIdentity{RuntimeID: vm.RuntimeID, VMName: vm.Name, Location: vm.Location, Provider: vm.Provider, HostID: vm.HostID, ContainerID: vm.ContainerID, OS: vm.OS, Resources: vm.Resources, State: vm.State, IP: ip, SSHPort: vm.SSHPort, Exists: exists, ObservedAt: at, LastSeenAt: vm.LastSeenAt}
 }
 
 func expectedIdentity(l domain.Lease) domain.RuntimeIdentity {
@@ -25,6 +25,10 @@ func expectedIdentity(l domain.Lease) domain.RuntimeIdentity {
 		return *l.VerifiedRuntime
 	}
 	return domain.RuntimeIdentity{VMName: l.VMName, Location: l.Location, Provider: l.Provider, Resources: l.Resources, State: "running", IP: l.IP, SSHPort: l.SSHPort, Exists: true}
+}
+
+func leaseRuntimeMatches(l domain.Lease, vm domain.VM) bool {
+	return l.VerifiedRuntime == nil || l.VerifiedRuntime.RuntimeID == "" || l.VerifiedRuntime.Matches(vm)
 }
 
 // Unstructured backend errors can contain command arguments or remote output.

@@ -89,7 +89,10 @@ func TestLiveInstalledMCP(t *testing.T) {
 		for _, tool := range list.Tools {
 			available[tool.Name] = true
 		}
-		for _, name := range []string{"virfield_help", "virfield_status", "vm_acquire", "vm_lease", "vm_release", "vm_tunnel", "virfield_job", "image_create", "image_pull", "image_publish"} {
+		if len(list.Tools) != 20 {
+			t.Fatalf("Installed MCP exposes %d tools, expected20", len(list.Tools))
+		}
+		for _, name := range []string{"virfield_help", "virfield_status", "vm_acquire", "vm_lease", "vm_revalidate", "vm_release", "vm_renew", "virfield_job", "virfield_events", "image_catalog", "image_create", "image_apple_auth", "image_build", "image_transfer", "image_pull", "image_publish", "registry_sources", "registry_resolve", "vm_tunnel", "vm_tunnel_close"} {
 			if !available[name] {
 				session.Close()
 				t.Fatalf("Required MCP tool missing: %s", name)

@@ -390,6 +390,7 @@ func (c *Client) inspect(ctx context.Context, container ContainerConfig, row lis
 		state = "stopped"
 	}
 	vm := domain.VM{
+		RuntimeID: runtimeIdentity(filepath.Join(container.Path, "vms", row.Name, "config.json")),
 		Resources: domain.Resources{CPU: spec.cpu, MemoryBytes: spec.memory, DiskBytes: spec.disk},
 		Name:      row.Name, Location: container.ID, Provider: c.ProviderName(), HostID: c.config.HostID,
 		ContainerID: container.ID, OS: spec.os, State: state, LastSeenAt: now,

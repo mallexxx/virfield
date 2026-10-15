@@ -167,14 +167,14 @@ func TestVMProbeReportsGoldensAndVMs(t *testing.T) {
 	if err != nil {
 		t.Fatal(out, err)
 	}
-	if !strings.Contains(out, "vm=leases vf-aaaaaaaaaaaaaaaa running 22100 sonoma-secure 0 4 8589934592 0\n") {
+	if !strings.Contains(out, "vm=leases vf-aaaaaaaaaaaaaaaa running 22100 sonoma-secure 0 4 8589934592 0 unknown\n") {
 		t.Fatal("guest SSH reported before its banner:", out)
 	}
 	if err := os.WriteFile(filepath.Join(home, "sshd"), []byte("22100\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	out, _ = runVMScript(t, home, bin, vmProbeLines, goldens)
-	for _, want := range []string{"golden=sonoma-secure 0\n", "golden=sequoia-secure 0\n", "vm=leases vf-aaaaaaaaaaaaaaaa running 22100 sonoma-secure 1 4 8589934592 0\n", "vm=leases vf-bbbbbbbbbbbbbbbb stopped 22101 sonoma-secure 0 0 0 0\n", "vm=images htpc-sonoma stopped 22102 sonoma-secure 0 0 0 0\n"} {
+	for _, want := range []string{"golden=sonoma-secure 0\n", "golden=sequoia-secure 0\n", "vm=leases vf-aaaaaaaaaaaaaaaa running 22100 sonoma-secure 1 4 8589934592 0 unknown\n", "vm=leases vf-bbbbbbbbbbbbbbbb stopped 22101 sonoma-secure 0 0 0 0 unknown\n", "vm=images htpc-sonoma stopped 22102 sonoma-secure 0 0 0 0 unknown\n"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("missing %q in\n%s", want, out)
 		}

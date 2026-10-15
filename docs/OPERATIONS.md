@@ -358,7 +358,7 @@ Tart remote-debug acceptance is still pending.
 `operations`, `verification` are embedded and are also `virfield://docs/TOPIC`
 resources. Updating source does not update installed help.
 
-Tools: `virfield_help`, `virfield_status`, `vm_acquire`, `vm_lease`, `vm_release`, `vm_renew`,
+Tools: `virfield_help`, `virfield_status`, `vm_acquire`, `vm_lease`, `vm_revalidate`, `vm_release`, `vm_renew`,
 `virfield_job`, `virfield_events`, `image_catalog`, `image_create`, `image_apple_auth`,
 `image_build`, `image_transfer`, `image_pull`, `image_publish`, `registry_sources`, `registry_resolve`,
 `vm_tunnel`, `vm_tunnel_close`.
@@ -406,7 +406,7 @@ journal. A lost response uses the same body and idempotency key.
 The following `resolve` command queues cleanup of a `needs_attention` or
 quarantined lease and can delete its VM. It does **not** revalidate that machine
 and return it to ready. Preserve needed workspace first and obtain deletion
-authorization; recovery without deletion is planned and not available yet.
+authorization. Installed a45655f does not have the F1 revalidation below.
 
 ```sh
 virfield -token-file "$VIRFIELD_HOME/token" -key inspected-resolution-001 resolve LEASE_ID EXACT_VM_NAME CONFIRM-NO-OPERATION-IN-FLIGHT
@@ -416,6 +416,38 @@ This operator cleanup resolution is absent from MCP. Image recovery uses its sep
 in [Image pipeline](IMAGE-PIPELINE.md#recovery). Destructive cleanup needs explicit
 operator/user authorization and exact-name confirmation.
 
+The F1 source candidate adds read-only recovery for an unexpired owned VM in
+`needs_attention` with `vm_drift`. It requires the original complete runtime
+baseline and verified source-image manifest, a fresh running observation, the
+original pinned host key, existing management credentials and caller-key proof.
+It also checks unchanged guest keys/policy, OS/SIP and unlocked desktop. It never
+calls normal guest preparation, creates credentials, repairs policy, clones or
+deletes. Legacy leases without the baseline and physical hosts are unsupported.
+
+```sh
+virfield -token-file "$VIRFIELD_HOME/token" -key inspected-revalidation-001 revalidate LEASE_ID EXACT_VM_NAME EXISTING_IDENTITY_DIRECTORY
+virfield -token-file "$VIRFIELD_HOME/token" job JOB_ID
+virfield -token-file "$VIRFIELD_HOME/token" lease LEASE_ID
+```
+
+`revalidate-proof` with the same arguments only prints the public signed request
+for `POST /api/v1/leases/ID/revalidate` or MCP `vm_revalidate`. The signature binds
+the exact lease, VM and idempotency key. Only the existing owner-only Ed25519
+private file is read locally; no private key is sent or generated. Replay the
+same body/key after a lost response. Revalidation reserves the same lease while
+checking, and survives restart under its original deadline (at most two minutes,
+never beyond lease expiry). Wait for job `succeeded` and lease `ready` before
+opening a new tunnel; old listeners stay revoked. Failure preserves the VM and
+records a terminal job error; inspect/fix the cause before a new request key.
+Lease/VM identity, workspace, keys and expiry stay unchanged. Connection files
+are not overwritten: use the ready endpoint with the existing key and host pin.
+Final installation/live acceptance is pending; see Verification.
+
+Source schema 9 prevents older executors from interpreting this new job as a
+clone. Upgrade creates and verifies a private schema 8 snapshot first. Keep that
+snapshot and the older schema 7 snapshot. Rollback requires the snapshot matching
+that binary; never point a schema 8 binary at schema 9 state.
+
 The F2 source candidate adds typed `diagnostic` objects to the existing events
 API/CLI/`virfield_events`, filtered by `lease_id`. `lease.drift` atomically retains
 expected/observed identity, address, SSH port, resources, state and observation
@@ -423,7 +455,7 @@ times before clearing the live endpoint. New readiness also saves its verified
 runtime identity. `tunnel.listener` records opened/paused/resumed/closed;
 `tunnel.stream` separately records rejection or termination, transport direction
 and byte counts. Reasons distinguish explicit close, release, expiry, verified
-endpoint change, daemon shutdown, upstream dial/I/O, client I/O and normal EOF.
+endpoint/immutable identity change, daemon shutdown, upstream dial/I/O, client I/O and normal EOF.
 An I/O error induced by our own cleanup is not an upstream-failure diagnosis.
 
 `backend.observation` records failure/recovery. Known errno/context reasons and
@@ -508,12 +540,11 @@ address or inventory freshness is unverified; they resume on the same port after
 recovery. Endpoints are checked before and after each new upstream dial. Release,
 expiry and verified identity/state changes still revoke the tunnels. Two verified observations of an absent or
 stopped VM or a changed known endpoint move the lease to `needs_attention`.
-There is currently no supported return-to-ready revalidation operation: operator
-resolve queues cleanup and can delete the VM. Non-destructive recovery is planned;
-preserve/export needed workspace before any authorized cleanup. Never repair a
-real drift by rewriting stored addresses or disabling SSH pins. Drift warnings
-contain some expected/observed fields, but durable events and tunnel-close reasons
-remain incomplete; do not infer the historical cause from a later running VM.
+Installed a45655f has cleanup-only operator resolve. The F1 source recovery
+contract is documented above and still needs installation/live acceptance.
+Preserve/export needed workspace before authorized cleanup. Never repair drift
+by rewriting stored addresses or disabling SSH pins. F2 adds durable diagnostics;
+do not infer a historical cause from a later running VM or a new diagnostic test.
 
 Installed `f60efe3` preserves/rekeys the login default and prepares an additional
 owner-only keychain named for each image/lease,

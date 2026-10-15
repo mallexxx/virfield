@@ -117,19 +117,20 @@ type Lease struct {
 
 // Job is a persisted state machine. Phase is written before each external effect.
 type Job struct {
-	Transfer  *ImageTransfer  `json:"transfer,omitempty"`
-	Export    *RegistryExport `json:"export,omitempty"`
-	Image     *ImageProfile   `json:"image,omitempty"`
-	Progress  string          `json:"progress,omitempty"`
-	ID        string          `json:"id"`
-	LeaseID   string          `json:"lease_id"`
-	Kind      string          `json:"kind"`
-	Phase     string          `json:"phase"`
-	State     string          `json:"state"`
-	CreatedAt time.Time       `json:"created_at"`
-	UpdatedAt time.Time       `json:"updated_at"`
-	Deadline  time.Time       `json:"deadline"`
-	Error     *Error          `json:"error,omitempty"`
+	Revalidation *Revalidation   `json:"revalidation,omitempty"`
+	Transfer     *ImageTransfer  `json:"transfer,omitempty"`
+	Export       *RegistryExport `json:"export,omitempty"`
+	Image        *ImageProfile   `json:"image,omitempty"`
+	Progress     string          `json:"progress,omitempty"`
+	ID           string          `json:"id"`
+	LeaseID      string          `json:"lease_id"`
+	Kind         string          `json:"kind"`
+	Phase        string          `json:"phase"`
+	State        string          `json:"state"`
+	CreatedAt    time.Time       `json:"created_at"`
+	UpdatedAt    time.Time       `json:"updated_at"`
+	Deadline     time.Time       `json:"deadline"`
+	Error        *Error          `json:"error,omitempty"`
 }
 type Event struct {
 	Diagnostic *Diagnostic `json:"diagnostic,omitempty"`
@@ -148,6 +149,7 @@ type Operation struct {
 
 // VM is an observation, never an instruction or an ownership claim.
 type VM struct {
+	RuntimeID   string    `json:"runtime_id,omitempty"`
 	Resources   Resources `json:"resources"`
 	Name        string    `json:"name"`
 	Location    string    `json:"location"`

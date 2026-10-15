@@ -5,6 +5,7 @@ import "time"
 // RuntimeIdentity contains only inventory identity/endpoint fields. It never
 // contains SSH credentials, host keys, desktop URLs or protocol payloads.
 type RuntimeIdentity struct {
+	RuntimeID   string    `json:"runtime_id,omitempty"`
 	VMName      string    `json:"vm_name"`
 	Location    string    `json:"location"`
 	Provider    string    `json:"provider,omitempty"`

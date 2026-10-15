@@ -95,6 +95,15 @@ func TestScopedPrincipalOwnsOnlyItsLeasesAndCanRotate(t *testing.T) {
 	if got := call("POST", path+"/release", `{}`, "other-release", otherToken).Code; got != 403 {
 		t.Fatal("other principal released lease", got)
 	}
+	if got := call("POST", path+"/revalidate", `{}`, "other-revalidate", otherToken).Code; got != 403 {
+		t.Fatal("Other principal reached lease revalidation", got)
+	}
+	if got := call("POST", path+"/revalidate", `{}`, "owner-revalidate", brokerToken).Code; got != 400 {
+		t.Fatal("Owned revalidation route did not validate its proof request", got)
+	}
+	if got := call("POST", path+"/revalidate", `{}`, "image-revalidate", imageToken).Code; got != 403 {
+		t.Fatal("Image-only principal reached lease revalidation", got)
+	}
 	if got := call("POST", path+"/resolve", `{}`, "broker-resolve", brokerToken).Code; got != 403 {
 		t.Fatal("broker reached operator recovery", got)
 	}

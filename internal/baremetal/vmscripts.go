@@ -203,7 +203,12 @@ for s in leases images; do
     if [ "$st" = running ] && timeout 3 bash -c "exec 3<>/dev/tcp/127.0.0.1/$p && head -c 4 <&3" 2>/dev/null | grep -q '^SSH-'; then
       ssh=1
     fi
-    echo "vm=$s $n $st $p $(cat "$d/golden") $ssh ${cpu:-0} $memory $(vf_disk_size "$d/storage/data.qcow2")"
+    vf_identity=unknown
+    if [ -f "$d/storage/data.qcow2" ] && [ ! -L "$d/storage/data.qcow2" ]; then
+      vf_inode=$(stat -c '%d:%i' "$d/storage/data.qcow2" 2>/dev/null || stat -f '%d:%i' "$d/storage/data.qcow2" 2>/dev/null || true)
+      case "$vf_inode" in ''|*[!0-9:]*) ;; *) vf_identity="node-file-v1:$vf_inode";; esac
+    fi
+    echo "vm=$s $n $st $p $(cat "$d/golden") $ssh ${cpu:-0} $memory $(vf_disk_size "$d/storage/data.qcow2") $vf_identity"
   done
 done
 true

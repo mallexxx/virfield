@@ -72,6 +72,9 @@ The Telegram prompt's message and published controls were independently confirme
 from a private ephemeral DB/WAL snapshot, with the production volume read-only,
 network disabled and only this run's safe metadata projected. Receipt:
 `virfield-story-telegram-delivery-20261016.json`. The owner has not yet answered.
+Published options expired at 2026-10-15 19:44:08 UTC; the owner can renew the same
+request. The original run deadline is 21:12:19 UTC. No Human response or refresh
+is sent on the owner's behalf.
 
 F2 source now has bounded typed event diagnostics and verified runtime baselines.
 Targeted race tests passed for drift snapshots before endpoint clearing, every
@@ -79,11 +82,34 @@ forced listener/stream cause, backend pause/resume, original error fingerprints,
 restart/cleanup persistence, exclusion of credentials/payloads and actual upstream
 reset versus graceful EOF. Receipt: `virfield-diagnostics-coverage-20261016.log`.
 Full local CI, final affected race/API/MCP checks, pinned Staticcheck 0.7.0 and
-Govulncheck 1.6.0 (zero reachable) also passed. Staged-secret scan, packaging and
-live acceptance remain; these changes are not installed. Logs:
+Govulncheck 1.6.0 (zero reachable) also passed. Gitleaks 8.30.1 passed staged and
+241-commit history scans. `89344ef84ab30e728dd40ca4c877cb5feaab0903` is pushed;
+archive `0.0.0-drift-diagnostics` SHA-256 is
+`3e9251925c00360aedc492624eb08d0bf4d2728db203961c35f16ae23bee2c15`.
+Exact archive hashes and fresh stdio 19-tool/four-runbook checks passed against
+the installed a45655f daemon. Installation/live acceptance remain. Logs:
 `virfield-diagnostics-full-check-20261016.log` and
 `virfield-diagnostics-final-affected-20261016.log`.
 Historical drift and Sonoma-stall causes remain unproven.
+
+F1 source adds bounded durable read-only revalidation, owner-bound caller proof,
+fresh immutable runtime identity, original image/SSH/account policy and OS/SIP/
+desktop verification. Affected race tests pass across controller, real SSH
+management/caller-enquiry servers, client proof, HTTP/MCP transport, Tart and
+schema 8-to-9 backup/restart cases. Tests verify lost replies, original deadlines,
+unchanged keys, same-name replacements, unknown observations, expiry/callback
+races and same-endpoint tunnel revocation. Full local CI and final affected tests
+passed. Staticcheck 0.7.0 and Govulncheck 1.6.0 found no actionable issues or
+reachable vulnerabilities. The final client-key read additionally rejects symlinks
+and unsafe file permissions through a bounded verified descriptor. Gitleaks 8.30.1
+passed the staged diff and 241-commit history. Linux arm64 CLI cross-build and
+final documentation checks passed. Exact archive checks remain pending.
+Logs: `virfield-revalidate-full-check-20261016.log`,
+`virfield-revalidate-final-affected-20261016.log` and
+`virfield-revalidate-manager-20261016.log`. Source exposes 20 MCP tools and schema
+9; installed daemon remains a45655f/schema 8. Live recovery must independently
+retain the original VM/key/expiry and workspace checksum; unit tests do not close
+that gate. No production restart is permitted during the active Story.
 
 ## Earlier transfer checkpoint — 3d667d2 (2026-10-16)
 

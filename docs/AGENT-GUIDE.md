@@ -58,6 +58,7 @@ letters, digits, `_`, `.` or `-`. `ID` placeholders below are not interchangeabl
 | `virfield_job` | `{"id":"JOB_ID"}` | Job state, phase, progress, deadline and error |
 | `image_apple_auth` | `{"id":"JOB_ID"}` | Local Apple sign-in for the exact failed Tart Xcode resolve job; no credentials in tool arguments |
 | `vm_lease` | `{"id":"LEASE_OR_IMAGE_RECORD_ID"}` | Durable record; a ready worker includes `ip`, `ssh`, `expires_at` |
+| `vm_revalidate` | `{"id":"LEASE_ID","vm_name":"EXACT_VM_NAME","caller_proof":"LOCALLY_SIGNED_PUBLIC_PROOF","idempotency_key":"SAME_PROOF_KEY"}` | Source candidate: read-only in-place recovery of a drifted unexpired VM using its original runtime/image/SSH identities; generate proof with `virfield -key SAME_PROOF_KEY revalidate-proof ID VM_NAME EXISTING_IDENTITY_DIRECTORY`; poll job and lease; no key generation or deletion |
 | `virfield_events` | `{"after":0,"lease_id":"LEASE_OR_IMAGE_RECORD_ID"}`; both optional | Ordered events and `next_cursor`; persist cursor after processing |
 | `vm_renew` | `{"id":"LEASE_ID","expires_at":"ABSOLUTE_RFC3339_TIMESTAMP"}` | Updated lease; deadline must be in the future, at most 24 hours ahead |
 | `vm_tunnel` | `{"id":"LEASE_ID","service":"ssh"\|"desktop"}` | `{lease_id,address,service,url}`; address is loopback on the daemon host; a `desktop` tunnel (VM leases only) returns `url` `vnc://admin:<lease password>@127.0.0.1:<port>` for Screen Sharing |
@@ -162,11 +163,21 @@ the bridge; inspect [Verification](VERIFICATION.md) for exact deployment/results
 Readiness also requires an unlocked console and no visible keychain password
 dialog. A running Finder or successful native I/O alone does not prove this.
 
-Confirmed `vm_drift` cannot currently be restored to `ready` in place. Operator
-resolve queues cleanup; never call it to preserve a workspace. Unverified
-temporary inventory is handled separately and can recover without replacing a
-ready lease. Non-destructive drift revalidation and an optional legacy iOS
-profile remain planned. The F2 source candidate adds bounded typed diagnostics
+Installed a45655f has cleanup-only operator `resolve`; it can delete the VM.
+The F1 source candidate adds explicit `vm_revalidate` for an unexpired owned
+`needs_attention`/`vm_drift` VM with its original verified runtime baseline.
+Generate the public proof locally with the original identity directory and the
+same request key shown in the tool table. The private key stays local. Poll the
+returned job and lease; access is restored only after the job succeeds and the
+lease is `ready`. The checks verify existing runtime/image identity, host pin,
+management authentication, caller-key acceptance, account/key policy, OS/SIP and
+unlocked desktop. They never run preparation or generate keys. Failures preserve
+the VM; original expiry still applies. Physical hosts and legacy leases without
+a complete runtime baseline are unsupported. Existing connection files are not
+overwritten: after readiness, use the returned endpoint with the original key
+and host pin. Installation/live acceptance is pending; inspect current metadata.
+Unverified temporary inventory can recover without replacing a ready lease.
+The optional legacy iOS profile remains planned. The F2 source candidate adds bounded typed diagnostics
 to `virfield_events`: expected/observed endpoints before drift, backend cause
 codes/fingerprints and separate listener/stream reasons. Filter by lease ID;
 retain the cursor, allow ID gaps and inspect the latest 32 records per kind.

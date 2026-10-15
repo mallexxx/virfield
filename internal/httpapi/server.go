@@ -86,6 +86,7 @@ func New(c *control.Controller, token string, log *slog.Logger, options ...Optio
 	api.HandleFunc("POST /api/v1/leases/{id}/tunnel", s.openTunnel)
 	api.HandleFunc("DELETE /api/v1/leases/{id}/tunnel", s.closeTunnel)
 	api.HandleFunc("POST /api/v1/leases/{id}/release", s.release)
+	api.HandleFunc("POST /api/v1/leases/{id}/revalidate", s.revalidate)
 	api.HandleFunc("PUT /api/v1/leases/{id}/expiry", s.renew)
 	api.HandleFunc("POST /api/v1/leases/{id}/resolve", s.resolve)
 	api.HandleFunc("GET /api/v1/jobs/{id}", s.job)
@@ -159,6 +160,12 @@ func statusForCode(code string) int {
 	case "image_transfer_mismatch", "image_transfer_unsupported", "image_outcome_unknown":
 		return http.StatusConflict
 	case "image_transfer_failed":
+		return http.StatusBadGateway
+	case "revalidation_unsupported":
+		return http.StatusConflict
+	case "service_stopping", "lease_credentials_missing":
+		return http.StatusServiceUnavailable
+	case "caller_authentication_failed", "revalidation_failed":
 		return http.StatusBadGateway
 	case "registry_tag_exists", "resource_exhausted", "resource_unknown", "resource_unavailable", "ssh_key_in_use", "legacy_uuid_in_use", "image_in_use", "image_exists", "capacity_exhausted", "idempotency_conflict", "operation_in_progress", "lease_expired", "lease_released", "lease_unavailable", "outcome_unknown", "template_unavailable", "apple_auth_required", "backup_failed", "vm_drift", "vm_missing", "start_rejected", "catalog_changed", "disk_encrypted", "disk_locked", "disk_policy_unknown", "download_integrity", "image_interrupted", "ownership_unconfirmed", "registry_digest_mismatch", "registry_source_changed", "registry_unsanitized", "security_policy_failed", "sip_verification_failed", "unexpected_state", "unsafe_cache", "xcode_signature_failed", "xcode_version_mismatch":
 		return http.StatusConflict
@@ -314,6 +321,32 @@ func (s *Server) renew(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	write(w, 200, v)
+}
+
+func (s *Server) revalidate(w http.ResponseWriter, r *http.Request) {
+	if !s.ensureLeaseOwned(w, r) {
+		return
+	}
+	var request domain.RevalidateRequest
+	if err := decode(w, r, &request); err != nil {
+		s.fail(w, err)
+		return
+	}
+	owner := ""
+	if p := principalFrom(r); !p.operator() {
+		owner = p.name
+	}
+	result, err := s.c.RevalidateAs(r.Context(), r.PathValue("id"), r.Header.Get("Idempotency-Key"), request, owner)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	status := http.StatusAccepted
+	if result.Replayed {
+		status = http.StatusOK
+	}
+	w.Header().Set("Location", "/api/v1/jobs/"+result.Job.ID)
+	write(w, status, result)
 }
 func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	after := int64(0)

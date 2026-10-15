@@ -70,6 +70,7 @@ func New(c *client.Client) *mcp.Server {
 	addHelp(s)
 	addRegistryTools(s, c)
 	addTransferTool(s, c)
+	addRevalidationTool(s, c)
 	mcp.AddTool(s, &mcp.Tool{Name: "virfield_status", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}, Description: "Show runtime health, VM slots, leases/jobs and per-template resource_admission estimates: CPU/RAM, each storage's observed free, reserved growth, requested full potential, safety reserve, headroom and image-cache quota. Unknown inputs are explicit. Estimates require verified inventory and are rechecked during admission/dispatch."}, func(ctx context.Context, _ *mcp.CallToolRequest, _ empty) (*mcp.CallToolResult, any, error) {
 		return result(c.Do(ctx, "GET", "status", nil, ""))
 	})
