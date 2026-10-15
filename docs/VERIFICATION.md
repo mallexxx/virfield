@@ -215,7 +215,7 @@ manual GUI unlock: Sonoma failed at `08:02:35 UTC`, then its automatic agent
 published native ready at `08:02:36`; Sequoia failed at `08:06:42`, then published
 ready at `08:08:33`. Fresh GUI and new-SSH native probes passed afterward on both.
 Their API leases remained `needs_attention`; no state was rewritten or adopted.
-Source now shares the remaining original five-minute SSH-command budget between
+Candidate `6779b6f` shared the remaining original five-minute SSH-command budget between
 startup/result observations, reserving fifteen seconds for final diagnostics.
 A deterministic execution of the real shell loop fails on the old 120-second
 guard and passes for valid proof at 130 seconds, while missing proof and a prior
@@ -244,6 +244,29 @@ Bounded private failure diagnostics now include timestamps and at most two
 one-second samples of the fixed native probe; no identity/keychain content is read.
 Private evidence: `/private/tmp/virfield-sequoia-keychain-retained-8c521fe-20261015`
 and `/private/tmp/virfield-sequoia-keychain-retained-r2-8c521fe-20261015`.
+
+Installed `6779b6f` passed exact HTTP/fresh stdio MCP, the full local CI/security
+checks and two new complete iPad Monterey native/reboot/workload/RFB/release
+cycles. Their post-reboot greetings took about two milliseconds. A live wrong
+Tart-container request returned `invalid_request` before reserving a lease.
+On HTPC, the first Sequoia passed its complete native/reboot/workload/artifact/RFB
+cycle with a 0.11-second post-reboot greeting. The second reached ready in about
+eleven minutes, rebooted to a fresh UUID, but verification again ended just before
+automatic startup proof: diagnostics at `08:53:22 UTC` contained valid native
+ready/result and the new scope/boot startup marker. Both owned leases were
+released; Sonoma had not started. This is not a complete provider-matrix PASS.
+Source now gives only post-reboot `verify` ten minutes, retaining five-minute
+initial `ensure`, one-minute SSH native probing and the original parent deadline.
+The real shell loop accepts valid proof beyond five minutes and still bounds
+missing proof and time already spent in earlier phases. The same source fixes
+the live helper's enclosing SSH wait so it cannot truncate that verification.
+This observation-only correction needs a new installed repeat.
+Private evidence: `/private/tmp/virfield-installed-htpc-native-6779b6f-20261015`
+and `/private/tmp/virfield-installed-ipad-monterey-6779b6f-20261015`.
+An additional simultaneous Swift compile attempt was interrupted by that test's
+own scheduled Monterey reboot; it is not counted as a compile PASS. Xcode/Swift
+versions were reported, and the earlier `8c521fe` compile/run receipt remains
+accepted for the unchanged golden.
 
 The physical HTPC lease passed on `c85a899`: acquire/replay, exclusive-host
 refusal of a second lease, pinned SSH workload, artifact export and release.

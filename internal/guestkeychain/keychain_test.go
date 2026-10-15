@@ -15,6 +15,8 @@ import (
 type fakeGuest struct {
 	command, input   string
 	inputs, commands []string
+	timeouts         []time.Duration
+	deadlines        []time.Time
 	change           func(*Proof)
 	sshChange        func(*Proof)
 	err              error
@@ -46,7 +48,10 @@ func TestFailedReadinessCollectsDiagnosticsBeforeClosingTheSession(t *testing.T)
 	}
 }
 
-func (g *fakeGuest) RunReader(_ context.Context, _ time.Duration, command string, input io.Reader) (string, error) {
+func (g *fakeGuest) RunReader(ctx context.Context, timeout time.Duration, command string, input io.Reader) (string, error) {
+	g.timeouts = append(g.timeouts, timeout)
+	deadline, _ := ctx.Deadline()
+	g.deadlines = append(g.deadlines, deadline)
 	b, _ := io.ReadAll(input)
 	g.command, g.input = command, string(b)
 	g.inputs = append(g.inputs, g.input)
@@ -65,6 +70,26 @@ func (g *fakeGuest) RunReader(_ context.Context, _ time.Duration, command string
 	}
 	out, _ := json.Marshal(p)
 	return string(out), g.err
+}
+
+func TestColdRebootVerificationDoesNotExtendEnsureOrCallerDeadline(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	deadline, _ := ctx.Deadline()
+	for _, mode := range []string{"ensure", "verify"} {
+		g := &fakeGuest{}
+		var err error
+		want := 5 * time.Minute
+		if mode == "ensure" {
+			_, err = Ensure(ctx, g, "admin", "lease-fixture", "private-fixture-password")
+		} else {
+			_, err = Verify(ctx, g, "admin", "lease-fixture")
+			want = 10 * time.Minute
+		}
+		if err != nil || len(g.timeouts) != 2 || g.timeouts[0] != want || g.timeouts[1] != time.Minute || g.deadlines[0].IsZero() || g.deadlines[1].IsZero() || g.deadlines[0].After(deadline) || g.deadlines[1].After(deadline) {
+			t.Fatal("Cold verification changed ensure/SSH/caller bounds", mode, err, g.timeouts, g.deadlines)
+		}
+	}
 }
 
 func TestEnsureUsesPrivateStdinAndReturnsNativeGUIProof(t *testing.T) {

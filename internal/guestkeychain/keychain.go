@@ -73,7 +73,13 @@ func run(ctx context.Context, g Guest, mode, user, scope, password, previous str
 	// Console, automatic startup and the fresh native result share this command
 	// budget instead of truncating a valid cold-HDD agent at an earlier phase
 	// guard. The caller's operation/lease context still bounds all preparation.
-	out, err := g.RunReader(ctx, 5*time.Minute, command, strings.NewReader(input))
+	budget := 5 * time.Minute
+	if mode == "verify" {
+		// After reboot, SSH can precede the automatic Aqua login by minutes on
+		// a cold node. Wait for it without extending credential mutation/ensure.
+		budget = 10 * time.Minute
+	}
+	out, err := g.RunReader(ctx, budget, command, strings.NewReader(input))
 	if err != nil || json.Unmarshal([]byte(out), &proof) != nil || proof.Version != 1 || proof.Scope != scope || proof.Nonce != nonce || !domain.ValidName(proof.Boot) || proof.SessionID < 1 || !proof.Aqua || !proof.Unlocked || !proof.ValueEqual || !proof.Ready || proof.AddStatus != 0 || proof.ReadStatus != 0 || proof.DeleteStatus != 0 || proof.KeyboardSetupVisible || proof.DisplayManaged && (proof.DisplayWidth != 1920 || proof.DisplayHeight != 1080) {
 		return reject(ctx, g, "gui", out)
 	}

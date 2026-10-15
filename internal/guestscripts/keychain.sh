@@ -14,11 +14,12 @@ IFS= read -r previous
 [[ "$scope" =~ ^(image|lease)-[a-zA-Z0-9_.-]+$ && "$nonce" =~ ^keychain-[a-f0-9]+$ ]] || exit 64
 [[ "$HOME" == "/Users/$user" ]] || exit 64
 case "$(sysctl -n hw.model)" in VirtualMac*|iMacPro1,1) ;; *) exit 64 ;; esac
-# Share the existing five-minute SSH-command budget across all observations.
-# Leave fifteen seconds for the final result and private failure diagnostics.
-# A cold HDD agent has published valid native proof just after the old
-# independent 120-second result guard; it must get the remaining command time.
+# Initial installation gets five minutes; post-reboot verification gets ten
+# because SSH can precede the cold HDD Aqua login and its automatic native probe.
+# All phases share that bound; reserve fifteen seconds for failure diagnostics.
+# The caller's original operation/lease context still bounds the command.
 deadline=$((SECONDS+285))
+[[ "$mode" != verify ]] || deadline=$((SECONDS+585))
 for ((attempt=0; attempt<120; attempt++)); do
   [[ "$(stat -f %Su /dev/console)" == "$user" ]] && break
   sleep 1
