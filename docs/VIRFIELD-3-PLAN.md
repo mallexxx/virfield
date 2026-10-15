@@ -60,7 +60,9 @@ Generated VS Code workspaces and v1 Broker remain current contracts.
 Required: exact-SHA CI/security/clean archive; current-client and production
 entrypoint acceptance; provider/Control restart matrix; host loss, partition,
 full disk, drain and soak; node resource/cache quota live acceptance; metrics/alerts; signed
-artifact evidence, promotion/revocation; backup/restore and upgrade/rollback.
+artifact evidence, promotion/revocation; VM-disk recovery and upgrade/rollback.
+Controller-state backup/restore has live acceptance with two native Monterey
+lease/reboot cycles; runtime disks are outside that snapshot's contract.
 Lume runtime/factory/wrapper/patch/build paths are removed; the separate
 old host service is disabled and unloaded. Do not fabricate acceptance or weaken readiness to complete a gate.
 

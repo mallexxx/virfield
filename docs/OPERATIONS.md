@@ -164,8 +164,10 @@ and `/dev/net/tun`.
   can hang at the very end of a shutdown. Release deletes the clone.
 - Capacity: the node admits exactly one host lease plus `max` VMs. A VM cannot consume
   the physical-host slot. A fresh post-wake probe must match the requested boot volume. Two VMs booting
-  together off a 5400 rpm HDD took about nine minutes to become ready;
-  one boots in about two.
+  together off a 5400 rpm HDD took about nine minutes before the native keychain
+  checks were added; one boots in about two. Node VM preparation has a bounded
+  20-minute budget for boot plus credential/keychain verification. The caller's
+  lease TTL still includes preparation and is never extended by this budget.
 
 `vms.storage_dir` selects a private root for new VM `leases/` and `images/`; omission
 uses `~/virfield`. Physical-host workspaces and shared sleep holds stay in the
@@ -377,15 +379,18 @@ These are VM reservations; physical-account workloads are not CPU/RAM sandboxed.
 Node QEMU disks use `cache=writeback` with threaded I/O so concurrent cold boots
 can share the host page cache on HDD storage. Guest cache flushes remain enabled;
 this is the standard QEMU writeback mode ([QEMU cache options](https://www.qemu.org/docs/master/system/invocation.html)).
-The implementation is in the new source candidate; live node acceptance is pending.
+Quotas and the HDD root are installed; two concurrent reservations were observed.
+Complete native node acceptance remains pending after HDD contention clears.
 
 Backup snapshots SQLite, config, the owner-token hash and image credentials into
 an owner-only directory; five complete snapshots are retained. VM disks are not
 included. Node management keys and cached probes are included; symlinks and oversized
 identity files abort the snapshot. External registry/Orchard/principal credentials
 referenced by the config need separate operator backup. Restore must preserve image identities, use a new
-operator token and start exactly one manager. The 2026-10-14 offline copy/integrity/
-identity/token/configuration drill passed; a live restored-daemon drill is pending.
+operator token and start exactly one manager. The 2026-10-14 offline drill and
+2026-10-15 live controller-state restore passed, including a rotated token, exact
+MCP and two native Monterey reboot/lease cycles before return to original state.
+This does not back up or restore VM disks.
 Journal retention removes completed released history after 30 days; unfinished
 jobs and active leases retain their request keys. Retired idempotency keys may
 become new requests after pruning. Migration snapshots are retained separately.

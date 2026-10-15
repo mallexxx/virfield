@@ -8,9 +8,11 @@ are historical evidence, not current gates. Later passing tests do not invalidat
 newly reproduced defects below. Source, installed candidate and published release
 are distinct artifacts.
 
-## Installed acceptance checkpoint (2026-10-15)
+## Acceptance checkpoint (2026-10-15, before the next installation)
 
-Installed `8e07015` includes native GUI/SSH keychain readiness, explicit
+The latest completed installation at this checkpoint is `ab9a2ad`; the factory
+capacity correction in the source still requires a new package and live repeat.
+The `8e07015` checkpoint introduced native GUI/SSH keychain readiness, explicit
 `1920x1080px` Tart displays, interrupted-inventory protection and the separate
 private HTPC HDD root. Its native Apple browser accepts a separate private
 state directory; compiled Swift trust checks passed against the actual deployment
@@ -38,7 +40,7 @@ independently confirmed absent. A deterministic test reproduced node inventory
 invalidation being consumed while a mutation was running. The new source
 invalidates again on completion, including partial failures; Control waits for a
 snapshot started after clone completion. Regression tests, full local CI and
-Staticcheck passed. Installation and repeated HTPC acceptance are pending.
+Staticcheck passed. The subsequent installations and repeats are recorded below.
 Evidence: `/private/tmp/virfield-installed-htpc-native-8e07015-20261015`.
 
 The correction was subsequently installed as `2f46faa`; exact-version HTTP/fresh
@@ -50,14 +52,42 @@ container used direct I/O (`cache=none`). Both owned fixtures were released.
 The new candidate uses QEMU's standard flush-preserving `writeback` cache and
 threaded I/O; its effect on native boot/readiness still needs live verification.
 Evidence: `/private/tmp/virfield-installed-htpc-native-2f46faa-20261015`.
+Installed `ab9a2ad` repeated the two-VM boot with flush-preserving page cache,
+but it also hit the deadline. Read-only process counters and descriptors identified
+Steam staging a 33.6 GB update on the same HDD, about 42 MB read and written per
+two seconds, with high host I/O pressure. This external workload was preserved;
+the page-cache change's performance effect is not yet established. All owned
+failed fixtures were released and native absence confirmed. Node native acceptance
+must be repeated after storage contention clears.
+The source budgets 20 minutes for node VM preparation because the earlier cold
+two-VM HDD boot already took nine minutes before native keychain verification.
+The primary VM budget and caller lease TTL are unchanged; all readiness checks
+remain mandatory. This budget correction still requires installed live acceptance.
+
+The first factory attempt `image-b3dba0ef5874ab2b2d3e8ee4492e5270` failed before
+publication: APFS resize succeeded to 120 GB, then immediate root `df` still
+reported 14 GB free. Packer exited and removed its VM; logs and the operation
+were preserved before exact-name journaled cleanup. Source now checks writable
+Data capacity with bounded observation after a single resize. Delayed capacity,
+stale-root, shortage and invalid-statistics fixtures pass; live verification of
+the correction remains pending. No registry upload has started.
 
 The old owning MCP adapter was identified by the sole new API socket from this
 session's completed read-only status request and stopped without touching other
 adapters. The client did not reconnect automatically and now requires an explicit
 reconnect; HTTP/fresh stdio acceptance does not replace this gate.
 
-Factory/private GHCR roundtrip, current-client reconnection, live controller
-restore/rollback and existing HTPC golden permission migration remain open.
+Live controller state restore passed on installed `ab9a2ad`: backup
+`backup-24b8cc75c691697893d48d44c6163bfb`, separate private state and new owner
+token, old-token rejection, exact HTTP/fresh stdio MCP, and two native Monterey
+lease/reboot/workload/release cycles. Read-only SQLite comparison confirmed that
+new leases existed only in the restored copy. The existing launchd service was
+switched atomically and returned to byte-exact original config/state, preserving
+all seven goldens. One manager/listener ran at a time. Runtime disks were not
+included. Evidence: `/private/tmp/virfield-live-restore-drill-20261015/report.json`.
+
+Factory/private GHCR roundtrip, current-client reconnection, controller binary
+rollback and existing HTPC golden permission migration remain open.
 The following sections retain dated evidence from earlier candidates.
 
 ## Earlier candidate hardening (2026-10-14)
@@ -177,7 +207,7 @@ Native tool exit status alone is never the readiness gate.
 
 ## Automated candidate results
 
-The complete `make check` passed: documentation links, nine Python tests,
+The complete `make check` passed: documentation links, ten Python tests,
 formatting, `go vet` and the full Go race suite. Three Go binaries and the native
 Apple browser built; the browser signature verified. The existing installed
 configuration passes the candidate CLI `config-check`. Pinned Staticcheck, module
@@ -200,8 +230,9 @@ interrupted-inventory fix; subsequent source changes must be packaged again.
 Offline restoration of `backup-5cdef526c555f6a53ed5f565c6e2edaf` passed into a
 separate private directory: 18 copied files, SQLite integrity, all five active
 image identities and their credentials/verification, unchanged node management
-key, rotated owner token and configuration validation. No restored daemon was
-started; live restore/upgrade/rollback acceptance remains outstanding.
+key, rotated owner token and configuration validation. This older offline case
+did not start a daemon; the newer live controller-state restore is recorded above.
+Full VM-disk recovery and package/client upgrade/rollback remain separate gates.
 
 [Live acceptance runner](../tools/live-acceptance.py) persists request keys before
 dispatch, retains a private journal, and deletes only its own accepted disposable
@@ -215,8 +246,8 @@ revocation alongside SSH, cross-key/image-key rejection, workload and artifacts.
 
 - Repeat exact-source local CI and clean packaging for subsequent code changes;
   remote CI is deferred by the operator. Existing package provenance is recorded above.
-- Install the node-inventory race correction in an idle pool and repeat HTPC
-  native/resource acceptance with disposable node clones.
+- Install subsequent factory/startup-budget corrections in an idle pool and
+  repeat factory and HTPC native/resource acceptance with disposable clones.
 - Reconnect the actual owning MCP clients after installation and verify their
   version, runbooks and workflow; a fresh adapter alone cannot attest old sessions.
 - Complete permission migration for existing HTPC secured goldens after approval;
@@ -417,8 +448,8 @@ prompt and showed the Ventura desktop.
 - Current candidate workflows in both Codex and Claude Code; full apple-browsers
   UI-test workflow through Broker. The accepted Broker smoke is narrower.
 - Remote/container TLS and routing through the intended production entrypoint.
-- Fresh clean release archive extraction, native URL-scheme launch, complete
-  backup/restore and upgrade/rollback on the current provider configuration.
+- Native URL-scheme GUI launch, complete package/client upgrade/rollback and
+  VM-disk disaster recovery. Controller-state restore passed as recorded above.
 
 ## Release procedure
 

@@ -40,7 +40,13 @@ is not yet implemented. Developer profiles download/resume and checksum-verify a
 ones are quarantined. A failed Apple-authorized download in `resolve` supports
 the native sign-in flow and resumes that exact job before any VM build. Install
 the browser alongside virfieldd to enable this flow. UI-test profiles adopt
-upstream Xcode. macOS 27 recipes keep the upstream disk and explicitly set `recovery_partition = "keep"`. Omitting it selects Packer's default deletion, which opens an ASIF file and can retain a lock that prevents Virtualization.framework startup. They do not resize or relocate Recovery. All Tart recipes set a 1920×1080 logical desktop; worker clones repeat this before boot and disable display refitting. Tart's value is a hint: a cached 1024×768 guest mode can remain active. The VM's Aqua agent selects and verifies the native CoreGraphics 1920×1080 logical mode on every login/preparation.
+upstream Xcode. macOS 27 recipes keep the upstream disk and explicitly set `recovery_partition = "keep"`. Omitting it selects Packer's default deletion, which opens an ASIF file and can retain a lock that prevents Virtualization.framework startup. They do not resize or relocate Recovery. All Tart recipes use `1920x1080px` to avoid host Retina scaling; worker clones repeat this before boot and disable display refitting. The VM's Aqua agent selects and verifies the actual CoreGraphics 1920×1080 logical desktop on every login/preparation.
+
+Older base/developer recipes grow the raw disk to 120 GB and require at least
+40 GiB free on the writable `/System/Volumes/Data` filesystem. Capacity is checked
+for up to 30 seconds after one resize; a sealed root snapshot's statistics alone
+are not used for installation admission. Real shortage or invalid statistics fail
+the build rather than accepting an undersized guest.
 Image builds and portable exports reserve CPU/RAM/disk before dispatch and share
 the worker quota. A new macOS 27 base requires an operator `disk_bytes` bound in
 `runtime.tart.bases` (pinned profile: `build_disk_bytes`) or an observed golden of

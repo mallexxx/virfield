@@ -5,7 +5,24 @@ import (
 	"github.com/mallexxx/virfield/internal/domain"
 	"sync"
 	"testing"
+	"time"
 )
+
+func TestNodeVMPreparationBudgetPreservesLeaseTTL(t *testing.T) {
+	c, template := nodeResourceController(t)
+	op, err := c.Acquire(context.Background(), "node-cold-start-budget", domain.AcquireRequest{Template: template.ID, TTLSeconds: 3600})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if op.Job.Deadline.Sub(op.Job.CreatedAt) != 20*time.Minute || op.Lease.ExpiresAt.Sub(op.Lease.CreatedAt) != time.Hour {
+		t.Fatal("Node boot/keychain budget must not extend the lease TTL", op)
+	}
+	primary, _, _ := setup(t)
+	op = acquire(t, primary, "primary-start-budget")
+	if op.Job.Deadline.Sub(op.Job.CreatedAt) != 10*time.Minute {
+		t.Fatal("Primary VM startup budget changed", op)
+	}
+}
 
 func nodeResourceController(t *testing.T) (*Controller, domain.Template) {
 	t.Helper()

@@ -491,7 +491,13 @@ func (c *Controller) AcquireAs(ctx context.Context, key string, r domain.Acquire
 		leaseProvider = t.Provider
 	}
 	l := domain.Lease{Resources: reservation, Source: &t, ImageID: imageID, LegacyUUID: t.LegacyUUID, SSHPublicKey: r.SSHPublicKey, Owner: owner, ID: id, VMName: "vf-" + id[6:], Location: destinationLocation, Template: t.ID, Provider: leaseProvider, GuestUser: t.GuestUser, GuestHome: t.GuestHome, State: "pending", ExpiresAt: now.Add(time.Duration(r.TTLSeconds) * time.Second), CreatedAt: now, UpdatedAt: now}
-	j := domain.Job{ID: domain.NewID("job-"), LeaseID: id, Kind: "prepare", Phase: "queued", State: "queued", CreatedAt: now, UpdatedAt: now, Deadline: now.Add(10 * time.Minute)}
+	prepareTimeout := 10 * time.Minute
+	if t.Image != nil && t.Image.Node != nil {
+		// Two cold HDD guests have taken nine minutes just to boot. Leave a
+		// bounded budget for credential rotation and native Aqua/SSH checks.
+		prepareTimeout = 20 * time.Minute
+	}
+	j := domain.Job{ID: domain.NewID("job-"), LeaseID: id, Kind: "prepare", Phase: "queued", State: "queued", CreatedAt: now, UpdatedAt: now, Deadline: now.Add(prepareTimeout)}
 	if err := c.store.Save(ctx, l, &j, key, fp, "lease.accepted", "Slot reserved; VM preparation queued"); err != nil {
 		return domain.Operation{}, err
 	}
