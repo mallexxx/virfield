@@ -6,13 +6,18 @@ separate old LaunchDaemon was disabled and booted out on 2026-10-14, its rollbac
 are archived. Current defects and acceptance limits are in
 [Verification](VERIFICATION.md). Orchard is not deployment-ready.
 
-## Approved VM account policy — implementation pending
+## Standard VM account policy — candidate source
 
 The operator requires standard **`admin/admin`**, with no automatic random account
-password rotation. Current source and installed `f60efe3` still rotate image and
-worker passwords; removing that behavior is approved work, not a deployed fix.
-Existing secured images may retain generated credentials. Preserve their items,
-workspace and image identities while defining an inspected compatibility path.
+password rotation. Candidate source uses the configured account name as its
+password; installed `f60efe3` still uses generated passwords. Source/live acceptance
+are separate. For old images, a new journaled disposable clone authenticates the
+standard password first, and only if needed authenticates the recorded inherited
+password before converting that clone to the standard account. It verifies the
+result and preserves/migrates keychain items. Existing golden disks and credential
+journals remain intact. Securing a legacy image in place is refused with
+`image_account_policy_migration_required`; build a new image instead. Unknown
+keychain credentials fail readiness and require diagnosis, never a reset.
 Do not reset a login keychain or overwrite a golden to force the standard password.
 Per-image/lease management and caller keys, fresh VM host keys, pinning and
 key-only SSH remain required. Physical shared accounts are unaffected.

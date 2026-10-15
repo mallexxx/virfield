@@ -139,7 +139,13 @@ func TestLiveIsolatedPublicBaseGUIKeychain(t *testing.T) {
 		}
 		// Reproduce the old image preparer's password/autologin rotation while
 		// leaving the inherited login keychain password and contents unchanged.
-		if _, err := g.RunMutation(ctx, "/bin/bash -c '"+strings.ReplaceAll(rotateScript, "'", "'\"'\"'")+"'", "admin\nadmin\n"+c.Password+"\n"); err != nil {
+		// Historical regression fixture only; the production preparer no longer
+		// generates or installs random account passwords.
+		const historicalRotation = `IFS= read -r user
+IFS= read -r old
+IFS= read -r new
+/usr/sbin/sysadminctl -newPassword "$new" -oldPassword "$old"`
+		if _, err := g.RunMutation(ctx, "/bin/bash -c '"+strings.ReplaceAll(historicalRotation, "'", "'\"'\"'")+"'", "admin\nadmin\n"+c.Password+"\n"); err != nil {
 			t.Fatal(err)
 		}
 		script := "set -eu\nIFS= read -r user\nIFS= read -r new\nIFS= read -r kcpassword\n" + autologinScript

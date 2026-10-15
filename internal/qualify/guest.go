@@ -47,7 +47,7 @@ func SIP(ctx context.Context, g Guest, disabled bool) (string, error) {
 	return expected, nil
 }
 
-// Password proves the rotated account password persisted across a reboot.
+// Password proves the configured account password persisted across a reboot.
 // The password travels on stdin; the user is a validated name.
 func Password(ctx context.Context, g Guest, user, password string) error {
 	failure := domain.Err("credential_verification_failed", "Image password did not persist across reboot; image will not be published")

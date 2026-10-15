@@ -31,7 +31,7 @@ func TestLoginPasswordTerminatesAndPads(t *testing.T) {
 }
 
 func TestCredentialScriptsParse(t *testing.T) {
-	for _, script := range []string{autologinScript, leaseScript, rotateScript} {
+	for _, script := range []string{autologinScript, leaseScript, standardAccountScript} {
 		cmd := exec.Command("/bin/bash", "-n")
 		cmd.Stdin = strings.NewReader(script)
 		if out, err := cmd.CombinedOutput(); err != nil {
@@ -41,13 +41,13 @@ func TestCredentialScriptsParse(t *testing.T) {
 }
 
 func TestCredentialScriptsUseConfiguredGuestUser(t *testing.T) {
-	for name, script := range map[string]string{"autologin": autologinScript, "lease": leaseScript, "rotate": rotateScript} {
+	for name, script := range map[string]string{"autologin": autologinScript, "lease": leaseScript, "account": standardAccountScript} {
 		if strings.Contains(script, "lume") || !strings.Contains(script, `"$user"`) {
 			t.Fatalf("%s script does not use the configured guest user", name)
 		}
 	}
-	for name, script := range map[string]string{"lease": leaseScript, "rotate": rotateScript} {
-		if !strings.HasPrefix(strings.TrimPrefix(script, "set -eu\n"), "IFS= read -r user\n") {
+	for name, script := range map[string]string{"lease": leaseScript, "account": standardAccountScript} {
+		if !strings.Contains(script, "IFS= read -r user\n") {
 			t.Fatalf("%s script must read the guest user first", name)
 		}
 	}
@@ -65,7 +65,7 @@ func TestAutologinRejectsStaleSecretAndAcceptsNativeRandomPadding(t *testing.T) 
 	}
 }
 
-// Each VM lease signs in to Screen Sharing with its own password, so the
+// Each VM lease signs in to Screen Sharing with its standard account, so the
 // lease script enables the service and Prepare verifies its real RFB greeting.
 func TestLeaseScriptEnablesScreenSharing(t *testing.T) {
 	for _, want := range []string{

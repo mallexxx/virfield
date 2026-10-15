@@ -78,17 +78,20 @@ encryption at rest when FileVault is off because its clone keeps machine identit
 This is different from the retired Lume portable-disk contract.
 
 The operator requires **`admin/admin`**, without automatic random account-password
-rotation. This is approved but **not implemented**: current source and installed
-`f60efe3` still rotate image/worker passwords. Previously secured images may
-therefore retain generated credentials. The next implementation must preserve
-items/workspaces and explicitly handle those older images; do not reset their
-keychain or silently overwrite a golden. The pending policy still requires
+rotation. Candidate source implements this; installed `f60efe3` still uses the
+earlier policy. Previously secured images retain their recorded credentials.
+Only a new journaled disposable clone converts its known inherited account to
+the standard password, verifies it and migrates the keychain while preserving
+items. Already-standard accounts are authenticated without password change.
+In-place securing of a legacy golden is refused before mutation; build a new
+image instead. Unknown keychain credentials fail readiness. Never reset their
+keychain or silently overwrite a golden. The policy still requires
 per-image/lease management keys, caller-key isolation, fresh VM host keys and
 pinned key-only SSH; inherited image/cross-lease keys must be rejected. Physical
 host leases add only one caller key to the configured shared account.
 
 The following keychain mechanics describe installed `f60efe3`, not acceptance of
-the pending standard-password implementation.
+the candidate standard-password implementation, which is not installed yet.
 
 VM qualification and lease preparation install an additional private keychain
 named for the image/lease and an Aqua login LaunchAgent. They preserve/rekey the

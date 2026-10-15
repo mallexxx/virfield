@@ -12,9 +12,13 @@ The candidate is **not release accepted**.
 
 - Keep the standard VM account **`admin` / `admin`**. The operator explicitly
   rejected automatic random account-password rotation on 2026-10-15. Removing it
-  is approved work, **not implemented yet**: current source and installed
-  `f60efe3` still rotate image/worker passwords. Existing secured goldens can
-  therefore still contain older generated passwords.
+  is implemented in candidate source, with tests; installed `f60efe3` still uses
+  the old policy. New identities use the configured account name as the password.
+  An already-standard account is authenticated without password change. Legacy
+  image credentials/goldens stay intact; only a new disposable clone converts
+  its known inherited account password once, then verifies authentication and
+  migrates the keychain without discarding items. Unknown keychain credentials
+  still fail readiness; there is no reset/replacement fallback.
 - Retain separate management/caller SSH keys, fresh VM host keys, host pinning,
   inherited/cross-lease key rejection and key-only SSH. A standard console
   password does not replace these checks. Physical shared accounts are unchanged.
@@ -33,7 +37,7 @@ The candidate is **not release accepted**.
 
 | Order | Work | Current state | Completion evidence |
 |---|---|---|---|
-| 1 | Remove automatic account-password rotation | Approved; source/runtime still rotate | Tests and installed image/lease/reboot cycles retain `admin/admin`; SSH isolation and native GUI/new SSH key storage still pass; old-image handling preserves data |
+| 1 | Remove automatic account-password rotation | Source implemented/tested; package/live acceptance pending | Tests and installed image/lease/reboot cycles retain `admin/admin`; SSH isolation and native GUI/new SSH key storage still pass; old-image handling preserves data |
 | 2 | Resolve current macOS 27 keychain and Sonoma reboot failures | Reproduced; causes not fully established | Bounded diagnosis, targeted correction and fresh full cycles on the exact installed candidate; no repeated unchanged VM/reboot attempts treated as a fix |
 | 3 | Package and accept the corrected guest policy | Not built or installed | Clean exact-source local CI/security/archive checks; idle-pool install with private backup; Tart macOS 27 and both Monterey inventories plus HTPC Sonoma/Sequoia native GUI/new SSH, actual reboot/new UUID, 1920×1080, workload/artifact/RFB/release/revocation |
 | 4 | Close client and production entrypoint acceptance | Owning MCP transport closed; Broker macos27 repeat open | Actual connected clients serve current version/all four runbooks and complete their workflows; production Broker qualification/Story, independent tests, explicit denied-write and artifacts/settlement/cleanup |

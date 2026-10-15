@@ -145,9 +145,10 @@ an active lease's key for another lease. No generic workload, artifact uploader,
 Xcode project scheme or repository checkout is inferred by the VM manager.
 
 The approved VM account policy is standard **`admin/admin`**, without automatic
-random password rotation. Implementation is pending: current source and installed
-`f60efe3` still rotate passwords, and old secured goldens can retain generated
-credentials. Do not infer that an existing image already has the standard password
+random password rotation. Candidate source implements this; installed `f60efe3`
+still uses the earlier policy, and old secured goldens can retain generated
+credentials. New clones convert a known old account to the standard password
+without modifying the source golden; unknown keychain credentials fail readiness. Do not infer that an existing image already has the standard password
 or reset its keychain. SSH remains pinned/key-only, with separate management and
 caller keys and cross-lease/inherited-key rejection.
 

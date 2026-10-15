@@ -1,5 +1,5 @@
 // Package nodeimage secures a node's bootstrap golden into the golden that
-// node VM leases clone: clone the bootstrap disk, rotate its credentials with
+// node VM leases clone: clone the bootstrap disk, isolate its SSH identity with
 // the guest SSH pipeline, verify it after a reboot, and commit it read-only.
 package nodeimage
 
@@ -110,7 +110,7 @@ func (b *Builder) qualify(ctx context.Context, l domain.Lease, p domain.ImagePro
 	if err := b.shutdown(ctx, l, bootstrap); err != nil {
 		return err
 	}
-	if err := progress("Credentials rotated; verifying the image after reboot"); err != nil {
+	if err := progress("SSH identity isolated; verifying the image after reboot"); err != nil {
 		return err
 	}
 	l, err = b.boot(ctx, l)

@@ -18,7 +18,7 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// Prepare replaces every inherited authentication secret before a lease is ready.
+// Prepare isolates SSH identities and retains the standard VM account password.
 // The caller owns its private key; only its validated public key enters this job.
 func (e *Manager) Prepare(ctx context.Context, l domain.Lease) (domain.SSHConnection, error) {
 	var result domain.SSHConnection
@@ -54,7 +54,7 @@ func (e *Manager) Prepare(ctx context.Context, l domain.Lease) (domain.SSHConnec
 	g.diagnosticDir = scoped.Directory(l)
 	// SSH can become available before the inherited automatic GUI login has
 	// finished. As in image qualification, require a settled desktop before
-	// changing the account/autologin secret that loginwindow is consuming.
+	// applying the standard account/autologin policy that loginwindow is consuming.
 	// This preflight is read-only: failure must leave inherited identities
 	// untouched and must not create a new secured lease identity.
 	if err := qualify.Desktop(ctx, g); err != nil {
@@ -66,6 +66,9 @@ func (e *Manager) Prepare(ctx context.Context, l domain.Lease) (domain.SSHConnec
 	c, err := scoped.CredentialsFor(l)
 	if err != nil {
 		return result, err
+	}
+	if c.Password != guestUser(l) {
+		return result, domain.Err("lease_ssh_failed", "Worker credential journal predates the standard-account policy; inspect and release this disposable lease")
 	}
 	if len(c.HostPrivate) == 0 {
 		_, key, err := ed25519.GenerateKey(rand.Reader)
@@ -179,8 +182,8 @@ IFS= read -r kcpassword
 umask 077
 mkdir -p ~/.ssh ~/workspace
 chmod 700 ~/.ssh ~/workspace
-vf_lease_phase rotate-account-password
-/usr/sbin/sysadminctl -newPassword "$new" -oldPassword "$old"
+vf_lease_phase standard-account
+` + standardAccountPolicy + `
 vf_lease_phase verify-account-password
 /usr/bin/dscl . -authonly "$user" "$new" >/dev/null 2>&1
 vf_lease_phase configure-autologin

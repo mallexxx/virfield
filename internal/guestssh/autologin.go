@@ -38,7 +38,7 @@ printf '%s\n' "$new" | sudo -S -p '' /usr/bin/defaults write /Library/Preference
 // VerifyAutoLogin reads the private cache over pinned SSH and never returns its
 // contents. sysadminctl can exit successfully without changing the stored secret.
 func VerifyAutoLogin(ctx context.Context, g *Client, user, password string) error {
-	failure := domain.Err("credential_autologin_failed", "Guest automatic login does not contain the current private password; image or lease will not be published")
+	failure := domain.Err("credential_autologin_failed", "Guest automatic login does not contain the configured account password; image or lease will not be published")
 	// ValidName admits no quote or shell metacharacter.
 	if !domain.ValidName(user) {
 		return failure

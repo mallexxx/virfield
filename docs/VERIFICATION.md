@@ -8,14 +8,26 @@ The working branch is `codex/retire-lume-release-hardening`; `main` is not promo
 The [implementation plan](VIRFIELD-3-PLAN.md) owns delivery order and all five new
 operator feedback items.
 
-## Approved password policy — implementation pending
+## Standard password policy — source implemented, acceptance pending
 
 The operator requires the standard VM **`admin` / `admin`** account and explicitly
-rejected automatic random account-password rotation. **Current source and installed
-`f60efe3` still rotate passwords**; removing that behavior is the first open task.
-No new package implementing this decision has been built, installed or accepted.
+rejected automatic random account-password rotation. Candidate source now creates
+standard account credentials and never changes an already-standard password. A
+new disposable clone of an old image authenticates its inherited password before
+a one-time conversion to the standard password. Existing golden credentials are
+never silently rewritten; in-place securing of a legacy golden is refused before
+mutation. Installed `f60efe3` still uses the old policy. The new policy has not yet
+been packaged, installed or accepted.
 Existing secured images may retain generated credentials; do not assume they
 already accept the standard password or modify them outside a journaled migration.
+
+Local source checks on 2026-10-15 passed: complete `make check` (17 Python
+tests, Go vet and full race suite), Staticcheck 0.7.0, module integrity,
+Govulncheck 1.6.0 (zero reachable vulnerabilities) and Gitleaks 8.30.1
+(233 commits). New stateful shell regressions cover unchanged standard accounts,
+one-time legacy-clone conversion, wrong inherited credentials, random targets
+and ineffective password changes; credential tests preserve legacy journals and
+independent SSH keys. These are source checks, not installed/native acceptance.
 
 Keep management/caller SSH keys, fresh host keys, host pinning, inherited/cross-lease
 key rejection and key-only SSH. Preserve login-keychain items and workspaces;
@@ -59,7 +71,7 @@ change is an installed fix. Remote CI remains deferred by the operator.
 
 Monterey in these records is **macOS 12.7.6 with Xcode 13.4.1**, not macOS 13
 (Ventura). Neither historical workload success nor an image-ready record accepts
-the new standard-password implementation, which does not exist yet.
+the candidate standard-password implementation, which is not installed yet.
 
 Private receipt directories under `/private/tmp` retain request keys, exact owned
 identities and bounded evidence:
@@ -160,7 +172,7 @@ the plist's macOS 13 minimum; Mach-O metadata/build check passed, not a live mac
 
 | Required work | State / closure criterion |
 |---|---|
-| Standard VM password implementation | Remove random account rotation; test/preserve `admin/admin`, retained keychain data and independent SSH isolation; define compatible handling of previously rotated images |
+| Standard VM password implementation | Source implemented; package and accept it; test/preserve `admin/admin`, retained keychain data and independent SSH isolation; define compatible handling of previously rotated images |
 | Current native VM matrix | Diagnose/fix macOS 27 keychain and Sonoma reboot; build/install exact clean corrected package in idle pool and pass relevant Tart/HTPC cycles; Sequoia old-policy 2/2 does not accept new policy |
 | iPad repeat | Restore adequate full-growth-plus-reserve storage or accept verified-golden transfer first; no reserve weakening or foreign deletion |
 | Owning clients and Broker entrypoint | Current actual MCP version/runbooks/workflows; Broker macos27 criteria above; fresh stdio/HTTP alone insufficient |

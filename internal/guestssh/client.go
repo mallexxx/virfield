@@ -149,7 +149,9 @@ func (e *Manager) CredentialsFor(l domain.Lease) (Credentials, error) {
 	if err != nil {
 		return Credentials{}, err
 	}
-	c = Credentials{Private: pem.EncodeToMemory(key), Password: domain.NewID("vf-")}
+	// Account passwords are stable (admin/admin for the supported VM profiles).
+	// SSH identities remain independently generated for every image and lease.
+	c = Credentials{Private: pem.EncodeToMemory(key), Password: guestUser(l)}
 	return c, SaveCredentials(path, c)
 }
 func (e *Manager) Connect(ctx context.Context, l domain.Lease, ip string, bootstrap bool) (*Client, error) {
@@ -207,12 +209,21 @@ func guestUser(l domain.Lease) string {
 	return l.GuestUser
 }
 
-// Fixed script; user, old and new password arrive on SSH stdin.
-const rotateScript = `IFS= read -r user
+// Fixed compatibility path for a disposable clone of a previously secured
+// image. Never choose a new random account password or change an already
+// standard account. A mismatched inherited credential fails before mutation.
+const standardAccountScript = `set -eu
+set +x
+IFS= read -r user
 IFS= read -r old
 IFS= read -r new
+` + standardAccountPolicy
+
+const standardAccountPolicy = `[[ -n "$user" && "$new" == "$user" ]] || exit 64
 if ! /usr/bin/dscl . -authonly "$user" "$new" >/dev/null 2>&1; then
- /usr/sbin/sysadminctl -newPassword "$new" -oldPassword "$old" || exit 1
+ [[ "$old" != "$new" ]] || exit 65
+ /usr/bin/dscl . -authonly "$user" "$old" >/dev/null 2>&1 || exit 65
+ /usr/sbin/sysadminctl -newPassword "$new" -oldPassword "$old" || exit 65
 fi
 /usr/bin/dscl . -authonly "$user" "$new" >/dev/null 2>&1
 `
@@ -410,6 +421,11 @@ func (e *Manager) SecureImage(ctx context.Context, l domain.Lease, ip string, g 
 	if err != nil {
 		return err
 	}
+	// Do not silently rewrite previously secured goldens or their credential
+	// journals. They remain usable as sources: Prepare converts only a new clone.
+	if c.Password != guestUser(l) {
+		return domain.Err("image_account_policy_migration_required", "Previously secured image credentials are preserved; build a new standard-account image or acquire a disposable clone")
+	}
 	signer, err := ssh.ParsePrivateKey(c.Private)
 	if err != nil {
 		return err
@@ -438,7 +454,7 @@ func (e *Manager) SecureImage(ctx context.Context, l domain.Lease, ip string, g 
 	if c.Secured {
 		old = c.Password
 	}
-	if err := runSecret("rotation", rotateScript, user+"\n"+old+"\n"+c.Password+"\n"); err != nil {
+	if err := runSecret("account", standardAccountScript, user+"\n"+old+"\n"+c.Password+"\n"); err != nil {
 		return err
 	}
 	autologin := `set -eu
