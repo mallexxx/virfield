@@ -60,9 +60,16 @@ Only complete Tart VM specs with a positive virtual disk size are cached.
 A temporary ASIF size zero remains unknown and is reread even if config.json is
 unchanged; never override admission or rebuild a qualified golden to clear it.
 Node Podman also depends on its user runroot filesystem: available VM HDD bytes
-do not establish runroot capacity. The current HTPC speech-log/runroot incident
-and its approved backup/truncate receipt are recorded in Verification; the log
-continues growing, so a lasting logging fix is still open.
+do not establish runroot capacity. The HTPC speech-log/runroot incident and its
+verified correction are recorded in Verification. Speech Dispatcher 0.12.1 logs
+every voice-list entry at level 1; lowering level 3 to 1 does not prevent the
+flood. The node account now has a private user configuration copied from its
+distribution configuration, changing only `LogLevel` to 0 and `LogDir` to
+`~/.local/state/speech-dispatcher/log`, outside Podman tmpfs. The system file,
+speech modules and autospawn remain unchanged. Three real autospawn/idle-exit
+cycles left the new files at zero bytes; the old runtime log and its HDD backup
+were explicitly authorized for deletion and removed. When updating the speech
+package, reconcile its distribution configuration with that user override.
 
 Physical-node and node-VM resource safety limitations are recorded in Verification.
 

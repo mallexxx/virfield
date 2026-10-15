@@ -1,12 +1,69 @@
 # Verification
 
-Current record, reconciled 2026-10-15. The release candidate is **not accepted**.
+Current record, reconciled 2026-10-16. The release candidate is **not accepted**.
 Local Tart, SSH physical nodes and rootless Podman macOS lab VMs are implemented;
 acceptance belongs to the exact versions and paths below. Source, installed
 package, running MCP processes and published release are distinct artifacts.
 The working branch is `codex/retire-lume-release-hardening`; `main` is not promoted.
 The [implementation plan](VIRFIELD-3-PLAN.md) owns delivery order and all five new
 operator feedback items.
+
+## Latest installed checkpoint — 3d667d2 (2026-10-16)
+
+Source `3d667d27687d58a7f8178feee2f90f5349143323` is installed and pushed,
+version `0.0.0-local-golden-transfer`, daemon PID 26451. Archive SHA-256
+`e83d06b3b9fa90c95b69372b20329b5a34ce8fad6d78f4e1be0ae8f30f903efd`.
+Exact installed HTTP/fresh stdio passed in 2.59 seconds, including all four
+packaged runbooks/resources/status and anonymous 401. The upgrade preserved
+signing/FDA, configuration, keys and the eight baseline image manifests. Schema 8
+startup created a verified schema 7 snapshot; rollback to an older binary also
+requires restoring that compatible snapshot.
+
+**F4 is not live accepted.** The first local transfer exposed excessive physical
+allocation: source disk 44,805,877,760 bytes, destination 106,397,872,128 bytes,
+both logically 120,000,000,000 bytes. The copy implementation writes an entire
+1 MiB buffer when any byte is nonzero, expanding smaller sparse regions. The
+acceptance driver was stopped before worker creation; inspect the original
+durable transfer job before any cleanup or retry. The source golden is retained.
+Receipt: `virfield-local-golden-transfer-live-20261015/journal.json`.
+
+The operator confirmed an owning MCP Restart, but the actual connected adapter
+still serves four runbooks different from this installed package and exposes no
+`image_transfer`. Receipt: `virfield-owning-mcp-3d667d2-20261016.json`.
+Another fresh stdio process does not accept that connected client.
+
+**HTPC speech-log cause and fix: PASS.** Speech Dispatcher
+`0.12.1-6.fc44` contains the upstream `output_get_voices` debug statement that
+logs each `LIST VOICES` response at level 1. In the inspected post-truncation
+file, 1,687,960 voice-enumeration lines occupied 155,685,558 of 155,836,077 bytes
+(99.9%), over 38 starts. The `waitpid` shutdown errors were not the volume cause.
+The matching statement is in the
+[0.12.1 upstream source](https://raw.githubusercontent.com/brailcom/speechd/0.12.1/src/server/output.c).
+The installed binary contains the same marker. Default file logging appends
+without a size limit in the user runtime tmpfs shared with rootless Podman.
+
+On the operator's explicit instruction to fix and delete the log **and backup**,
+the node account received a private user copy of its current distribution
+configuration. Only active `LogLevel` (3 to 0) and `LogDir` (private persistent
+`~/.local/state/speech-dispatcher/log`) changed; the system file and speech
+settings/modules/autospawn were preserved. Three fresh default `spd-say -O`
+autospawn/server/module/natural idle-exit cycles passed and left all new logs at
+zero bytes. `LogDir stdout` was rejected by a functional probe because this
+version's module stderr inheritance delayed the synchronous client spawn until
+server shutdown; that configuration is not retained.
+
+After verifying inode/owner and no open file descriptors, the 155,836,077-byte
+runtime log and its 3,357,126,656-byte HDD backup were deleted (3,512,962,733 bytes
+total); the backup directory and metadata were removed after retaining only the
+small technical receipt. Private receipt: `virfield-htpc-speech-log-final-20261016.json`;
+node receipt: `virfield/diagnostics/speech-log-fix-20261016/report.json`.
+After deletion, another default client autospawn and explicit `espeak-ng` voice
+listing returned 14,806 table lines successfully; the old path was not recreated
+and every new log remained zero bytes.
+An independent check 133 seconds later again found both old paths absent and
+all four new files empty. `podman info` succeeded with 3,357,126,656 bytes free
+on its `/run/user/1000/containers` runroot filesystem.
+This accepts logging and module availability; no audible speech test was run.
 
 ## Installed inventory correction — a1a6bd9 (2026-10-15)
 
@@ -18,7 +75,7 @@ Govulncheck and Gitleaks (235 commits) passed. Idle install preserved signing/FD
 configuration, keys and all eight image records (seven originals plus the new
 candidate). Exact installed HTTP/fresh stdio, four runbooks/resources/status and
 anonymous 401 passed in 1.01 seconds. All four actual owning-client runbooks still
-differ from that package; requested Restart remains pending.
+differed from that package at this dated checkpoint; see the newer check above.
 
 - **macOS 27 UI-test candidate: PASS 2/2** complete worker cycles on the retained
   new golden, with standard account authentication before/after real reboot,
@@ -56,21 +113,23 @@ Human gate or chat message was used. Full Codex Story/denied-write remains open.
 `a1a6bd9` and documentation `cab85c5` are pushed to the working branch under the
 operator's explicit session-wide push authorization; no main/tag/release change.
 
-The HTPC speech log's 3,357,126,656 bytes were copied to a private same-node HDD
+The HTPC speech log's 3,357,126,656 bytes were initially copied to a private same-node HDD
 backup, reread and SHA-256 verified before truncating only the original log.
 SHA-256: `90664f48489073a9f2e2b587433ebabeed337dff3f8b6af3e6af0895d0d6840d`.
 The operation freed 3,357,130,752 bytes in Podman runroot. Subsequent observation
-found the log growing again (12,322,482 bytes); the one-time cleanup does not
-establish a lasting logging fix. Sequoia then passed two full standard-account/native GUI/new SSH/reboot/new UUID/
-1920×1080/workspace/workload/artifact/RFB/release/revocation cycles; both workers
-were released. Sonoma repeats are running; the older Sonoma reboot failure and
-the complete matrix remain open. Receipt: `virfield-htpc-preserve-and-truncate-speech-log-20261015.log`;
+found the log growing again; that one-time cleanup did not establish a lasting
+fix. The newer cause/fix/deletion receipt is above. Sequoia **2/2 and Sonoma
+2/2** then passed full standard-account/native GUI/new SSH/reboot/new UUID/
+1920×1080/workspace/workload/artifact/RFB/cross-key/release/revocation cycles;
+all four workers were released. These successful fresh cycles do not establish
+the cause of the historical Sonoma reboot stall. Receipt: `virfield-htpc-preserve-and-truncate-speech-log-20261015.log`;
 new matrix root: `virfield-htpc-standard-after-runroot-a1a6bd9-20261015`.
 
-Owning MCP Restart and iPad transfer remain open. F4 local transfer has a new
-source implementation: full local `make check`, final affected Go race tests,
+Owning MCP acceptance and iPad transfer remain open. F4's first implementation
+passed full local `make check`, final affected Go race tests,
 pinned Staticcheck 0.7.0, Govulncheck 1.6.0 (zero reachable) and Gitleaks 8.30.1
-working-tree scan passed. It is not installed or live accepted yet.
+working-tree scan. It was installed as `3d667d2`, but its sparse-allocation
+regression above prevents live acceptance.
 The complete candidate and the remaining hardening/client/provider gates remain
 unaccepted.
 
