@@ -69,7 +69,10 @@ func run(ctx context.Context, g Guest, mode, user, scope, password, previous str
 	nonce := domain.NewID("keychain-")
 	command := "/bin/bash -c '" + strings.ReplaceAll(guestscripts.Keychain, "'", "'\"'\"'") + "'"
 	input := strings.Join([]string{mode, user, scope, password, nonce, previous}, "\n") + "\n"
-	out, err := g.RunReader(ctx, 3*time.Minute, command, strings.NewReader(input))
+	// Verification can observe up to two minutes of cold GUI startup and then
+	// request a separate fresh native probe. The caller's operation/lease context
+	// still bounds the whole preparation; no readiness condition is relaxed.
+	out, err := g.RunReader(ctx, 5*time.Minute, command, strings.NewReader(input))
 	if err != nil || json.Unmarshal([]byte(out), &proof) != nil || proof.Version != 1 || proof.Scope != scope || proof.Nonce != nonce || !domain.ValidName(proof.Boot) || proof.SessionID < 1 || !proof.Aqua || !proof.Unlocked || !proof.ValueEqual || !proof.Ready || proof.AddStatus != 0 || proof.ReadStatus != 0 || proof.DeleteStatus != 0 || proof.DisplayManaged && (proof.DisplayWidth != 1920 || proof.DisplayHeight != 1080) {
 		return reject(ctx, g, "gui", out)
 	}

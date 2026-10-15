@@ -25,7 +25,7 @@ func (g *Client) ReportKeychainFailure(ctx context.Context, stage, output string
 }
 
 const keychainDiagnostics = `set +x
-for name in agent.log display-result login-result result startup; do
+for name in phase agent.log display-result login-result result startup; do
   file="$HOME/.virfield-keychain/$name"
   if [ -f "$file" ] && [ ! -L "$file" ]; then
     printf '\n%s\n' "$name"

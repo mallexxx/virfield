@@ -8,11 +8,14 @@ are historical evidence, not current gates. Later passing tests do not invalidat
 newly reproduced defects below. Source, installed candidate and published release
 are distinct artifacts.
 
-## Acceptance checkpoint (2026-10-15, before the next installation)
+## Acceptance checkpoint (2026-10-15)
 
-The latest completed installation at this checkpoint is `2f23ae6`. The factory
-capacity correction passed live; the additional node temporary-file permission
-correction in the source still requires a new package.
+The latest completed installation at this checkpoint is `2724f94`, version
+`0.0.0-node-image-privacy`. The factory capacity and node temporary-file permission
+corrections are installed. Exact-source local `make check`, Staticcheck,
+Govulncheck and Gitleaks (211 commits) passed. HTTP and fresh stdio MCP passed
+exact-version discovery, all four runbooks, resources and authenticated status;
+anonymous MCP was rejected. These checks do not attest already-connected clients.
 The `8e07015` checkpoint introduced native GUI/SSH keychain readiness, explicit
 `1920x1080px` Tart displays, interrupted-inventory protection and the separate
 private HTPC HDD root. Its native Apple browser accepts a separate private
@@ -31,7 +34,7 @@ Private journals: `/private/tmp/virfield-installed-monterey-pixel-4a53b67-202610
 and `/private/tmp/virfield-installed-tart-native-4a53b67-20261015`.
 
 Installed `8e07015` HTTP and fresh stdio exact-version/all-four-runbooks/resources
-smoke passed; the already-connected owning client still serves old Lume docs.
+smoke passed; the owning client at that earlier checkpoint still served old Lume docs.
 Native browser URL-scheme registration passed; GUI launch acceptance is blocked
 by the locked Mac and is not claimed.
 
@@ -63,7 +66,24 @@ must be repeated after storage contention clears.
 The source budgets 20 minutes for node VM preparation because the earlier cold
 two-VM HDD boot already took nine minutes before native keychain verification.
 The primary VM budget and caller lease TTL are unchanged; all readiness checks
-remain mandatory. This budget correction still requires installed live acceptance.
+remain mandatory. The budget correction is installed. The next repeat reached
+SSH after Steam completed its update but exposed a shorter GUI readiness deadline.
+
+On installed `2724f94`, one concurrent Sonoma clone timed out waiting 45 seconds
+for GUI native I/O; the second became ready. After its real reboot, the 60-second
+startup observation failed at `05:18:16.696 UTC`, but the automatic agent wrote
+valid native GUI proof and this boot's startup marker at `05:18:18 UTC`, 76 seconds
+after boot. A new GUI/SSH native probe subsequently passed with the new boot UUID.
+This is a reproduced false-negative readiness deadline, not evidence of a
+permanently locked keychain. The first clone's incomplete native probe has less
+specific evidence and is not silently classified as the same cause.
+Source now allows a bounded 120 seconds each for the fresh automatic startup and
+requested GUI result, within a five-minute command and the existing preparation
+context. Native I/O, scope/nonce/boot matching and fail-closed readiness are
+unchanged. Private phase timestamps improve diagnostics without recording secrets.
+This additional correction still requires packaging, installation and a complete
+node matrix. Evidence:
+`/private/tmp/virfield-installed-htpc-native-2724f94-20261015/journal.json`.
 
 The first factory attempt `image-b3dba0ef5874ab2b2d3e8ee4492e5270` failed before
 publication: APFS resize succeeded to 120 GB, then immediate root `df` still
@@ -93,6 +113,8 @@ applies `0400` before publishing the disk, refuses ambiguous existing staging an
 cleans only that image's staging on exact-name deletion. Regression tests observe
 permissions before rename, not only the final mode. Existing secured golden
 permissions remain unchanged pending the separate approval.
+The correction is installed as `2724f94`; its unit/command fixtures and real empty
+Podman conversion probe passed. This is not a completed factory build on the node.
 
 The old owning MCP adapter was identified by the sole new API socket from this
 session's completed read-only status request and stopped without touching other
@@ -108,8 +130,18 @@ switched atomically and returned to byte-exact original config/state, preserving
 all seven goldens. One manager/listener ran at a time. Runtime disks were not
 included. Evidence: `/private/tmp/virfield-live-restore-drill-20261015/report.json`.
 
-Node native acceptance, current-client reconnection, controller binary
-rollback and existing HTPC golden permission migration remain open.
+Signed controller-binary rollback/forward passed: `2724f94` → `2f23ae6` →
+`2724f94`, through the existing single launchd service and listener. Exact server
+versions, fresh PIDs, stable Developer identity, original signed binary hash,
+unchanged configuration and all seven image IDs/manifests were verified.
+The first probe stopped on transient startup inventory; inspection and a recorded
+resume accepted the already-running old controller before forwarding, without
+dispatching rollback again. Evidence:
+`/private/tmp/virfield-controller-rollback-drill-2724f94-20261015/report.json`.
+This covers the controller binary, not a full package/client or VM-disk rollback.
+
+Node native acceptance, current-client reconnection, native browser GUI launch
+and existing HTPC golden permission migration remain open.
 The following sections retain dated evidence from earlier candidates.
 
 ## Earlier candidate hardening (2026-10-14)
@@ -159,7 +191,7 @@ The older service snapshot below is a dated checkpoint.
 | Interrupted Tart inventory | Regression tests reproduced canceled address/container probes returning partial healthy snapshots; refresh now fails on cancellation and Control preserves the last complete inventory while pausing admission; installed in the current candidate |
 | Cold Tart transfer | First live factory attempt failed with Packer EOF during source transfer; journaled recovery deleted only its own failed record after process/inventory inspection. Pinned prefetch/retryable resolve and disabled automatic pruning later passed the full private roundtrip recorded above |
 | GUI/SSH keychain | Private Aqua/SSH session preparation, retained/rekeyed login items, native WhenUnlocked add/read/delete and fresh boot evidence; Ventura/macOS 27 live fixtures and real DDG CI Downloads smoke passed |
-| UI desktop | Native persistent 1920×1080 logical mode in Aqua, host-side Tart configuration and no window refit; real Settings/General UI-test smoke passed |
+| UI desktop | Persistent actual 1920×1080 frame in Aqua, explicit pixel units in Tart configuration and no window refit; eight-clone native matrix and real Settings/General UI-test smoke passed |
 | macOS 27 ASIF factory | Explicit Recovery keep bypasses default deletion/file lock; full isolated source factory build/qualification passed |
 | SSH boot banner | 45-second banner budget, timeout classified as retryable connection failure before commands; real local SSH banner regression test |
 | Stale MCP process | A connected process still returned historical Lume instructions after binary replacement; installed smoke now checks exact package version and all four runbooks/resources against candidate source. Owning-client reconnection and acceptance remain pending |
@@ -241,6 +273,8 @@ Clean local package provenance:
 
 | Source revision | Archive SHA-256 | Deployment |
 |---|---|---|
+| `2724f94ed52696e5482ad8431a19d1a62a427e0b` | `7cff304d53dd3a59a1aed59fe25907d88495043a66bbb7c3f64ad07813bbe6d4` | Installed; MCP and controller rollback/forward passed; node repeat exposed short GUI observation deadlines |
+| `2f23ae609a4f650130f5c84835f89931d6e70592` | `9defb127d54a06c722d403e02ce90b2b427b2597613d51145d6eba2b81de60a1` | Installed earlier; complete factory/private GHCR roundtrip passed |
 | `4a53b67ce04fd1adc164750b47e780c4bdde9ea6` | `a71ceaf53dae64c2c91545cdfcff5749c656ba69677411fb154c3a3e6e301f19` | Installed; eight-clone Tart native acceptance passed |
 | `8e07015cde200a41fee6b490da97a44437803d7f` | `63c697126d63d3be3160ce57848d0338d2dfd1fe04a2ebbd267e105103b510e6` | Installed; split-state browser trust and exact-version HTTP/fresh stdio MCP passed |
 | `aee89c1ffafb01faccc750b60d0e3470bf14fc97` | `2313602b2c380e5e74640c47ee6ad50d9c10d750f856a0949833a4489803cf35` | Installed; signed binary hashes retained in the private upgrade record |
@@ -269,11 +303,14 @@ revocation alongside SSH, cross-key/image-key rejection, workload and artifacts.
 
 - Repeat exact-source local CI and clean packaging for subsequent code changes;
   remote CI is deferred by the operator. Existing package provenance is recorded above.
-- Install node conversion privacy correction in an idle pool and repeat HTPC
-  native/resource acceptance with disposable clones. Factory/startup corrections
-  are already installed; factory roundtrip passed.
+- Install the bounded GUI-observation correction in an idle pool and complete HTPC
+  native/resource acceptance with disposable clones. Node conversion privacy and
+  overall preparation corrections are installed; factory roundtrip and
+  controller-binary rollback/forward passed.
 - Reconnect the actual owning MCP clients after installation and verify their
   version, runbooks and workflow; a fresh adapter alone cannot attest old sessions.
+- Accept the native Apple browser GUI/URL-scheme flow after the Mac is unlocked;
+  compiled trust checks and registration do not replace GUI acceptance.
 - Complete permission migration for existing HTPC secured goldens after approval;
   separate authorization is still pending, and read-only inspection confirmed mode 0444.
 - Preserve the accepted private GHCR roundtrip receipt above; repeat this gate
@@ -470,7 +507,8 @@ prompt and showed the Ventura desktop.
   UI-test workflow through Broker. The accepted Broker smoke is narrower.
 - Remote/container TLS and routing through the intended production entrypoint.
 - Native URL-scheme GUI launch, complete package/client upgrade/rollback and
-  VM-disk disaster recovery. Controller-state restore passed as recorded above.
+  VM-disk disaster recovery. Controller-state restore and controller-binary
+  rollback/forward passed as recorded above.
 
 ## Release procedure
 

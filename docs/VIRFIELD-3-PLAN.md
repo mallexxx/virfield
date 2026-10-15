@@ -1,6 +1,6 @@
 # Virfield 3.0 implementation plan
 
-Delivery state reconciled 2026-10-14. The maintained repository's hardening
+Delivery state reconciled 2026-10-15. The maintained repository's hardening
 candidate is on `codex/retire-lume-release-hardening`; `main` is not yet promoted. The live
 runtime is Tart plus SSH nodes; Virfield switched away from Lume on 2026-10-08.
 Source/factory/wrapper/build/install retirement is implemented; the separate old
@@ -63,6 +63,8 @@ full disk, drain and soak; node resource/cache quota live acceptance; metrics/al
 artifact evidence, promotion/revocation; VM-disk recovery and upgrade/rollback.
 Controller-state backup/restore has live acceptance with two native Monterey
 lease/reboot cycles; runtime disks are outside that snapshot's contract.
+Signed controller-binary rollback/forward also passed. Complete package/client
+upgrade/rollback remains a separate gate.
 Lume runtime/factory/wrapper/patch/build paths are removed; the separate
 old host service is disabled and unloaded. Do not fabricate acceptance or weaken readiness to complete a gate.
 

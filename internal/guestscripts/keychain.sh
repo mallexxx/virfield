@@ -126,6 +126,8 @@ dir="$HOME/.virfield-keychain"
 boot="$(sysctl -n kern.bootsessionuuid)"
 export VIRFIELD_DISPLAY_MANAGED=0
 [[ "$(sysctl -n hw.model)" != VirtualMac* ]] || export VIRFIELD_DISPLAY_MANAGED=1
+phase() { printf '%s %s\n' "$(/bin/date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" > "$dir/phase"; }
+phase starting
 mode=ensure
 nonce="login-$boot"
 if [[ -f "$dir/request" && ! -L "$dir/request" ]]; then
@@ -142,6 +144,7 @@ keychain="$HOME/Library/Keychains/virfield-$scope.keychain-db"
 [[ ! -L "$keychain" ]] || exit 65
 if [[ "$mode" == ensure ]]; then
   if [[ "$VIRFIELD_DISPLAY_MANAGED" == 1 ]]; then
+    phase display
     # Tart's display size is a hint; a cached guest mode can remain 1024x768.
     # Select and verify the logical mode inside Aqua on every login/prepare.
     /usr/bin/osascript -l JavaScript "$dir/display.js" > "$dir/display-result"
@@ -152,6 +155,7 @@ if [[ "$mode" == ensure ]]; then
   # native access; merely choosing another default leaves a blocking dialog.
   login="$HOME/Library/Keychains/login.keychain-db"
   if [[ -e "$login" ]]; then
+    phase login-unlock
     [[ ! -L "$login" ]] || exit 65
     ready=false
     attempt=0
@@ -162,15 +166,18 @@ if [[ "$mode" == ensure ]]; then
       /usr/bin/security unlock-keychain -p "$candidate" "$login" 2>/dev/null || continue
       /usr/bin/security default-keychain -d user -s "$login"
       /usr/bin/security list-keychains -d user -s "$login" /Library/Keychains/System.keychain
+      phase login-native-io
       /usr/bin/osascript -l JavaScript "$dir/probe.js" "$scope" "$nonce-login-$attempt" "$boot" > "$dir/login-result"
       grep -q '"ready":true' "$dir/login-result" || continue
       if [[ "$candidate" != "$password" ]]; then
+        phase login-rekey
         /usr/bin/security set-keychain-password -o "$candidate" -p "$password" "$login"
       fi
       # A wrong-password unlock may report success on newer macOS. Lock again,
       # authenticate with the NEW password, then require application-style I/O.
       /usr/bin/security lock-keychain "$login"
       /usr/bin/security unlock-keychain -p "$password" "$login"
+      phase login-new-native-io
       /usr/bin/osascript -l JavaScript "$dir/probe.js" "$scope" "$nonce-login-new" "$boot" > "$dir/login-result"
       grep -q '"ready":true' "$dir/login-result" || exit 65
       chmod 600 "$login"
@@ -183,12 +190,14 @@ if [[ "$mode" == ensure ]]; then
     mv "$dir/identity.next" "$dir/identity"
   fi
   if [[ ! -e "$keychain" ]]; then
+    phase scoped-create
     /usr/bin/security create-keychain -p "$password" "$keychain"
   fi
   chmod 600 "$keychain"
   # Settings can themselves ask SecurityAgent to unlock a locked keychain.
   # Authenticate first, including on every subsequent GUI login/reboot.
   /usr/bin/security unlock-keychain -p "$password" "$keychain"
+  phase scoped-settings
   # Equivalent to CI's no-sleep/no-timeout-lock policy. The private password
   # belongs to this image/lease, never the public CI password "default".
   /usr/bin/security set-keychain-settings "$keychain"
@@ -202,6 +211,7 @@ fi
 default="$(/usr/bin/security default-keychain -d user)"
 [[ "$default" == *\""$keychain"\" ]] || exit 65
 [[ "$(stat -f %u:%Lp "$keychain")" == "$(id -u):600" ]] || exit 65
+phase scoped-native-io
 /usr/bin/osascript -l JavaScript "$dir/probe.js" "$scope" "$nonce" "$boot" > "$dir/result.next"
 chmod 600 "$dir/result.next"
 mv "$dir/result.next" "$dir/result"
@@ -210,6 +220,7 @@ if [[ "$mode" == ensure ]]; then
   printf '%s\n%s\n' "$scope" "$boot" > "$dir/startup.next"
   mv "$dir/startup.next" "$dir/startup"
 fi
+phase ready
 AGENT
   chmod 600 "$dir/display.js" "$dir/probe.js" "$dir/session.sh"
   cat > "$plist" <<PLIST
@@ -259,7 +270,10 @@ SSH
 else
   # Wait for this boot's automatic agent. Old golden evidence is insufficient.
   expected="$(printf '%s\n%s' "$scope" "$boot")"
-  for ((attempt=0; attempt<60; attempt++)); do
+  # Cold Intel/HDD login produced a valid native proof 76 seconds after boot,
+  # just after the former 60-second observation expired. Keep the fresh-boot
+  # requirement and allow a bounded two minutes for the automatic GUI agent.
+  for ((attempt=0; attempt<120; attempt++)); do
     [[ -f "$dir/startup" && "$(cat "$dir/startup")" == "$expected" ]] && break
     sleep 1
   done
@@ -278,7 +292,7 @@ else
   # agent even in that brief overlap, so a verify request cannot be dropped.
   launchctl kickstart -k "gui/$uid/$label"
 fi
-for ((attempt=0; attempt<45; attempt++)); do
+for ((attempt=0; attempt<120; attempt++)); do
   if [[ -f "$dir/result" ]]; then
     cat "$dir/result"
     exit 0
