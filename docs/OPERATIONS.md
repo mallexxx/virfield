@@ -443,10 +443,12 @@ Lease/VM identity, workspace, keys and expiry stay unchanged. Connection files
 are not overwritten: use the ready endpoint with the existing key and host pin.
 Final installation/live acceptance is pending; see Verification.
 
-Source schema 9 prevents older executors from interpreting this new job as a
-clone. Upgrade creates and verifies a private schema 8 snapshot first. Keep that
-snapshot and the older schema 7 snapshot. Rollback requires the snapshot matching
-that binary; never point a schema 8 binary at schema 9 state.
+F1 source introduced schema 9 for revalidation; the combined F5 candidate uses
+schema 10 so an older executor cannot silently skip a pinned toolchain either.
+Upgrade creates and verifies a private snapshot of the currently installed
+schema 8 first (schema 8-to-10); retain the earlier schema 7 snapshot. Rollback
+requires the snapshot matching that binary; older binaries must reject newer
+state before any job dispatch. No schema 9 candidate has been installed here.
 
 The F2 source candidate adds typed `diagnostic` objects to the existing events
 API/CLI/`virfield_events`, filtered by `lease_id`. `lease.drift` atomically retains

@@ -22,7 +22,7 @@ type Store struct {
 	path string
 }
 
-const SchemaVersion = 9
+const SchemaVersion = 10
 
 func Open(path string) (*Store, error) {
 	absolute, err := filepath.Abs(path)
@@ -73,20 +73,20 @@ func (s *Store) migrate() error {
 			return fmt.Errorf("pre-migration backup failed: %w", err)
 		}
 	}
-	// Older executors could interpret queued revalidation as a worker clone.
+	// Older executors could clone on revalidation or skip a pinned toolchain.
 	// Protect the new durable state machine even though table layouts agree.
-	if version == 7 || version == 8 {
-		_, err := s.db.Exec(`PRAGMA user_version=9`)
+	if version == 7 || version == 8 || version == 9 {
+		_, err := s.db.Exec(`PRAGMA user_version=10`)
 		return err
 	}
 	if version == 5 || version == 6 {
-		_, err := s.db.Exec(`BEGIN IMMEDIATE; CREATE INDEX IF NOT EXISTS jobs_lease ON jobs(lease_id); CREATE INDEX IF NOT EXISTS events_at ON events(at); PRAGMA user_version=9; COMMIT;`)
+		_, err := s.db.Exec(`BEGIN IMMEDIATE; CREATE INDEX IF NOT EXISTS jobs_lease ON jobs(lease_id); CREATE INDEX IF NOT EXISTS events_at ON events(at); PRAGMA user_version=10; COMMIT;`)
 		return err
 	}
 	if version >= 1 && version <= 4 {
 		// Version 5 persists catalog templates and Xcode manifests. Older
 		// executors must not silently ignore the new provisioning requirements.
-		_, err := s.db.Exec(`BEGIN IMMEDIATE; CREATE TABLE templates (id TEXT PRIMARY KEY, body TEXT NOT NULL); CREATE INDEX IF NOT EXISTS jobs_lease ON jobs(lease_id); CREATE INDEX IF NOT EXISTS events_at ON events(at); PRAGMA user_version=9; COMMIT;`)
+		_, err := s.db.Exec(`BEGIN IMMEDIATE; CREATE TABLE templates (id TEXT PRIMARY KEY, body TEXT NOT NULL); CREATE INDEX IF NOT EXISTS jobs_lease ON jobs(lease_id); CREATE INDEX IF NOT EXISTS events_at ON events(at); PRAGMA user_version=10; COMMIT;`)
 		return err
 	}
 	_, err := s.db.Exec(`BEGIN IMMEDIATE;
@@ -99,7 +99,7 @@ func (s *Store) migrate() error {
  CREATE INDEX jobs_state ON jobs(state);
  CREATE INDEX jobs_lease ON jobs(lease_id);
  CREATE TABLE templates (id TEXT PRIMARY KEY, body TEXT NOT NULL);
- PRAGMA user_version=9;
+ PRAGMA user_version=10;
  COMMIT;`)
 	return err
 }

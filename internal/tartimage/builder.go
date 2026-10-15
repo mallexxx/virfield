@@ -11,6 +11,7 @@ import (
 
 	"github.com/mallexxx/virfield/internal/domain"
 	"github.com/mallexxx/virfield/internal/guestssh"
+	"github.com/mallexxx/virfield/internal/legacyios"
 	"github.com/mallexxx/virfield/internal/registry"
 	"github.com/mallexxx/virfield/internal/tart"
 	"github.com/mallexxx/virfield/internal/xcodearchive"
@@ -62,6 +63,9 @@ func New(config Config) *Builder {
 func (b *Builder) Step(ctx context.Context, l domain.Lease, p domain.ImageProfile, step string, progress func(string) error) error {
 	if err := p.Validate(); err != nil {
 		return err
+	}
+	if p.Toolchain != "" && p.ToolchainSHA256 != legacyios.Digest() {
+		return domain.Err("unsupported_toolchain", "Pinned toolchain digest differs from this builder; no image operation was performed")
 	}
 	if p.Tart == nil {
 		return domain.Err("invalid_profile", "Tart builder requires a pinned Tart source")

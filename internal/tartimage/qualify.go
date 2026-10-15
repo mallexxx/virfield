@@ -10,6 +10,7 @@ import (
 	"github.com/mallexxx/virfield/internal/domain"
 	"github.com/mallexxx/virfield/internal/guestkeychain"
 	"github.com/mallexxx/virfield/internal/guestssh"
+	"github.com/mallexxx/virfield/internal/legacyios"
 	"github.com/mallexxx/virfield/internal/qualify"
 )
 
@@ -68,6 +69,12 @@ func (b *Builder) qualify(ctx context.Context, l domain.Lease, p domain.ImagePro
 		return err
 	}
 	if err := qualify.Desktop(ctx, bootstrap); err != nil {
+		bootstrap.Close()
+		return err
+	}
+	if err := legacyios.Install(ctx, bootstrap, p, func(out string) error {
+		return os.WriteFile(filepath.Join(b.folder(l), "legacy-ios-install.log"), []byte(out), 0600)
+	}); err != nil {
 		bootstrap.Close()
 		return err
 	}
@@ -159,6 +166,12 @@ func (b *Builder) verify(ctx context.Context, l domain.Lease, p domain.ImageProf
 			return nil, err
 		}
 	}
+	toolchain, err := legacyios.Verify(ctx, g, p, func(out string) error {
+		return os.WriteFile(filepath.Join(b.folder(l), "legacy-ios-verify.log"), []byte(out), 0600)
+	})
+	if err != nil {
+		return nil, err
+	}
 	if p.Security == "automation" {
 		if err := qualify.Security(ctx, g, user, func(out string) error {
 			return os.WriteFile(filepath.Join(b.folder(l), "security-verify.log"), []byte(out), 0600)
@@ -181,7 +194,11 @@ func (b *Builder) verify(ctx context.Context, l domain.Lease, p domain.ImageProf
 			return nil, err
 		}
 	}
-	return map[string]any{"macos": version, "build": p.Build, "xcode": xcode, "sip": sip, "desktop": true, "disk": disk, "gui_keychain": keychain, "scoped_image_ssh": !l.Portable, "portable": l.Portable, "guest_user": user, "device_support": support, "provision": p.Provision, "security": p.Security, "verified_at": time.Now().UTC()}, nil
+	evidence := map[string]any{"macos": version, "build": p.Build, "xcode": xcode, "sip": sip, "desktop": true, "disk": disk, "gui_keychain": keychain, "scoped_image_ssh": !l.Portable, "portable": l.Portable, "guest_user": user, "device_support": support, "provision": p.Provision, "security": p.Security, "verified_at": time.Now().UTC()}
+	if toolchain != nil {
+		evidence["toolchain"] = toolchain
+	}
+	return evidence, nil
 }
 
 func (b *Builder) boot(ctx context.Context, l domain.Lease) (string, error) {

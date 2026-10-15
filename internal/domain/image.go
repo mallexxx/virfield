@@ -10,19 +10,21 @@ import (
 // ImageProfile is a resolved immutable manifest, never a free-form client command.
 // The digest and size identify one immutable Apple restore image.
 type ImageProfile struct {
-	BuildDiskBytes int64              `json:"build_disk_bytes,omitempty"`
-	Tart           *TartSource        `json:"tart,omitempty"`
-	Node           *NodeSource        `json:"node,omitempty"`
-	Registry       *RegistryReference `json:"registry,omitempty"`
-	MacOS          string             `json:"macos,omitempty"`
-	Xcode          *XcodeRelease      `json:"xcode,omitempty"`
-	Security       string             `json:"security,omitempty"`
-	Provision      string             `json:"provision,omitempty"`
-	URL            string             `json:"url"`
-	SHA256         string             `json:"sha256"`
-	Size           int64              `json:"size"`
-	Build          string             `json:"build"`
-	DisableSIP     bool               `json:"disable_sip"`
+	BuildDiskBytes  int64              `json:"build_disk_bytes,omitempty"`
+	Tart            *TartSource        `json:"tart,omitempty"`
+	Node            *NodeSource        `json:"node,omitempty"`
+	Registry        *RegistryReference `json:"registry,omitempty"`
+	MacOS           string             `json:"macos,omitempty"`
+	Xcode           *XcodeRelease      `json:"xcode,omitempty"`
+	Security        string             `json:"security,omitempty"`
+	Provision       string             `json:"provision,omitempty"`
+	Toolchain       string             `json:"toolchain,omitempty"`
+	ToolchainSHA256 string             `json:"toolchain_sha256,omitempty"`
+	URL             string             `json:"url"`
+	SHA256          string             `json:"sha256"`
+	Size            int64              `json:"size"`
+	Build           string             `json:"build"`
+	DisableSIP      bool               `json:"disable_sip"`
 }
 
 // NodeSource names a bootstrap golden in a node's goldens directory: a
@@ -48,6 +50,14 @@ func (s TartSource) Validate() error {
 }
 
 func (p ImageProfile) Validate() error {
+	if p.Toolchain != "" {
+		digest, err := hex.DecodeString(p.ToolchainSHA256)
+		if p.Toolchain != "legacy-ios-v1" || p.Tart == nil || p.MacOS != "12.7.6" || p.Xcode == nil || p.Xcode.Version != "13.4.1" || p.Xcode.Build != "13F100" || p.Provision != "developer-v1" || err != nil || len(digest) != 32 || p.ToolchainSHA256 != strings.ToLower(p.ToolchainSHA256) {
+			return Err("unsupported_toolchain", "legacy-ios-v1 requires pinned macOS 12.7.6/Xcode 13.4.1 (13F100), Tart developer-v1 and a toolchain SHA-256")
+		}
+	} else if p.ToolchainSHA256 != "" {
+		return Err("invalid_profile", "toolchain digest requires an explicit toolchain profile")
+	}
 	if p.BuildDiskBytes < 0 || p.BuildDiskBytes > 512<<30 || p.BuildDiskBytes != 0 && p.Tart == nil {
 		return Err("invalid_profile", "Build disk bound is supported only for Tart and must be at most 512 GiB")
 	}

@@ -103,13 +103,38 @@ passed. Staticcheck 0.7.0 and Govulncheck 1.6.0 found no actionable issues or
 reachable vulnerabilities. The final client-key read additionally rejects symlinks
 and unsafe file permissions through a bounded verified descriptor. Gitleaks 8.30.1
 passed the staged diff and 241-commit history. Linux arm64 CLI cross-build and
-final documentation checks passed. Exact archive checks remain pending.
+final documentation checks passed. `87955e4803772374afef2e45d4dd6df920ecbd4d` is pushed; archive
+`0.0.0-lease-revalidation` SHA-256 is
+`0bd6665b95dc4b5d1f8cee4c0a42da6341030ccff9b1b7c1a6416a394d59258a`.
+Exact binary/source hashes, fresh stdio 20 tools and all four packaged
+runbooks/resources/status passed against the installed a45655f daemon.
 Logs: `virfield-revalidate-full-check-20261016.log`,
 `virfield-revalidate-final-affected-20261016.log` and
-`virfield-revalidate-manager-20261016.log`. Source exposes 20 MCP tools and schema
+`virfield-revalidate-manager-20261016.log`. F1 archive exposes 20 MCP tools and schema
 9; installed daemon remains a45655f/schema 8. Live recovery must independently
 retain the original VM/key/expiry and workspace checksum; unit tests do not close
 that gate. No production restart is permitted during the active Story.
+
+F5 source adds optional pinned `legacy-ios-v1` for exact Tart Monterey12.7.6 /
+Xcode13.4.1. Domain/catalog/profile tests pass for incompatible combinations,
+ordinary profiles executing nothing, unchanged default JSON fields, immutable
+recipe checks, complete source lock/hash metadata and required native/build
+evidence. All 44 actual source-gem downloads match primary RubyGems SHA-256.
+The local CocoaPods dependency passed real `--deployment --no-repo-update` with
+unchanged Podfile.lock on the host; this does not accept the target armv7 build.
+The combined source uses schema 10 to prevent older executors silently skipping
+this toolchain; no schema 9 version was installed. Full CI/security/archive, idle
+installation with a private schema 8-to-10 snapshot and live factory/worker gates
+remain. Full local CI/final affected tests, Staticcheck0.7.0, Govulncheck1.6.0
+(zero reachable), Linux arm64 CLI and RubySec Bundler Audit0.9.2 passed. RubySec
+DB commit `a6847b0651a702488f5844081e848dd1ec9dbf1d` contains 1,263 advisories,
+updated 2026-10-10; no locked gem vulnerabilities were found. Gitleaks8.30.1
+passed staged and 242-commit history scans. Packaging remains pending.
+Logs: `virfield-f5-final-check-20261016.log`,
+`virfield-f5-final-affected-20261016.log`,
+`virfield-f5-ruby-audit-private-20261016.log`,
+`virfield-f5-profile-tests-20261016.log` and
+`virfield-f5-fixture-deployment-20261016.log`.
 
 ## Earlier transfer checkpoint — 3d667d2 (2026-10-16)
 

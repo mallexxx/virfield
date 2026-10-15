@@ -238,7 +238,7 @@ func TestSchemaFiveUpgradePreservesRecordsAndProtectsNewReaders(t *testing.T) {
 	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != SchemaVersion {
 		t.Fatal(version, err)
 	}
-	if _, err := s.db.Exec(`PRAGMA user_version=10`); err != nil {
+	if _, err := s.db.Exec(`PRAGMA user_version=11`); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.migrate(); err == nil {

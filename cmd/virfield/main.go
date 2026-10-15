@@ -30,6 +30,7 @@ func run() error {
 	base := flag.String("url", "http://127.0.0.1:7780", "daemon URL")
 	tokenFile := flag.String("token-file", "", "owner-only API token file")
 	security := flag.String("security", "", "image-create guest policy: default, sip-disabled or automation")
+	toolchain := flag.String("toolchain", "", "image-create optional pinned toolchain: legacy-ios-v1 (Monterey12.7.6/Xcode13.4.1, Tart only)")
 	location := flag.String("location", "", "operator-configured clone destination or image storage location")
 	eventsLease := flag.String("lease-id", "", "events filter: lease or image record ID")
 	eventsTail := flag.Bool("tail", false, "events: return the newest page")
@@ -163,7 +164,7 @@ Recovery requires prior inspection that no operation remains in flight.
 		if (len(args) != 3 && len(args) != 4) || *key == "" {
 			return errors.New("usage: -key STABLE_KEY image-create NEW_ID MACOS_VERSION_OR_CODENAME [XCODE_VERSION]")
 		}
-		req := domain.ImageCreateRequest{ID: args[1], MacOS: args[2], Security: *security, Location: *location}
+		req := domain.ImageCreateRequest{ID: args[1], MacOS: args[2], Security: *security, Location: *location, Toolchain: *toolchain}
 		if len(args) == 4 {
 			req.Xcode = args[3]
 		}

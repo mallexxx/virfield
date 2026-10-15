@@ -43,7 +43,7 @@ The candidate is **not release accepted**.
 | 2 | Resolve current macOS 27 keychain and Sonoma reboot failures | Reproduced; causes not fully established | Bounded diagnosis, targeted correction and fresh full cycles on the exact installed candidate; no repeated unchanged VM/reboot attempts treated as a fix |
 | 3 | Package and accept the corrected guest policy | `a45655f` installed; Samsung/new macOS27/factory, both HTPC profiles and transferred iPad Monterey passed | Clean exact-source local CI/security/archive checks; idle-pool install with private backup; Tart macOS 27 and both Monterey inventories plus HTPC Sonoma/Sequoia native GUI/new SSH, actual reboot/new UUID, 1920×1080, workload/artifact/RFB/release/revocation |
 | 4 | Close client and production entrypoint acceptance | Owning MCP stale/user cannot Restart now; default Broker script-only passed; full Story waiting for Telegram owner approval | Actual connected clients serve current version/all four runbooks and complete their workflows; production Broker qualification/Story, independent tests, explicit denied-write and artifacts/settlement/cleanup |
-| 5 | Implement the five operator feedback items below | F4 installed/live accepted; F3 a2aab20 and F2 89344ef checked/pushed/archived; F1 implemented with full CI/affected race/static/vulnerability checks passing, packaging pending; F5 remains | Each item's tests, live evidence and updated runbooks |
+| 5 | Implement the five operator feedback items below | F4 installed/live accepted; F3 a2aab20 and F2 89344ef checked/pushed/archived; F1 87955e4 checked/pushed/archived; F5 source implemented, final checks/live acceptance pending | Each item's tests, live evidence and updated runbooks |
 | 6 | Complete remaining hardening/debug/DR gates | Partial dated evidence only | Agreed scope below accepted separately; no promotion based solely on unit tests or another OS/version |
 
 The full current-candidate acceptance, verification and branch push precede general
@@ -190,15 +190,19 @@ artifact hash, cleanup and unchanged source; this can unblock iPad storage.
 
 ### F5 — optional legacy iOS build profile
 
-Current Xcode qualification/Swift smoke is not a pinned Ruby/CocoaPods or legacy
-iOS dependency profile. Add an opt-in profile for the verified Monterey
-12.7.6/Xcode 13.4.1 combination; leave ordinary profiles unaffected. Install/check
-Rosetta only on Apple Silicon, pin a compatible Ruby/CocoaPods and native gem
-architecture, and verify actual `require`/native-library loading for FFI/Ethon.
-Record versions/architectures/provenance and run a representative legacy iOS
-armv7 build with lockfiles. Report unsupported host/toolchain combinations
-explicitly. Prior successful iVim/Notepad builds are historical workload evidence,
-not implementation of this reusable profile.
+The F5 source candidate adds opt-in `legacy-ios-v1` on image create/CLI/MCP,
+limited to approved Tart Monterey12.7.6/Xcode13.4.1. A separate recipe digest and
+omitted default fields preserve ordinary image fingerprints/recipes. Native
+Ruby3.3.12, OpenSSL3.5.9 LTS, LibYAML0.2.5, Bundler2.5.22, CocoaPods1.16.2,
+Xcodeproj1.27.0, FFI1.17.4 and Ethon0.18.0 are pinned with all 44 source gems and
+archive SHA-256. Rosetta runs only on Apple Silicon. Qualification requires real
+native library loading, version/architecture checks and an actual unsigned armv7
+compile/link against a local pod with frozen lockfiles after reboot.
+
+Source tests and the actual host CocoaPods deployment fixture pass; all downloaded
+source gems match primary RubyGems hashes. Final source/security/archive checks,
+installation and actual Monterey factory/worker acceptance remain open. This does
+not claim on-device armv7 execution or reuse historical iVim/Notepad evidence.
 
 ## Remaining 3.0 architecture
 

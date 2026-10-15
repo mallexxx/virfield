@@ -112,14 +112,21 @@ type ConfiguredImage struct {
 // ImageCreateRequest selects catalog versions. Host paths and arbitrary URLs are
 // intentionally absent. Storage is restricted to the operator's named locations.
 type ImageCreateRequest struct {
-	ID       string `json:"id"`
-	MacOS    string `json:"macos"`
-	Xcode    string `json:"xcode,omitempty"`
-	Location string `json:"location,omitempty"`
-	Security string `json:"security,omitempty"`
+	ID        string `json:"id"`
+	MacOS     string `json:"macos"`
+	Xcode     string `json:"xcode,omitempty"`
+	Location  string `json:"location,omitempty"`
+	Security  string `json:"security,omitempty"`
+	Toolchain string `json:"toolchain,omitempty"`
 }
 
 func (r ImageCreateRequest) Validate() error {
+	if r.Toolchain != "" && r.Toolchain != "legacy-ios-v1" {
+		return Err("unsupported_toolchain", "toolchain must be omitted or legacy-ios-v1")
+	}
+	if r.Toolchain != "" && r.Xcode != "13.4.1" {
+		return Err("unsupported_toolchain", "legacy-ios-v1 requires an explicit Xcode 13.4.1 selection")
+	}
 	if r.Security != "" && r.Security != "default" && r.Security != "sip-disabled" && r.Security != "automation" {
 		return Err("invalid_request", "security must be default, sip-disabled or automation")
 	}

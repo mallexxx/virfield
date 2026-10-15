@@ -220,3 +220,53 @@ or promote a partial destination. SQLite schema 8 prevents an older executor
 from treating a queued transfer as a normal worker clone. The pre-migration
 schema-7 snapshot is private and integrity checked; old-binary rollback requires
 that snapshot, not opening a schema-8 journal.
+
+## Optional legacy iOS toolchain — source candidate
+
+`toolchain: "legacy-ios-v1"` is an explicit opt-in on `image_create` / CLI
+`-toolchain legacy-ios-v1`. It requires an approved Tart macOS **12.7.6** base and
+pinned **Xcode 13.4.1 / 13F100** with `developer-v1`. Other OS/toolchain/provider
+combinations are refused before image mutation. Ordinary profiles omit the two
+new manifest fields; their fingerprints and ordinary Packer recipe stay unchanged.
+Existing goldens are never provisioned in place. Source schema 10 prevents an
+older executor from silently ignoring the new toolchain fields. Installation
+must verify its private schema 8-to-10 snapshot; installed daemon remains schema 8.
+
+```sh
+virfield -token-file "$VIRFIELD_HOME/token" -key legacy-image-001 -location CONTAINER_ID -toolchain legacy-ios-v1 image-create NEW_IMAGE_ID 12.7.6 13.4.1
+virfield -token-file "$VIRFIELD_HOME/token" job JOB_ID
+```
+
+The fixed recipe builds native Ruby **3.3.12**, OpenSSL **3.5.9 LTS** and LibYAML
+**0.2.5**, then installs CocoaPods **1.16.2**, Xcodeproj **1.27.0**, FFI **1.17.4**
+and Ethon **0.18.0** under `/opt/virfield/toolchains/legacy-ios-v1`. Bundler
+**2.5.22**, all 44 source gems and every source archive are pinned by lockfile and
+SHA-256. Downloads are checked before execution; gems install from the local
+verified cache with frozen resolution and the `ruby` source platform. Native
+extensions compile for the guest's native architecture. Host Ruby/Homebrew and
+ordinary guest profiles are not changed. Rosetta is checked/installed only in an
+Apple Silicon guest; native Ruby and gems still run as arm64. Intel skips Rosetta.
+
+The toolchain manifest includes a separate SHA-256 covering the installer, pins,
+checks and local fixture. Existing/partial installations are preserved on failure;
+setup never overwrites them to pass qualification. The image stage writes private
+`legacy-ios-install.log` and, after actual reboot, `legacy-ios-verify.log`. Readiness
+requires native Ruby/FFI Mach-O architecture, actual FFI/Ethon/libcurl loading and
+matching Ruby/OpenSSL/LibYAML/gem versions. The representative Objective-C app uses
+a local CocoaPods dependency, immutable `Gemfile.lock`/`Podfile.lock` and a real
+Xcode armv7 compile/link; lipo and the linked dependency symbol are checked. No
+signing or 32-bit device execution is claimed. Evidence records versions,
+architecture, recipe/log digests and build artifact/lockfile hashes. Use `bundle
+exec` with the profile's Ruby and Gemfile when building a caller checkout.
+
+Source/unit/host deployment checks do not accept a built image. Installation and
+live Monterey factory/worker acceptance remain open; see Verification.
+
+Primary compatibility/pin sources: [Apple Xcode 13.4.1](https://developer.apple.com/documentation/xcode-release-notes/xcode-13_4_1-release-notes),
+[Apple Xcode 14 armv7 removal](https://developer.apple.com/documentation/Xcode-Release-Notes/xcode-14-release-notes),
+[Ruby 3.3.12 source/checksums](https://www.ruby-lang.org/en/news/2026/07/16/ruby-3-3-12-released/),
+[OpenSSL supported downloads](https://openssl-library.org/source/),
+[LibYAML source](https://github.com/yaml/libyaml/releases/tag/0.2.5) and
+[CocoaPods version locking](https://guides.cocoapods.org/using/a-gemfile.html).
+The checked-in [manifest](../internal/legacyios/assets/manifest.json) records the
+primary RubyGems metadata URL and source SHA for each exact gem version.

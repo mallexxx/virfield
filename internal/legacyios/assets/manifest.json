@@ -1,0 +1,380 @@
+{
+  "profile": "legacy-ios-v1",
+  "macos": "12.7.6",
+  "xcode": "13.4.1",
+  "xcode_build": "13F100",
+  "ruby": "3.3.12",
+  "bundler": "2.5.22",
+  "native_gem_platform": "ruby",
+  "sources": [
+    {
+      "name": "ruby-3.3.12",
+      "url": "https://cache.ruby-lang.org/pub/ruby/3.3/ruby-3.3.12.tar.gz",
+      "sha256": "b06d63beae271933033e27f0a389bc582a009e7845357d44365c39de525a051b"
+    },
+    {
+      "name": "openssl-3.5.9",
+      "url": "https://github.com/openssl/openssl/releases/download/openssl-3.5.9/openssl-3.5.9.tar.gz",
+      "sha256": "603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a"
+    },
+    {
+      "name": "yaml-0.2.5",
+      "url": "https://github.com/yaml/libyaml/releases/download/0.2.5/yaml-0.2.5.tar.gz",
+      "sha256": "c642ae9b75fee120b2d96c712538bd2cf283228d2337df2cf2988e3c02678ef4"
+    }
+  ],
+  "gems": [
+    {
+      "name": "CFPropertyList",
+      "version": "3.0.8",
+      "url": "https://rubygems.org/downloads/CFPropertyList-3.0.8.gem",
+      "sha256": "2c99d0d980536d3d7ab252f7bd59ac8be50fbdd1ff487c98c949bb66bb114261",
+      "metadata": "https://rubygems.org/api/v2/rubygems/CFPropertyList/versions/3.0.8.json?platform=ruby",
+      "required_ruby": ">= 0"
+    },
+    {
+      "name": "activesupport",
+      "version": "7.2.4",
+      "url": "https://rubygems.org/downloads/activesupport-7.2.4.gem",
+      "sha256": "b97027b31e111675dba67b86edcd589acc25a0dddf8eecacca18d33a703a0788",
+      "metadata": "https://rubygems.org/api/v2/rubygems/activesupport/versions/7.2.4.json?platform=ruby",
+      "required_ruby": ">= 3.1.0"
+    },
+    {
+      "name": "addressable",
+      "version": "2.9.0",
+      "url": "https://rubygems.org/downloads/addressable-2.9.0.gem",
+      "sha256": "7fdf6ac3660f7f4e867a0838be3f6cf722ace541dd97767fa42bc6cfa980c7af",
+      "metadata": "https://rubygems.org/api/v2/rubygems/addressable/versions/2.9.0.json?platform=ruby",
+      "required_ruby": ">= 2.2"
+    },
+    {
+      "name": "algoliasearch",
+      "version": "1.27.5",
+      "url": "https://rubygems.org/downloads/algoliasearch-1.27.5.gem",
+      "sha256": "26c1cddf3c2ec4bd60c148389e42702c98fdac862881dc6b07a4c0b89ffec853",
+      "metadata": "https://rubygems.org/api/v2/rubygems/algoliasearch/versions/1.27.5.json?platform=ruby",
+      "required_ruby": ">= 0"
+    },
+    {
+      "name": "atomos",
+      "version": "0.1.3",
+      "url": "https://rubygems.org/downloads/atomos-0.1.3.gem",
+      "sha256": "7d43b22f2454a36bace5532d30785b06de3711399cb1c6bf932573eda536789f",
+      "metadata": "https://rubygems.org/api/v2/rubygems/atomos/versions/0.1.3.json?platform=ruby",
+      "required_ruby": ">= 2.0"
+    },
+    {
+      "name": "base64",
+      "version": "0.3.0",
+      "url": "https://rubygems.org/downloads/base64-0.3.0.gem",
+      "sha256": "27337aeabad6ffae05c265c450490628ef3ebd4b67be58257393227588f5a97b",
+      "metadata": "https://rubygems.org/api/v2/rubygems/base64/versions/0.3.0.json?platform=ruby",
+      "required_ruby": ">= 2.4"
+    },
+    {
+      "name": "benchmark",
+      "version": "0.5.0",
+      "url": "https://rubygems.org/downloads/benchmark-0.5.0.gem",
+      "sha256": "465df122341aedcb81a2a24b4d3bd19b6c67c1530713fd533f3ff034e419236c",
+      "metadata": "https://rubygems.org/api/v2/rubygems/benchmark/versions/0.5.0.json?platform=ruby",
+      "required_ruby": ">= 2.1.0"
+    },
+    {
+      "name": "bigdecimal",
+      "version": "4.1.3",
+      "url": "https://rubygems.org/downloads/bigdecimal-4.1.3.gem",
+      "sha256": "61ebe1e5e559bdc3cc6f2c0ee7f427321fc838f59611c294356eb04d6e21cf66",
+      "metadata": "https://rubygems.org/api/v2/rubygems/bigdecimal/versions/4.1.3.json?platform=ruby",
+      "required_ruby": ">= 2.6.0"
+    },
+    {
+      "name": "claide",
+      "version": "1.1.0",
+      "url": "https://rubygems.org/downloads/claide-1.1.0.gem",
+      "sha256": "6d3c5c089dde904d96aa30e73306d0d4bd444b1accb9b3125ce14a3c0183f82e",
+      "metadata": "https://rubygems.org/api/v2/rubygems/claide/versions/1.1.0.json?platform=ruby",
+      "required_ruby": ">= 2.3.0"
+    },
+    {
+      "name": "cocoapods",
+      "version": "1.16.2",
+      "url": "https://rubygems.org/downloads/cocoapods-1.16.2.gem",
+      "sha256": "0ff1c860f32df3db8b16df09b58da1a6bb2a12fe55f6d5e8be994a74fadd1e5e",
+      "metadata": "https://rubygems.org/api/v2/rubygems/cocoapods/versions/1.16.2.json?platform=ruby",
+      "required_ruby": ">= 2.6"
+    },
+    {
+      "name": "cocoapods-core",
+      "version": "1.16.2",
+      "url": "https://rubygems.org/downloads/cocoapods-core-1.16.2.gem",
+      "sha256": "4bb1b5c420691e60cf36fa227dec6bc48c096c34c97bb7aa512ea7f3246fc12b",
+      "metadata": "https://rubygems.org/api/v2/rubygems/cocoapods-core/versions/1.16.2.json?platform=ruby",
+      "required_ruby": ">= 2.6"
+    },
+    {
+      "name": "cocoapods-deintegrate",
+      "version": "1.0.5",
+      "url": "https://rubygems.org/downloads/cocoapods-deintegrate-1.0.5.gem",
+      "sha256": "517c2a448ef563afe99b6e7668704c27f5de9e02715a88ee9de6974dc1b3f6a2",
+      "metadata": "https://rubygems.org/api/v2/rubygems/cocoapods-deintegrate/versions/1.0.5.json?platform=ruby",
+      "required_ruby": ">= 2.0.0"
+    },
+    {
+      "name": "cocoapods-downloader",
+      "version": "2.1",
+      "url": "https://rubygems.org/downloads/cocoapods-downloader-2.1.gem",
+      "sha256": "bb6ebe1b3966dc4055de54f7a28b773485ac724fdf575d9bee2212d235e7b6d1",
+      "metadata": "https://rubygems.org/api/v2/rubygems/cocoapods-downloader/versions/2.1.json?platform=ruby",
+      "required_ruby": ">= 2.6"
+    },
+    {
+      "name": "cocoapods-plugins",
+      "version": "1.0.0",
+      "url": "https://rubygems.org/downloads/cocoapods-plugins-1.0.0.gem",
+      "sha256": "725d17ce90b52f862e73476623fd91441b4430b742d8a071000831efb440ca9a",
+      "metadata": "https://rubygems.org/api/v2/rubygems/cocoapods-plugins/versions/1.0.0.json?platform=ruby",
+      "required_ruby": ">= 2.0.0"
+    },
+    {
+      "name": "cocoapods-search",
+      "version": "1.0.1",
+      "url": "https://rubygems.org/downloads/cocoapods-search-1.0.1.gem",
+      "sha256": "1b133b0e6719ed439bd840e84a1828cca46425ab73a11eff5e096c3b2df05589",
+      "metadata": "https://rubygems.org/api/v2/rubygems/cocoapods-search/versions/1.0.1.json?platform=ruby",
+      "required_ruby": ">= 0"
+    },
+    {
+      "name": "cocoapods-trunk",
+      "version": "1.6.0",
+      "url": "https://rubygems.org/downloads/cocoapods-trunk-1.6.0.gem",
+      "sha256": "5f5bda8c172afead48fa2d43a718cf534b1313c367ba1194cebdeb9bfee9ed31",
+      "metadata": "https://rubygems.org/api/v2/rubygems/cocoapods-trunk/versions/1.6.0.json?platform=ruby",
+      "required_ruby": ">= 2.0.0"
+    },
+    {
+      "name": "cocoapods-try",
+      "version": "1.2.0",
+      "url": "https://rubygems.org/downloads/cocoapods-try-1.2.0.gem",
+      "sha256": "145b946c6e7747ed0301d975165157951153d27469e6b2763c83e25c84b9defe",
+      "metadata": "https://rubygems.org/api/v2/rubygems/cocoapods-try/versions/1.2.0.json?platform=ruby",
+      "required_ruby": ">= 0"
+    },
+    {
+      "name": "colored2",
+      "version": "3.1.2",
+      "url": "https://rubygems.org/downloads/colored2-3.1.2.gem",
+      "sha256": "b13c2bd7eeae2cf7356a62501d398e72fde78780bd26aec6a979578293c28b4a",
+      "metadata": "https://rubygems.org/api/v2/rubygems/colored2/versions/3.1.2.json?platform=ruby",
+      "required_ruby": ">= 2.0.0"
+    },
+    {
+      "name": "concurrent-ruby",
+      "version": "1.3.8",
+      "url": "https://rubygems.org/downloads/concurrent-ruby-1.3.8.gem",
+      "sha256": "b2f1be836e968ccc78ccfce277ea79c72a88633f22306782c16ff23fb415d1e1",
+      "metadata": "https://rubygems.org/api/v2/rubygems/concurrent-ruby/versions/1.3.8.json?platform=ruby",
+      "required_ruby": ">= 2.3"
+    },
+    {
+      "name": "connection_pool",
+      "version": "2.5.5",
+      "url": "https://rubygems.org/downloads/connection_pool-2.5.5.gem",
+      "sha256": "e54ff92855753df1fd7c59fa04a398833355f27dd14c074f8c83a05f72a716ad",
+      "metadata": "https://rubygems.org/api/v2/rubygems/connection_pool/versions/2.5.5.json?platform=ruby",
+      "required_ruby": ">= 2.5.0"
+    },
+    {
+      "name": "drb",
+      "version": "2.2.3",
+      "url": "https://rubygems.org/downloads/drb-2.2.3.gem",
+      "sha256": "0b00d6fdb50995fe4a45dea13663493c841112e4068656854646f418fda13373",
+      "metadata": "https://rubygems.org/api/v2/rubygems/drb/versions/2.2.3.json?platform=ruby",
+      "required_ruby": ">= 2.7.0"
+    },
+    {
+      "name": "escape",
+      "version": "0.0.4",
+      "url": "https://rubygems.org/downloads/escape-0.0.4.gem",
+      "sha256": "e49f44ae2b4f47c6a3abd544ae77fe4157802794e32f19b8e773cbc4dcec4169",
+      "metadata": "https://rubygems.org/api/v2/rubygems/escape/versions/0.0.4.json?platform=ruby",
+      "required_ruby": "> 0.0.0"
+    },
+    {
+      "name": "ethon",
+      "version": "0.18.0",
+      "url": "https://rubygems.org/downloads/ethon-0.18.0.gem",
+      "sha256": "b598afc9f30448cb068b850714b7d6948e941476095d04f90a4ac65b8d6efcb2",
+      "metadata": "https://rubygems.org/api/v2/rubygems/ethon/versions/0.18.0.json?platform=ruby",
+      "required_ruby": ">= 2.6"
+    },
+    {
+      "name": "ffi",
+      "version": "1.17.4",
+      "url": "https://rubygems.org/downloads/ffi-1.17.4.gem",
+      "sha256": "bcd1642e06f0d16fc9e09ac6d49c3a7298b9789bcb58127302f934e437d60acf",
+      "metadata": "https://rubygems.org/api/v2/rubygems/ffi/versions/1.17.4.json?platform=ruby",
+      "required_ruby": ">= 2.5"
+    },
+    {
+      "name": "fourflusher",
+      "version": "2.3.1",
+      "url": "https://rubygems.org/downloads/fourflusher-2.3.1.gem",
+      "sha256": "1b3de61c7c791b6a4e64f31e3719eb25203d151746bb519a0292bff1065ccaa9",
+      "metadata": "https://rubygems.org/api/v2/rubygems/fourflusher/versions/2.3.1.json?platform=ruby",
+      "required_ruby": ">= 0"
+    },
+    {
+      "name": "fuzzy_match",
+      "version": "2.0.4",
+      "url": "https://rubygems.org/downloads/fuzzy_match-2.0.4.gem",
+      "sha256": "b5de4f95816589c5b5c3ad13770c0af539b75131c158135b3f3bbba75d0cfca5",
+      "metadata": "https://rubygems.org/api/v2/rubygems/fuzzy_match/versions/2.0.4.json?platform=ruby",
+      "required_ruby": null
+    },
+    {
+      "name": "gh_inspector",
+      "version": "1.1.3",
+      "url": "https://rubygems.org/downloads/gh_inspector-1.1.3.gem",
+      "sha256": "04cca7171b87164e053aa43147971d3b7f500fcb58177698886b48a9fc4a1939",
+      "metadata": "https://rubygems.org/api/v2/rubygems/gh_inspector/versions/1.1.3.json?platform=ruby",
+      "required_ruby": ">= 0"
+    },
+    {
+      "name": "httpclient",
+      "version": "2.9.0",
+      "url": "https://rubygems.org/downloads/httpclient-2.9.0.gem",
+      "sha256": "4b645958e494b2f86c2f8a2f304c959baa273a310e77a2931ddb986d83e498c8",
+      "metadata": "https://rubygems.org/api/v2/rubygems/httpclient/versions/2.9.0.json?platform=ruby",
+      "required_ruby": ">= 0"
+    },
+    {
+      "name": "i18n",
+      "version": "1.15.2",
+      "url": "https://rubygems.org/downloads/i18n-1.15.2.gem",
+      "sha256": "00f9eb62412fe593b2a65a97daa75300d37abb8f7202ec748e94b6d46a9dd1b5",
+      "metadata": "https://rubygems.org/api/v2/rubygems/i18n/versions/1.15.2.json?platform=ruby",
+      "required_ruby": ">= 3.1"
+    },
+    {
+      "name": "json",
+      "version": "3.1.0",
+      "url": "https://rubygems.org/downloads/json-3.1.0.gem",
+      "sha256": "3ce7ccf8fde58960177a3a756c31f292a4c1e1dedee884547096a5b0604e3bd8",
+      "metadata": "https://rubygems.org/api/v2/rubygems/json/versions/3.1.0.json?platform=ruby",
+      "required_ruby": ">= 2.7"
+    },
+    {
+      "name": "logger",
+      "version": "1.7.0",
+      "url": "https://rubygems.org/downloads/logger-1.7.0.gem",
+      "sha256": "196edec7cc44b66cfb40f9755ce11b392f21f7967696af15d274dde7edff0203",
+      "metadata": "https://rubygems.org/api/v2/rubygems/logger/versions/1.7.0.json?platform=ruby",
+      "required_ruby": ">= 2.5.0"
+    },
+    {
+      "name": "minitest",
+      "version": "5.27.0",
+      "url": "https://rubygems.org/downloads/minitest-5.27.0.gem",
+      "sha256": "2d3b17f8a36fe7801c1adcffdbc38233b938eb0b4966e97a6739055a45fa77d5",
+      "metadata": "https://rubygems.org/api/v2/rubygems/minitest/versions/5.27.0.json?platform=ruby",
+      "required_ruby": ">= 3.1"
+    },
+    {
+      "name": "molinillo",
+      "version": "0.8.0",
+      "url": "https://rubygems.org/downloads/molinillo-0.8.0.gem",
+      "sha256": "efbff2716324e2a30bccd3eba1ff3a735f4d5d53ffddbc6a2f32c0ca9433045d",
+      "metadata": "https://rubygems.org/api/v2/rubygems/molinillo/versions/0.8.0.json?platform=ruby",
+      "required_ruby": ">= 2.3.0"
+    },
+    {
+      "name": "mutex_m",
+      "version": "0.3.0",
+      "url": "https://rubygems.org/downloads/mutex_m-0.3.0.gem",
+      "sha256": "cfcb04ac16b69c4813777022fdceda24e9f798e48092a2b817eb4c0a782b0751",
+      "metadata": "https://rubygems.org/api/v2/rubygems/mutex_m/versions/0.3.0.json?platform=ruby",
+      "required_ruby": ">= 2.5"
+    },
+    {
+      "name": "nanaimo",
+      "version": "0.4.0",
+      "url": "https://rubygems.org/downloads/nanaimo-0.4.0.gem",
+      "sha256": "faf069551bab17f15169c1f74a1c73c220657e71b6e900919897a10d991d0723",
+      "metadata": "https://rubygems.org/api/v2/rubygems/nanaimo/versions/0.4.0.json?platform=ruby",
+      "required_ruby": ">= 2.3.0"
+    },
+    {
+      "name": "nap",
+      "version": "1.1.0",
+      "url": "https://rubygems.org/downloads/nap-1.1.0.gem",
+      "sha256": "949691660f9d041d75be611bb2a8d2fd559c467537deac241f4097d9b5eea576",
+      "metadata": "https://rubygems.org/api/v2/rubygems/nap/versions/1.1.0.json?platform=ruby",
+      "required_ruby": ">= 0"
+    },
+    {
+      "name": "netrc",
+      "version": "0.11.0",
+      "url": "https://rubygems.org/downloads/netrc-0.11.0.gem",
+      "sha256": "de1ce33da8c99ab1d97871726cba75151113f117146becbe45aa85cb3dabee3f",
+      "metadata": "https://rubygems.org/api/v2/rubygems/netrc/versions/0.11.0.json?platform=ruby",
+      "required_ruby": ">= 0"
+    },
+    {
+      "name": "public_suffix",
+      "version": "4.0.7",
+      "url": "https://rubygems.org/downloads/public_suffix-4.0.7.gem",
+      "sha256": "8be161e2421f8d45b0098c042c06486789731ea93dc3a896d30554ee38b573b8",
+      "metadata": "https://rubygems.org/api/v2/rubygems/public_suffix/versions/4.0.7.json?platform=ruby",
+      "required_ruby": ">= 2.3"
+    },
+    {
+      "name": "rexml",
+      "version": "3.4.4",
+      "url": "https://rubygems.org/downloads/rexml-3.4.4.gem",
+      "sha256": "19e0a2c3425dfbf2d4fc1189747bdb2f849b6c5e74180401b15734bc97b5d142",
+      "metadata": "https://rubygems.org/api/v2/rubygems/rexml/versions/3.4.4.json?platform=ruby",
+      "required_ruby": ">= 2.5.0"
+    },
+    {
+      "name": "ruby-macho",
+      "version": "2.5.1",
+      "url": "https://rubygems.org/downloads/ruby-macho-2.5.1.gem",
+      "sha256": "9075e52e0f9270b552a90b24fcc6219ad149b0d15eae1bc364ecd0ac8984f5c9",
+      "metadata": "https://rubygems.org/api/v2/rubygems/ruby-macho/versions/2.5.1.json?platform=ruby",
+      "required_ruby": ">= 2.5"
+    },
+    {
+      "name": "securerandom",
+      "version": "0.4.1",
+      "url": "https://rubygems.org/downloads/securerandom-0.4.1.gem",
+      "sha256": "cc5193d414a4341b6e225f0cb4446aceca8e50d5e1888743fac16987638ea0b1",
+      "metadata": "https://rubygems.org/api/v2/rubygems/securerandom/versions/0.4.1.json?platform=ruby",
+      "required_ruby": ">= 3.1.0"
+    },
+    {
+      "name": "typhoeus",
+      "version": "1.6.0",
+      "url": "https://rubygems.org/downloads/typhoeus-1.6.0.gem",
+      "sha256": "bacc41c23e379547e29801dc235cd1699b70b955a1ba3d32b2b877aa844c331d",
+      "metadata": "https://rubygems.org/api/v2/rubygems/typhoeus/versions/1.6.0.json?platform=ruby",
+      "required_ruby": ">= 2.6"
+    },
+    {
+      "name": "tzinfo",
+      "version": "2.0.6",
+      "url": "https://rubygems.org/downloads/tzinfo-2.0.6.gem",
+      "sha256": "8daf828cc77bcf7d63b0e3bdb6caa47e2272dcfaf4fbfe46f8c3a9df087a829b",
+      "metadata": "https://rubygems.org/api/v2/rubygems/tzinfo/versions/2.0.6.json?platform=ruby",
+      "required_ruby": ">= 1.9.3"
+    },
+    {
+      "name": "xcodeproj",
+      "version": "1.27.0",
+      "url": "https://rubygems.org/downloads/xcodeproj-1.27.0.gem",
+      "sha256": "8cc7a73b4505c227deab044dce118ede787041c702bc47636856a2e566f854d3",
+      "metadata": "https://rubygems.org/api/v2/rubygems/xcodeproj/versions/1.27.0.json?platform=ruby",
+      "required_ruby": ">= 2.0.0"
+    }
+  ]
+}

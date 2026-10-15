@@ -128,6 +128,9 @@ func (c *Catalog) Resolve(ctx context.Context, r domain.ImageCreateRequest) (dom
 	return Resolve(v, r)
 }
 func Resolve(v domain.ImageCatalog, r domain.ImageCreateRequest) (domain.ImageProfile, error) {
+	if r.Toolchain != "" {
+		return domain.ImageProfile{}, domain.Err("unsupported_toolchain", "legacy-ios-v1 requires the Tart image builder and an approved Monterey base")
+	}
 	var p domain.ImageProfile
 	selector := strings.ToLower(r.MacOS)
 	major, isAlias := aliases[selector]

@@ -1,0 +1,6 @@
+platform :ios, '9.0'
+install! 'cocoapods', :deterministic_uuids => true
+project 'LegacyIOS.xcodeproj'
+target 'LegacyIOS' do
+  pod 'VirfieldLegacySupport', :path => 'LegacySupport'
+end

@@ -1,0 +1,11 @@
+{
+  "name": "VirfieldLegacySupport",
+  "version": "1.0.0",
+  "summary": "Local reproducible armv7 qualification dependency",
+  "homepage": "https://github.com/mallexxx/virfield",
+  "license": { "type": "MIT", "text": "Copyright Virfield contributors. Permission is granted to use, copy, modify and distribute this fixture without restriction. THE SOFTWARE IS PROVIDED AS IS WITHOUT WARRANTY." },
+  "authors": "Virfield contributors",
+  "source": { "git": "https://github.com/mallexxx/virfield.git", "tag": "fixture-only" },
+  "platforms": { "ios": "9.0" },
+  "source_files": "LegacySupport.{h,m}"
+}

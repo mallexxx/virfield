@@ -19,12 +19,13 @@ var Version = "2.1.0-dev"
 
 type empty struct{}
 type createImageArgs struct {
-	Security string `json:"security,omitempty" jsonschema:"Guest policy: default keeps protections; sip-disabled disables SIP; automation also configures Gatekeeper, AMFI and Terminal/SSH TCC grants. Applied only inside the VM and verified after reboot."`
-	ID       string `json:"id" jsonschema:"New golden image ID and VM name"`
-	MacOS    string `json:"macos" jsonschema:"macOS exact version, build or codename such as sequoia; inspect image_catalog first"`
-	Xcode    string `json:"xcode,omitempty" jsonschema:"Optional exact stable Xcode version, such as 16.2"`
-	Location string `json:"location,omitempty" jsonschema:"Optional operator-configured storage name; omission uses the configured default"`
-	Key      string `json:"idempotency_key"`
+	Toolchain string `json:"toolchain,omitempty" jsonschema:"Optional legacy-ios-v1: exact Monterey 12.7.6/Xcode 13.4.1, pinned native Ruby/CocoaPods/FFI/Ethon and armv7 build qualification; Tart only"`
+	Security  string `json:"security,omitempty" jsonschema:"Guest policy: default keeps protections; sip-disabled disables SIP; automation also configures Gatekeeper, AMFI and Terminal/SSH TCC grants. Applied only inside the VM and verified after reboot."`
+	ID        string `json:"id" jsonschema:"New golden image ID and VM name"`
+	MacOS     string `json:"macos" jsonschema:"macOS exact version, build or codename such as sequoia; inspect image_catalog first"`
+	Xcode     string `json:"xcode,omitempty" jsonschema:"Optional exact stable Xcode version, such as 16.2"`
+	Location  string `json:"location,omitempty" jsonschema:"Optional operator-configured storage name; omission uses the configured default"`
+	Key       string `json:"idempotency_key"`
 }
 type acquireArgs struct {
 	DestinationLocation string `json:"destination_location,omitempty" jsonschema:"Optional operator-configured storage name. Explicit selection is strict; omission uses configured default and fallbacks."`
@@ -103,7 +104,7 @@ func New(c *client.Client) *mcp.Server {
 		return result(c.Do(ctx, "GET", "images/catalog", nil, ""))
 	})
 	mcp.AddTool(s, &mcp.Tool{Name: "image_create", Annotations: &mcp.ToolAnnotations{IdempotentHint: true, DestructiveHint: &additive}, Description: "Create and build a new Tart golden from an operator-approved digest-pinned base selected by exact macOS version/build/codename and optional stable Xcode version. Inspect image_catalog tart_bases first; public metadata alone does not establish buildability. Pins any requested Xcode archive metadata and persists the template across restart. Requires an available VM slot and CPU/RAM/disk budget. Select security default, sip-disabled or automation with a matching upstream SIP policy. No arbitrary host paths or overwriting VMs. Poll virfield_job; retry with the same idempotency key."}, func(ctx context.Context, _ *mcp.CallToolRequest, a createImageArgs) (*mcp.CallToolResult, any, error) {
-		return result(c.Do(ctx, "POST", "images", map[string]string{"id": a.ID, "macos": a.MacOS, "xcode": a.Xcode, "location": a.Location, "security": a.Security}, a.Key))
+		return result(c.Do(ctx, "POST", "images", map[string]string{"id": a.ID, "macos": a.MacOS, "xcode": a.Xcode, "location": a.Location, "security": a.Security, "toolchain": a.Toolchain}, a.Key))
 	})
 	mcp.AddTool(s, &mcp.Tool{Name: "image_build", Annotations: &mcp.ToolAnnotations{IdempotentHint: true, DestructiveHint: &additive}, Description: "Build an absent golden from a registered pinned Tart or node VM profile. Tart adopts an approved GHCR base through Packer, applies the recipe and qualifies the guest after reboot; node builds secure an operator-installed bootstrap golden. Exact OS/build, upstream SIP policy, credentials, native GUI/SSH keychain access and applicable workload tools must verify. Requires provider capacity and resource budget. Never overwrites an existing VM. Poll virfield_job and use the same idempotency key on retries."}, func(ctx context.Context, _ *mcp.CallToolRequest, a releaseArgs) (*mcp.CallToolResult, any, error) {
 		return result(c.Do(ctx, "POST", "images/"+url.PathEscape(a.ID)+"/build", empty{}, a.Key))

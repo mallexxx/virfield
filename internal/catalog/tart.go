@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"github.com/mallexxx/virfield/internal/domain"
+	"github.com/mallexxx/virfield/internal/legacyios"
 	"sort"
 	"strings"
 )
@@ -104,6 +105,10 @@ func (c *TartCatalog) Resolve(ctx context.Context, r domain.ImageCreateRequest) 
 		if p.Xcode == nil {
 			return p, domain.Err("version_not_found", "Requested stable Xcode is absent from public metadata")
 		}
+	}
+	if r.Toolchain != "" {
+		p.Toolchain = r.Toolchain
+		p.ToolchainSHA256 = legacyios.Digest()
 	}
 	return p, p.Validate()
 }

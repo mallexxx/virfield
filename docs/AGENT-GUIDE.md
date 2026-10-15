@@ -177,7 +177,11 @@ a complete runtime baseline are unsupported. Existing connection files are not
 overwritten: after readiness, use the returned endpoint with the original key
 and host pin. Installation/live acceptance is pending; inspect current metadata.
 Unverified temporary inventory can recover without replacing a ready lease.
-The optional legacy iOS profile remains planned. The F2 source candidate adds bounded typed diagnostics
+The source candidate also adds optional `image_create.toolchain="legacy-ios-v1"`
+for Tart Monterey12.7.6/Xcode13.4.1, pinned native Ruby/CocoaPods/FFI/Ethon and actual
+armv7 build qualification. It is not installed/live accepted. See
+[Image pipeline](IMAGE-PIPELINE.md#optional-legacy-ios-toolchain--source-candidate).
+ The F2 source candidate adds bounded typed diagnostics
 to `virfield_events`: expected/observed endpoints before drift, backend cause
 codes/fingerprints and separate listener/stream reasons. Filter by lease ID;
 retain the cursor, allow ID gaps and inspect the latest 32 records per kind.

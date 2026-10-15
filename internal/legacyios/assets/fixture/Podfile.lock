@@ -1,0 +1,16 @@
+PODS:
+  - VirfieldLegacySupport (1.0.0)
+
+DEPENDENCIES:
+  - VirfieldLegacySupport (from `LegacySupport`)
+
+EXTERNAL SOURCES:
+  VirfieldLegacySupport:
+    :path: LegacySupport
+
+SPEC CHECKSUMS:
+  VirfieldLegacySupport: c1aa049da897e9a02773d7c93f2a29a2e004f3d4
+
+PODFILE CHECKSUM: ac112930ad63fbf6bf903c636f5fedaa9982b31c
+
+COCOAPODS: 1.16.2

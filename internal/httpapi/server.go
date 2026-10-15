@@ -161,7 +161,7 @@ func statusForCode(code string) int {
 		return http.StatusConflict
 	case "image_transfer_failed":
 		return http.StatusBadGateway
-	case "revalidation_unsupported":
+	case "revalidation_unsupported", "unsupported_toolchain":
 		return http.StatusConflict
 	case "service_stopping", "lease_credentials_missing":
 		return http.StatusServiceUnavailable
