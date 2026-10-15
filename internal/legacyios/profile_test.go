@@ -7,9 +7,12 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -21,6 +24,61 @@ type probeGuest struct {
 	calls  int
 	output string
 	err    error
+}
+
+func TestNativeArchitectureCheckUsesRealAppleLipo(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("Apple Mach-O tool")
+	}
+	binary, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	native, foreign := "arm64", "x86_64"
+	if runtime.GOARCH == "amd64" {
+		native, foreign = foreign, native
+	}
+	script, err := assets.ReadFile("assets/native_arch.rb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	helper := filepath.Join(t.TempDir(), "native_arch.rb")
+	if err := os.WriteFile(helper, script, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("/usr/bin/ruby", helper, binary, native).CombinedOutput(); err != nil {
+		t.Fatal("Real native Mach-O rejected", err, string(out))
+	}
+	if out, err := exec.Command("/usr/bin/ruby", helper, binary, foreign).CombinedOutput(); err == nil {
+		t.Fatal("Foreign architecture accepted", string(out))
+	}
+	plain := filepath.Join(t.TempDir(), "not-mach-o")
+	if err := os.WriteFile(plain, []byte("ordinary text"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("/usr/bin/ruby", helper, plain, native).CombinedOutput(); err == nil {
+		t.Fatal("Non Mach-O input accepted", string(out))
+	}
+}
+
+func TestProfileEnvironmentNormalizesNoninteractiveCLocale(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("macOS system Ruby locale probe")
+	}
+	data, err := assets.ReadFile("assets/env.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(t.TempDir(), "profile-env.sh")
+	if err := os.WriteFile(file, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	command := `. "$1"; exec /usr/bin/ruby --disable-gems -e 'abort "wrong external encoding" unless Encoding.default_external == Encoding::UTF_8; File.expand_path(".").unicode_normalize(:nfc); abort "unfrozen tools" unless ENV["BUNDLE_FROZEN"] == "true"'`
+	cmd := exec.Command("/bin/bash", "-eu", "-c", command, "profile-test", file)
+	cmd.Env = append(os.Environ(), "LANG=C", "LC_ALL=C")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatal("Noninteractive C locale did not become usable UTF-8", err, string(out))
+	}
 }
 
 func (g *probeGuest) Run(context.Context, string, string) (string, error) {
@@ -135,7 +193,7 @@ func TestSupplyChainLockAndPayloadAreComplete(t *testing.T) {
 			}
 		}
 	}
-	for _, name := range []string{"Gemfile", "Gemfile.lock", "fixture/Podfile.lock", "fixture/project.rb", "profile.sha256", "manifest.json", "downloads.tsv", "install.sh", "verify.sh", "verify.rb"} {
+	for _, name := range []string{"Gemfile", "Gemfile.lock", "fixture/Podfile.lock", "fixture/project.rb", "profile.sha256", "manifest.json", "downloads.tsv", "install.sh", "verify.sh", "verify.rb", "env.sh", "native_arch.rb"} {
 		if !seen[name] {
 			t.Fatal("missing payload", name)
 		}

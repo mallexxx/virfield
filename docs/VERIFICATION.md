@@ -42,11 +42,19 @@ Receipt: `virfield-local-golden-sparse-live-20261016/journal.json`, final stage
 
 The actual owning MCP remains a separate open gate: PID 66295 still serves the
 old instructions. The user cannot restart it now; no process was killed.
-Production full Codex Story `run-de5f0928d21f97428502519aab3438d1` is running on
-the default `macos27` profile after explicit authorization of provider usage and
-the configured Telegram plan prompt. The durable driver never answers Human
-requests automatically. Story/denied-write/credential lifecycle acceptance remains
-pending, under `virfield-broker-codex-sparse-20261016/journal.json`.
+Production full Codex Story `run-de5f0928d21f97428502519aab3438d1` completed real
+specify/design/breakdown, then waited for the configured Telegram owner. No Human
+answer/refresh was sent automatically. At its original 21:12:19 UTC deadline it
+failed in approval with `process_group_unsettled` / `operation not permitted`.
+Broker cleanup remains pending/`credential_state_lost`; the exact Virfield worker
+`lease-faea902b1f37565ea8b084038f75b127` was independently confirmed released by
+its original 21:17:19 UTC TTL, with no VM left. The issuer's read-only lease-state
+confirms owned=true, revoked=false, checkpointed=false; the identity stays fenced.
+Do not reuse an uncertain old token or force a database cleanup/unlock. No reviewer,
+implementer or verifier ran and no artifacts were exported; full Story is not
+accepted. The original driver completed with failure and must never be replayed.
+Receipts: `virfield-story-cleanup-failure-events-20261016.json`,
+`virfield-story-credential-fence-20261016.json` and the original Story journal.
 
 F3 source adds shared controller/fresh-node budget evaluation, structured
 admission/refusal arithmetic, separate overlay/golden filesystem observations,
@@ -66,7 +74,7 @@ all four packaged help/resources passed against the existing a45655f daemon;
 this does not accept new F3 daemon behavior. Logs: `virfield-resource-admission-final-check-20261016.log`,
 `virfield-resource-admission-final-affected-20261016.log` and
 `virfield-resource-admission-console-20261016.log`. It is not installed/live
-accepted by a45655f receipts; do not restart the daemon during the active Story.
+accepted by a45655f receipts; new production installation still needs exact approval and an idle pool.
 
 The Telegram prompt's message and published controls were independently confirmed
 from a private ephemeral DB/WAL snapshot, with the production volume read-only,
@@ -113,7 +121,7 @@ Logs: `virfield-revalidate-full-check-20261016.log`,
 `virfield-revalidate-manager-20261016.log`. F1 archive exposes 20 MCP tools and schema
 9; installed daemon remains a45655f/schema 8. Live recovery must independently
 retain the original VM/key/expiry and workspace checksum; unit tests do not close
-that gate. No production restart is permitted during the active Story.
+that gate. Production installation requires exact migration approval and an idle pool.
 
 F5 source adds optional pinned `legacy-ios-v1` for exact Tart Monterey12.7.6 /
 Xcode13.4.1. Domain/catalog/profile tests pass for incompatible combinations,
@@ -145,6 +153,65 @@ file under its own transfer lock. This supersedes the uninstalled 87955e4/dab2c3
 archives for installation. Red/green logs:
 `virfield-f1-transfer-lock-red-20261016.log` and
 `virfield-f1-transfer-lock-green-20261016.log`. Installed a45655f is unaffected.
+
+**F5 disposable-worker prevalidation.** On the unchanged installed a45655f,
+owned Monterey worker `lease-62525e681b7f483e477cb1445b356bd8` passed native GUI/SSH
+preflight and built Ruby3.3.12/OpenSSL3.5.9/LibYAML0.2.5 plus all 44 frozen gems.
+Verification then failed on the actual Apple lipo CLI argument order: its
+`-verify_arch` consumes following arguments, so the input file must precede it.
+An independent read-only probe with corrected order confirmed native arm64 FFI,
+CocoaPods1.16.2/Ethon0.18.0 and real system libcurl loading. This did not accept the
+profile. The failed fixture was officially released after export, preserving all
+nine image manifests. The fixed checks share one helper, tested against a real
+native Mach-O, wrong architecture and non-Mach-O input. The second worker
+`lease-fdcab19df25d30326aceece3fb141443` then exposed CocoaPods Unicode normalization
+under noninteractive ASCII-8BIT locale. A profile-scoped UTF-8 environment fixes
+that failure without changing global startup files. Actual C-locale/Ruby path
+normalization now has a regression test.
+
+Current verifier bytes were staged privately against those unchanged built tools;
+they passed actual frozen CocoaPods/unsigned armv7 compile/link both before and
+after a real reboot/new boot UUID. Native Aqua/new SSH WhenUnlocked I/O, 1920x1080,
+admin/admin, workspace/key retention, cross-lease key rejection, RFB, exported
+artifact hash and official release/listener revocation passed. Both owned workers
+are released; all nine golden manifests match. Current verifier staging did not
+overwrite the immutable installed toolchain/marker or qualify a factory golden.
+New daemon/schema, exact candidate factory and actual connected-client gates stay
+open; this is module/workload prevalidation on stable a45655f. Original TTLs and
+journals remain authoritative; never replay the completed setup/cleanup drivers.
+Receipts: `virfield-legacy-ios-prevalidation-live-20261016/`,
+`virfield-legacy-ios-prevalidation-lipo-20261016/` and
+`virfield-f5-real-lipo-regression-20261016.log`.
+
+**Darwin/Broker cleanup research.** Apple's primary
+[XNU killpg1](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_sig.c)
+excludes zombie members and can return EPERM for a group containing no executable
+process. An owned same-UID zombie-only group reproduced EPERM for both signal 0
+and SIGKILL; its parent then reaped it normally. An actual Broker regression
+reproduced the false `process_group_unsettled` on source
+`4a8319acc8d0fad7077b70f1e60417abd293f2b3`. A
+[reviewable patch](fixtures/execution-broker-darwin-process-group.patch) settles
+Darwin EPERM only after a successful independent no-live-members observation;
+live/unknown groups still fail closed. Full Runner race tests, vet and Linux
+arm64 runner cross-build passed in a separate temporary source copy. The original
+Broker checkout/deployment are unchanged. Its exact historical group membership
+was not recorded, so the original failure is not asserted to have been a zombie.
+Recovery of the fenced identity requires the operator credential procedure; no
+revoke/reset or provider login was performed here.
+
+**Candidate installation boundary.** `188f166` passed full CI/red-green transfer
+lock regression, staged secret scan, exact archive/fresh stdio 20 tools/new schemas
+and all four packaged runbooks/resources. Archive `0.0.0-legacy-ios-lock` SHA-256:
+`368ce8abd2f5f0bfa444ca7f2b3420fa4399b339734418b7997fc16d7ed99f8c`.
+Automatic approval review rejected its production restart/schema 8-to-10 migration
+as requiring specific permission; the prepared installer was not executed.
+Further F5 corrections add an explicit installer umask, guest-readable root-owned
+toolchain files, completion marker last, private compiler log/bounded SSH tail,
+a common real-lipo check and a reusable UTF-8 environment. Full local CI, real
+Mach-O/locale regressions and staged-verifier native/reboot/armv7 prevalidation
+passed; staged and 244-commit history Gitleaks8.30.1 scans found no leaks. Log:
+`virfield-f5-complete-source-check-20261016.log`. These corrections supersede
+188f166 for installation. No new daemon/schema or factory image is accepted.
 
 ## Earlier transfer checkpoint — 3d667d2 (2026-10-16)
 

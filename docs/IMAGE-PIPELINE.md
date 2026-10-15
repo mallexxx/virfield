@@ -249,15 +249,26 @@ Apple Silicon guest; native Ruby and gems still run as arm64. Intel skips Rosett
 
 The toolchain manifest includes a separate SHA-256 covering the installer, pins,
 checks and local fixture. Existing/partial installations are preserved on failure;
-setup never overwrites them to pass qualification. The image stage writes private
+setup never overwrites them to pass qualification. Root-owned public toolchain
+files are guest-readable/executable with no guest write access; setup uses its own
+umask and commits the completion marker only after permissions succeed. Compiler
+output stays in a root-private guest `build.log`; SSH returns short stage messages
+and a bounded failure tail, avoiding its 64 KiB output limit. The image stage writes private
 `legacy-ios-install.log` and, after actual reboot, `legacy-ios-verify.log`. Readiness
 requires native Ruby/FFI Mach-O architecture, actual FFI/Ethon/libcurl loading and
 matching Ruby/OpenSSL/LibYAML/gem versions. The representative Objective-C app uses
 a local CocoaPods dependency, immutable `Gemfile.lock`/`Podfile.lock` and a real
 Xcode armv7 compile/link; lipo and the linked dependency symbol are checked. No
 signing or 32-bit device execution is claimed. Evidence records versions,
-architecture, recipe/log digests and build artifact/lockfile hashes. Use `bundle
-exec` with the profile's Ruby and Gemfile when building a caller checkout.
+architecture, recipe/log digests and build artifact/lockfile hashes. Source the profile environment in a subshell
+when building a caller checkout; it selects native Ruby, frozen tools and the
+UTF-8 locale required by CocoaPods under noninteractive SSH:
+
+```sh
+( . /opt/virfield/toolchains/legacy-ios-v1/env.sh; bundle exec pod install --deployment )
+```
+
+No global shell startup files or system Ruby are changed.
 
 Source/unit/host deployment checks do not accept a built image. Installation and
 live Monterey factory/worker acceptance remain open; see Verification.

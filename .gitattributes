@@ -1,0 +1,2 @@
+# Unified patch context prefixes a space to the original Go indentation.
+docs/fixtures/*.patch whitespace=-space-before-tab

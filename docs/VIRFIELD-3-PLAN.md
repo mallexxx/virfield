@@ -42,8 +42,8 @@ The candidate is **not release accepted**.
 | 1 | Remove automatic account-password rotation | Installed; Samsung 2/2 passed; remaining matrix open | Tests and installed image/lease/reboot cycles retain `admin/admin`; SSH isolation and native GUI/new SSH key storage still pass; old-image handling preserves data |
 | 2 | Resolve current macOS 27 keychain and Sonoma reboot failures | Reproduced; causes not fully established | Bounded diagnosis, targeted correction and fresh full cycles on the exact installed candidate; no repeated unchanged VM/reboot attempts treated as a fix |
 | 3 | Package and accept the corrected guest policy | `a45655f` installed; Samsung/new macOS27/factory, both HTPC profiles and transferred iPad Monterey passed | Clean exact-source local CI/security/archive checks; idle-pool install with private backup; Tart macOS 27 and both Monterey inventories plus HTPC Sonoma/Sequoia native GUI/new SSH, actual reboot/new UUID, 1920×1080, workload/artifact/RFB/release/revocation |
-| 4 | Close client and production entrypoint acceptance | Owning MCP stale/user cannot Restart now; default Broker script-only passed; full Story waiting for Telegram owner approval | Actual connected clients serve current version/all four runbooks and complete their workflows; production Broker qualification/Story, independent tests, explicit denied-write and artifacts/settlement/cleanup |
-| 5 | Implement the five operator feedback items below | F4 installed/live accepted; F3 a2aab20 and F2 89344ef checked/pushed/archived; F1 87955e4 checked/pushed/archived; F5 source implemented, final checks/live acceptance pending | Each item's tests, live evidence and updated runbooks |
+| 4 | Close client and production entrypoint acceptance | Owning MCP stale/user cannot Restart now; default Broker script-only passed; full Story failed process-group settlement at deadline; issuer remains fenced, worker released by original TTL | Actual connected clients serve current version/all four runbooks and complete their workflows; production Broker qualification/Story, independent tests, explicit denied-write and artifacts/settlement/cleanup |
+| 5 | Implement the five operator feedback items below | F4 installed/live accepted; F3 a2aab20 and F2 89344ef checked/pushed/archived; F1/F5 through188f166 checked/pushed/archived; F5 live-discovered corrections/full CI/module prevalidation passed, final corrected packaging pending; combined install/live acceptance open | Each item's tests, live evidence and updated runbooks |
 | 6 | Complete remaining hardening/debug/DR gates | Partial dated evidence only | Agreed scope below accepted separately; no promotion based solely on unit tests or another OS/version |
 
 The full current-candidate acceptance, verification and branch push precede general
@@ -136,7 +136,7 @@ I/O; known errno/context causes and original error fingerprints are safe to
 export. Tests cover restart, cleanup persistence, privacy and normal EOF versus
 actual upstream reset. `89344ef` passed full local CI, final affected race/security,
 archive and fresh stdio/runbook checks and is pushed. Installation and live
-acceptance remain; the active production Story prevents a daemon upgrade.
+acceptance remain; exact schema-migration approval and an idle pool are required for installation.
 The historical Monterey drift's exact cause is still unknown.
 
 Persist bounded expected/observed identity, IP, SSH port, state, observation time
@@ -155,7 +155,7 @@ and shows the selected estimate in Console. Overlay/golden device observations,
 one-byte boundaries, cache, fallback, overflow and same-lease wait/resume tests
 are included. `a2aab20` passed full local CI, affected race/security, archive and
 fresh stdio MCP/runbook checks and is pushed. Idle installation and live
-acceptance remain separate gates; an active production Story prevents upgrade.
+acceptance remain separate gates; exact schema-migration approval and an idle pool are required for installation.
 
 Return and display the admission snapshot per host/storage: observed free,
 already reserved growth, requested full potential size, safety reserve, remaining
@@ -202,8 +202,16 @@ native library loading, version/architecture checks and an actual unsigned armv7
 compile/link against a local pod with frozen lockfiles after reboot.
 
 Source tests and the actual host CocoaPods deployment fixture pass; all downloaded
-source gems match primary RubyGems hashes. Final source/security/archive checks,
-installation and actual Monterey factory/worker acceptance remain open. This does
+source gems match primary RubyGems hashes. Independent disposable-worker testing
+built all pinned tools and exposed/fixed real lipo argument ordering. Guest-readable
+root-owned permissions, completion-marker ordering and bounded setup logging are
+corrected. The fresh worker exposed/fixed noninteractive UTF-8 locale handling.
+Current staged verifier/pinned tools passed actual armv7 builds before/after native
+reboot, GUI/SSH/account/workspace/keys/RFB/export/isolation/release checks on stable
+a45655f. Both workers were released and nine goldens preserved. Factory/image
+registration is still unaccepted; no immutable marker was rewritten. Final corrected
+source/security/archive checks, approved installation and actual factory/worker
+acceptance remain open. This does
 not claim on-device armv7 execution or reuse historical iVim/Notepad evidence.
 
 ## Remaining 3.0 architecture

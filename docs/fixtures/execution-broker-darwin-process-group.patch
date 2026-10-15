@@ -1,0 +1,103 @@
+--- a/internal/runner/process_group.go
++++ b/internal/runner/process_group.go
+@@ -24,6 +24,18 @@
+ 		return fmt.Errorf("invalid managed process group")
+ 	}
+ 	if err := syscall.Kill(-pgid, syscall.SIGKILL); err != nil && !errors.Is(err, syscall.ESRCH) {
++		// XNU excludes zombies from signal delivery and returns EPERM when
++		// the group exists but has no signalable member. Only an independent
++		// successful observation of no executable members can settle it.
++		// A live group or unavailable observation remains a hard failure.
++		if runtime.GOOS == "darwin" && errors.Is(err, syscall.EPERM) {
++			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
++			defer cancel()
++			alive, observedErr := liveProcessGroup(ctx, pgid)
++			if observedErr == nil && !alive {
++				return nil
++			}
++		}
+ 		return err
+ 	}
+ 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+--- /dev/null
++++ b/internal/runner/process_group_darwin_test.go
+@@ -0,0 +1,79 @@
++//go:build darwin
++
++package runner
++
++import (
++	"bufio"
++	"fmt"
++	"os"
++	"os/exec"
++	"strconv"
++	"strings"
++	"syscall"
++	"testing"
++	"time"
++)
++
++func TestDarwinZombieGroupHelper(t *testing.T) {
++	if os.Getenv("BROKER_ZOMBIE_GROUP_HELPER") != "1" {
++		return
++	}
++	child := exec.Command("/usr/bin/true")
++	child.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
++	if err := child.Start(); err != nil {
++		os.Exit(2)
++	}
++	fmt.Println(child.Process.Pid)
++	_, _ = bufio.NewReader(os.Stdin).ReadByte()
++	_ = child.Wait()
++	os.Exit(0)
++}
++
++func TestDarwinZombieOnlyGroupIsConfirmedStopped(t *testing.T) {
++	helper := exec.Command(os.Args[0], "-test.run=^TestDarwinZombieGroupHelper$")
++	helper.Env = append(os.Environ(), "BROKER_ZOMBIE_GROUP_HELPER=1")
++	input, err := helper.StdinPipe()
++	if err != nil {
++		t.Fatal(err)
++	}
++	output, err := helper.StdoutPipe()
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := helper.Start(); err != nil {
++		t.Fatal(err)
++	}
++	defer func() { _, _ = input.Write([]byte("\n")); _ = input.Close(); _ = helper.Wait() }()
++	scanner := bufio.NewScanner(output)
++	if !scanner.Scan() {
++		t.Fatal("missing own child PID")
++	}
++	pid, err := strconv.Atoi(scanner.Text())
++	if err != nil || pid <= 1 {
++		t.Fatal(pid, err)
++	}
++	deadline := time.Now().Add(5 * time.Second)
++	for {
++		data, err := exec.Command("/bin/ps", "-p", strconv.Itoa(pid), "-o", "ppid=,pgid=,uid=,state=").Output()
++		if err != nil {
++			t.Fatal(err)
++		}
++		fields := strings.Fields(string(data))
++		if len(fields) == 4 && strings.HasPrefix(fields[3], "Z") {
++			if fields[0] != strconv.Itoa(helper.Process.Pid) || fields[1] != strconv.Itoa(pid) || fields[2] != strconv.Itoa(os.Getuid()) {
++				t.Fatal("not our own managed group", fields)
++			}
++			break
++		}
++		if time.Now().After(deadline) {
++			t.Fatal("own process did not become zombie")
++		}
++		time.Sleep(10 * time.Millisecond)
++	}
++	if err := syscall.Kill(-pid, 0); err != syscall.EPERM {
++		t.Fatalf("Darwin zombie-only group should reproduce EPERM: %v", err)
++	}
++	if err := stopProcessGroup(pid); err != nil {
++		t.Fatalf("non-executing owned zombie rejected as unsettled: %v", err)
++	}
++}
