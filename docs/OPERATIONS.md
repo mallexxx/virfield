@@ -414,6 +414,17 @@ command unlocks in its own Security audit session before executing the original
 command. The inherited login keychain's items are retained and its password is rotated to match the VM; this prevents OS services from leaving old login-keychain password dialogs on screen. Its native access is verified after lock/unlock with the new password. Tart clones and factory recipes request `1920x1080px` (72 PPI), independent of the host Retina scale. Point units, including an omitted unit, can leave Monterey at 3840×2160 without a 1920×1080 mode. The actual 1920×1080 desktop is selected and verified inside Aqua before native keychain acceptance. Shared physical nodes are not
 modified by this VM preparation policy.
 
+Console, automatic startup and fresh native-result observations share the
+existing five-minute SSH-command bound; observing a later phase does not restart
+that budget. Cold HDD agents have produced valid automatic proof just after an
+earlier 120-second guard. Native scope/boot/nonce and I/O checks remain mandatory.
+Before worker readiness, a separate bounded probe reads a complete RFB greeting
+from guest localhost:5900 through authenticated, pinned guest SSH. This starts and
+verifies Screen Sharing itself; launchd owning a LISTEN socket is insufficient.
+It does not change firewall policy or weaken authentication.
+The worker Aqua agent also reads the real greeting before publishing native
+readiness on each login/reboot; image qualification skips this worker service.
+
 If `guest_keychain_failed` occurs, preserve the operation/lease ID and inspect the
 owner-only guest `~/.virfield-keychain/agent.log` and host provisioning diagnostics.
 The SSH preparer now captures bounded GUI/SSH results and agent/display logs into

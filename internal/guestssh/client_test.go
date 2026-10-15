@@ -23,6 +23,10 @@ func sshServer(t *testing.T, model string) (string, ssh.Signer) {
 }
 
 func sshServerFor(t *testing.T, model, user string) (string, ssh.Signer) {
+	return sshServerWithForward(t, model, user, nil)
+}
+
+func sshServerWithForward(t *testing.T, model, user string, forward func(ssh.NewChannel)) (string, ssh.Signer) {
 	t.Helper()
 	_, key, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -59,6 +63,14 @@ func sshServerFor(t *testing.T, model, user string) (string, ssh.Signer) {
 				defer conn.Close()
 				go ssh.DiscardRequests(reqs)
 				for ch := range channels {
+					if ch.ChannelType() == "direct-tcpip" {
+						if forward == nil {
+							_ = ch.Reject(ssh.Prohibited, "forwarding unavailable")
+						} else {
+							go forward(ch)
+						}
+						continue
+					}
 					channel, requests, err := ch.Accept()
 					if err != nil {
 						return

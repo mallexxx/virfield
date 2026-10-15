@@ -14,6 +14,11 @@ IFS= read -r previous
 [[ "$scope" =~ ^(image|lease)-[a-zA-Z0-9_.-]+$ && "$nonce" =~ ^keychain-[a-f0-9]+$ ]] || exit 64
 [[ "$HOME" == "/Users/$user" ]] || exit 64
 case "$(sysctl -n hw.model)" in VirtualMac*|iMacPro1,1) ;; *) exit 64 ;; esac
+# Share the existing five-minute SSH-command budget across all observations.
+# Leave fifteen seconds for the final result and private failure diagnostics.
+# A cold HDD agent has published valid native proof just after the old
+# independent 120-second result guard; it must get the remaining command time.
+deadline=$((SECONDS+285))
 for ((attempt=0; attempt<120; attempt++)); do
   [[ "$(stat -f %Su /dev/console)" == "$user" ]] && break
   sleep 1
@@ -227,6 +232,30 @@ default="$(/usr/bin/security default-keychain -d user)"
 [[ "$(stat -f %u:%Lp "$keychain")" == "$(id -u):600" ]] || exit 65
 phase scoped-native-io
 /usr/bin/osascript -l JavaScript "$dir/probe.js" "$scope" "$nonce" "$boot" > "$dir/result.next"
+# ai.virfield.desktop-protocol begin
+if [[ "$scope" == lease-* ]]; then
+  # A listening launchd socket does not attest a cold Screen Sharing process.
+  # Warm and verify it in Aqua on every worker login/reboot and fresh probe.
+  # Image qualification does not enable this worker-only service.
+  phase desktop-protocol
+  desktop_deadline=$((SECONDS+90))
+  desktop_ready=false
+  while (( SECONDS < desktop_deadline )); do
+    if { exec 3<>/dev/tcp/127.0.0.1/5900; } 2>/dev/null; then
+      remaining=$((desktop_deadline-SECONDS))
+      if (( remaining > 0 )) && IFS= read -r -n 12 -t "$remaining" greeting <&3 && [[ "$greeting" =~ ^RFB\ [0-9]{3}\.[0-9]{3}$ ]]; then
+        desktop_ready=true
+        printf '%s\n%s\n%s\n' "$scope" "$boot" "$greeting" > "$dir/desktop-result"
+        chmod 600 "$dir/desktop-result"
+      fi
+      exec 3<&-; exec 3>&-
+      break
+    fi
+    sleep 1
+  done
+  [[ "$desktop_ready" == true ]] || { echo 'Guest Screen Sharing did not return its RFB greeting' >&2; exit 65; }
+fi
+# ai.virfield.desktop-protocol end
 chmod 600 "$dir/result.next"
 mv "$dir/result.next" "$dir/result"
 grep -q '"ready":true' "$dir/result" || exit 65
@@ -284,10 +313,9 @@ SSH
 else
   # Wait for this boot's automatic agent. Old golden evidence is insufficient.
   expected="$(printf '%s\n%s' "$scope" "$boot")"
-  # Cold Intel/HDD login produced a valid native proof 76 seconds after boot.
-  # Keep the fresh-boot requirement and allow a bounded two minutes for the
-  # automatic GUI agent, inside the caller's overall command deadline.
-  for ((attempt=0; attempt<120; attempt++)); do
+  # Startup and the requested proof share one command deadline; neither phase
+  # restarts that budget. Keep the exact scope/boot match on the automatic agent.
+  while (( SECONDS < deadline )); do
     [[ -f "$dir/startup" && "$(cat "$dir/startup")" == "$expected" ]] && break
     sleep 1
   done
@@ -306,7 +334,7 @@ else
   # agent even in that brief overlap, so a verify request cannot be dropped.
   launchctl kickstart -k "gui/$uid/$label"
 fi
-for ((attempt=0; attempt<120; attempt++)); do
+while (( SECONDS < deadline )); do
   if [[ -f "$dir/result" ]]; then
     cat "$dir/result"
     exit 0

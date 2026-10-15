@@ -220,6 +220,7 @@ make guest commands idempotent.
 | `outcome_unknown`, `operation_timeout`, `unsafe_retry` | Mutation may have occurred; preserve reservation and inspect exact VM before recovery |
 | `backend_unavailable`, stale/failed observation | Restore/check the backend; do not trust cached capacity or restart the runtime with active VMs |
 | `vm_drift`, SSH host-key/authentication failure | Stop executing; inspect/release the owned lease. Never suppress host-key checks |
+| `lease_desktop_failed` | Preparation could not read a real Screen Sharing RFB greeting through pinned guest SSH. Inspect the owned lease; a listening port alone is insufficient. |
 | `lease_expired`, `lease_released` | Do not renew/reuse the old worker; inspect cleanup before acquiring another |
 
 Operator-only actions are intentionally absent from MCP: image deletion, lease

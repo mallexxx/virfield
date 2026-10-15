@@ -66,7 +66,7 @@ func TestAutologinRejectsStaleSecretAndAcceptsNativeRandomPadding(t *testing.T) 
 }
 
 // Each VM lease signs in to Screen Sharing with its own password, so the
-// lease script enables the service and Prepare waits for its listener.
+// lease script enables the service and Prepare verifies its real RFB greeting.
 func TestLeaseScriptEnablesScreenSharing(t *testing.T) {
 	for _, want := range []string{
 		`printf '%s\n' "$new" | sudo -S -p '' /bin/launchctl enable system/com.apple.screensharing`,
@@ -75,9 +75,6 @@ func TestLeaseScriptEnablesScreenSharing(t *testing.T) {
 		if !strings.Contains(leaseScript, want) {
 			t.Fatal("lease script lacks", want)
 		}
-	}
-	if out, err := exec.Command("/bin/sh", "-n", "-c", screenSharingProbe).CombinedOutput(); err != nil {
-		t.Fatal("probe does not parse:", string(out), err)
 	}
 }
 

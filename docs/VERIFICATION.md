@@ -182,8 +182,8 @@ credential mutation or secured lease identity creation. A real-SSH regression
 with an absent desktop fails on the old source and passes with the barrier;
 image credentials remain byte-identical. This closes the missing ordering
 precondition, without claiming it caused the earlier console-login failure.
-The correction was installed as `8c521fe`; its simultaneous-cold-boot HTPC
-matrix is in progress. Two new sequential iPad Monterey clones passed on this
+The correction was installed as `8c521fe`; its later HTPC repeats are recorded
+below. Two new sequential iPad Monterey clones passed on this
 installed baseline: native GUI/new SSH keychain I/O before/after real reboot,
 fresh boot UUID/nonce, actual 1920x1080, exact OS/build/SIP, distinct host keys,
 cross-key refusal, workload/artifact/RFB, release and tunnel revocation.
@@ -207,6 +207,43 @@ delayed fragmentation, a partial greeting not extending the deadline, EOF and
 invalid greetings. Production forwarding/guest code is unchanged by this runner
 correction. The next Sequoia and Sonoma runs preserve direct node RFB, framebuffer
 and console evidence before cleanup on a repeated failure.
+
+The first Sequoia pair reached Aqua but both native agents outlasted the
+120-second result guard at `login-native-io`; both failed fixtures were released.
+Two subsequent retained fixtures established actual false negatives without a
+manual GUI unlock: Sonoma failed at `08:02:35 UTC`, then its automatic agent
+published native ready at `08:02:36`; Sequoia failed at `08:06:42`, then published
+ready at `08:08:33`. Fresh GUI and new-SSH native probes passed afterward on both.
+Their API leases remained `needs_attention`; no state was rewritten or adopted.
+Source now shares the remaining original five-minute SSH-command budget between
+startup/result observations, reserving fifteen seconds for final diagnostics.
+A deterministic execution of the real shell loop fails on the old 120-second
+guard and passes for valid proof at 130 seconds, while missing proof and a prior
+stage spending the budget still fail within the one total bound. Native I/O,
+scope/boot/nonce and the overall operation/lease deadlines are unchanged.
+
+The retained Sonoma's direct node RFB greeting took 13.5 seconds, reproducing a
+valid service slower than the old ten-second reader. Sequoia's direct node read
+timed out at thirty seconds while cold. Later its guest localhost greeting through
+pinned SSH took 0.3 seconds; firewall was disabled and launchd owned the listener.
+After that, the node forwarding greeting took 0.01 seconds. This establishes a
+readiness gap: `LISTEN` alone did not attest a responsive Screen Sharing service;
+it does not identify every cause of the earlier cold-start delay. Source now
+requires a real, complete RFB greeting through authenticated guest SSH before
+worker readiness, within a separate ninety-second probe and the original job
+deadline. Real SSH tests cover fragmented greetings, stalled banner/channel
+acknowledgements, invalid protocols and preserving the provisioning connection
+after success. This source correction still needs installed provider acceptance.
+The worker Aqua agent also probes the actual greeting before publishing result
+and startup on each login/reboot, so the post-reboot path does not rely on the
+initial preparer's warm service. It skips this service for image scopes. The
+actual Bash block passes TCP fixtures for fragmentation, silent/invalid services,
+scope/boot binding and no image-scope dependency. Both retained diagnostic VMs
+were then released through their own durable journals; all seven goldens remain.
+Bounded private failure diagnostics now include timestamps and at most two
+one-second samples of the fixed native probe; no identity/keychain content is read.
+Private evidence: `/private/tmp/virfield-sequoia-keychain-retained-8c521fe-20261015`
+and `/private/tmp/virfield-sequoia-keychain-retained-r2-8c521fe-20261015`.
 
 The physical HTPC lease passed on `c85a899`: acquire/replay, exclusive-host
 refusal of a second lease, pinned SSH workload, artifact export and release.
