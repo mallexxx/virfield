@@ -58,10 +58,35 @@ class Acceptance:
                 raise ValueError('Replay must preserve the original path and body')
             self.requests[key] = replay
             self.save()  # Persist the replay key/body BEFORE dispatch.
-        for attempt in range(3):
+        # OpenTunnel is keyed by lease/service in Control and a typed
+        # backend_unavailable rejects before allocation. Wait for recovery only
+        # for this known rejection; VM mutations and lost POST replies stay
+        # journaled for inspection instead of being replayed automatically.
+        tunnel = path.startswith('leases/') and path.endswith('/tunnel') and body is not None
+        attempts = 24 if tunnel else 3
+        retry_deadline = time.monotonic() + 120
+        for attempt in range(attempts):
             try:
                 with self.http.open(request, timeout=30) as response:
                     return json.load(response)
+            except urllib.error.HTTPError as error:
+                try:
+                    failure = json.loads(error.read(4096)).get('error', {})
+                except (ValueError, AttributeError, OSError):
+                    failure = {}
+                finally:
+                    error.close()
+                code = failure.get('code') if isinstance(failure, dict) else None
+                retryable = isinstance(failure, dict) and failure.get('retryable') is True
+                self.results.append(dict(stage='api-rejected', path=path, status=error.code,
+                                         code=code, retryable=retryable))
+                self.save()
+                read_retry = body is None and attempt < 2
+                tunnel_retry = (tunnel and error.code == 503 and code == 'backend_unavailable' and retryable
+                                and attempt < attempts - 1 and time.monotonic() + 5 < retry_deadline)
+                if not (read_retry or tunnel_retry):
+                    raise
+                time.sleep(5)
             except (TimeoutError, urllib.error.URLError):
                 if body is not None or attempt == 2:
                     raise

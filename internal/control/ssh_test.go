@@ -13,14 +13,17 @@ import (
 )
 
 type blockingPreparer struct {
-	started chan domain.Lease
-	finish  chan struct{}
-	calls   atomic.Int32
-	err     error
+	started  chan domain.Lease
+	finish   chan struct{}
+	calls    atomic.Int32
+	err      error
+	deadline atomic.Int64
 }
 
 func (p *blockingPreparer) Prepare(ctx context.Context, l domain.Lease) (domain.SSHConnection, error) {
 	p.calls.Add(1)
+	deadline, _ := ctx.Deadline()
+	p.deadline.Store(deadline.UnixNano())
 	p.started <- l
 	select {
 	case <-p.finish:
@@ -28,6 +31,17 @@ func (p *blockingPreparer) Prepare(ctx context.Context, l domain.Lease) (domain.
 		return domain.SSHConnection{}, ctx.Err()
 	}
 	return domain.SSHConnection{User: "lume", Port: 22, HostKey: l.SSHPublicKey, ClientKeyFingerprint: "test"}, p.err
+}
+func TestSSHPreparationAllowsColdGUIWithinTheExistingJobDeadline(t *testing.T) {
+	c, p, op := sshController(t)
+	defer func() { close(p.finish); c.wg.Wait() }()
+	deadline := time.Unix(0, p.deadline.Load())
+	if !deadline.After(time.Now().Add(5 * time.Minute)) {
+		t.Fatal("Outer SSH preparation truncates the bounded five-minute guest GUI command")
+	}
+	if deadline.After(op.Job.Deadline) {
+		t.Fatal("SSH preparation escaped the existing operation deadline")
+	}
 }
 func testPublicKey(t *testing.T) string {
 	t.Helper()

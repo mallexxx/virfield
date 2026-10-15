@@ -1,4 +1,5 @@
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -15,6 +16,52 @@ spec.loader.exec_module(module)
 
 
 class AcceptanceSafetyTests(unittest.TestCase):
+    def make_run(self, root):
+        token = root / 'token'
+        token.write_text('private-fixture-token')
+        token.chmod(0o600)
+        config = root / 'config.json'
+        config.write_text(json.dumps(dict(token_file=str(token), listen='127.0.0.1:7780')))
+        return module.Acceptance(config, Path(sys.executable), root / 'acceptance')
+
+    def test_tunnel_waits_for_known_rejection_without_leaking_credentials(self):
+        with tempfile.TemporaryDirectory() as folder:
+            run = self.make_run(Path(folder))
+            calls = []
+            class Recovering:
+                def open(self, request, timeout):
+                    calls.append((request.full_url, request.data))
+                    if len(calls) == 1:
+                        body = dict(error=dict(code='backend_unavailable', retryable=True))
+                        raise urllib.error.HTTPError(request.full_url, 503, 'unavailable', {},
+                                                     io.BytesIO(json.dumps(body).encode()))
+                    return io.BytesIO(b'{"address":"127.0.0.1:4444"}')
+            run.http = Recovering()
+            with patch.object(module.time, 'sleep'):
+                response = run.api('leases/lease-fixture/tunnel', dict(service='desktop'))
+            self.assertEqual(response['address'], '127.0.0.1:4444')
+            self.assertEqual(calls[0], calls[1])
+            self.assertEqual(run.results[0]['code'], 'backend_unavailable')
+            self.assertNotIn('private-fixture-token', (run.destination / 'journal.json').read_text())
+
+    def test_vm_mutations_and_nonretryable_tunnels_are_never_auto_replayed(self):
+        for path, code, retryable in [('leases', 'backend_unavailable', True),
+                                      ('leases/lease-fixture/tunnel', 'tunnel_unavailable', False)]:
+            with self.subTest(path=path, code=code), tempfile.TemporaryDirectory() as folder:
+                run = self.make_run(Path(folder))
+                calls = []
+                class Refused:
+                    def open(self, request, timeout):
+                        calls.append(request)
+                        failure = dict(error=dict(code=code, retryable=retryable))
+                        raise urllib.error.HTTPError(request.full_url, 503, 'unavailable', {},
+                                                     io.BytesIO(json.dumps(failure).encode()))
+                run.http = Refused()
+                with patch.object(module.time, 'sleep'), self.assertRaises(urllib.error.HTTPError):
+                    run.api(path, dict(service='desktop'), 'unchanged-request')
+                self.assertEqual(len(calls), 1)
+                self.assertEqual(run.requests['unchanged-request']['path'], path)
+
     def test_missing_cleanup_approval_prevents_effects(self):
         with tempfile.TemporaryDirectory() as folder:
             destination = Path(folder) / 'must-not-exist'

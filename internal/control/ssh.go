@@ -27,7 +27,11 @@ func (c *Controller) prepareSSH(ctx context.Context, l domain.Lease, j domain.Jo
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
-		operation, cancel := context.WithDeadline(context.WithoutCancel(ctx), minDeadline(time.Now().Add(3*time.Minute), j.Deadline))
+		// Account isolation and cold GUI preparation run sequentially. The
+		// persisted job already bounds the whole operation; each guest command
+		// also has its own limit. A separate three-minute cap truncated valid
+		// five-minute GUI preparation before it could produce native proof.
+		operation, cancel := context.WithDeadline(context.WithoutCancel(ctx), j.Deadline)
 		defer cancel()
 		connection, err := c.leasePreparer.Prepare(operation, l)
 		c.mu.Lock()
@@ -59,11 +63,4 @@ func (c *Controller) prepareSSH(ctx context.Context, l domain.Lease, j domain.Jo
 		}
 	}()
 	return nil
-}
-
-func minDeadline(a, b time.Time) time.Time {
-	if a.Before(b) {
-		return a
-	}
-	return b
 }

@@ -10,9 +10,9 @@ are distinct artifacts.
 
 ## Acceptance checkpoint (2026-10-15)
 
-The latest completed installation at this checkpoint is `edcb756`, version
-`0.0.0-gui-observation`. Factory capacity, node temporary-file permission and
-longer GUI startup/result observations are installed. Exact-source local
+The latest completed installation at this checkpoint is `7e9c5ad`, version
+`0.0.0-node-clock`. Factory capacity, node temporary-file permission, stable-TSC
+capability, console/GUI observations and virtual keyboard corrections are installed. Exact-source local
 `make check` and Staticcheck passed; security scan evidence is recorded below.
 HTTP and fresh stdio MCP passed
 exact-version discovery, all four runbooks, resources and authenticated status;
@@ -101,8 +101,9 @@ the actual QEMU command omitted `invtsc`. This is the upstream capability-detect
 defect corrected in [qemus/qemu #1513](https://github.com/qemus/qemu/pull/1513).
 Source now supplies `+invtsc` only when every CPU has both stability flags and
 Linux uses TSC, otherwise explicitly `-invtsc`. Missing/heterogeneous flags and
-non-TSC clock fixtures fail closed. Whether this resolves this particular warm
-reboot stall still requires live verification. Retained evidence:
+non-TSC clock fixtures fail closed. The next installed candidate's two real
+Sonoma reboot cycles subsequently passed; this is evidence of improvement, not
+proof that every earlier stall had this single cause. Retained evidence:
 `/private/tmp/virfield-htpc-console-diagnostic-edcb756-20261015`.
 
 The retained desktop also exposed Keyboard Setup Assistant over the UI. The
@@ -110,8 +111,29 @@ QEMU USB keyboard (vendor 1575/product 1/country 0) had no learned layout, while
 the Apple virtual keyboard entry was present. Source registers only this fixed
 virtual ANSI device, preserves other mappings, closes the own VM's assistant,
 and rejects GUI readiness while it is running. Actual `defaults` output was
-checked to contain an integer layout value. This UI correction, the console guard
-and CPU capability correction require a new installed node matrix.
+checked to contain an integer layout value.
+
+Installed `7e9c5ad` passed native Aqua/new SSH I/O before/after real reboot on two
+concurrent fresh Sonoma clones, with distinct boot UUIDs/nonces, actual 1920×1080
+and no Keyboard Setup Assistant. CPU `+invtsc` was verified on both real QEMU
+command lines; simultaneous 8 CPU / 16 GiB RAM / 200 GiB disk reservations and
+private HDD placement passed. The first complete workload/artifact/RFB cycle
+passed; the second native/workload/artifact cycle reached desktop tunnel creation
+and received HTTP 503. Both own clones were released and tunnel revocation passed.
+The complete provider matrix is therefore not accepted yet. The exact 503 payload
+was not retained, so its code is not claimed. Evidence:
+`/private/tmp/virfield-installed-htpc-native-7e9c5ad-20261015`.
+
+The runner now records typed HTTP rejections and waits boundedly only for a known
+retryable `backend_unavailable` on lease/service-keyed tunnel opening. That server
+rejection occurs before listener allocation. Nonretryable errors, VM mutations
+and lost POST replies are not automatically replayed. Regression fixtures cover
+recovery with an identical request, refusal without replay and private journals.
+A separate deterministic regression found the outer three-minute SSH-preparation
+cap truncating the bounded five-minute guest GUI command. Source now uses the
+existing persisted job deadline for the whole sequence, retaining per-command
+caps, original overall preparation budgets and caller TTL. These orchestration
+changes still need a new installed workflow acceptance.
 
 The first factory attempt `image-b3dba0ef5874ab2b2d3e8ee4492e5270` failed before
 publication: APFS resize succeeded to 120 GB, then immediate root `df` still
@@ -290,7 +312,7 @@ Native tool exit status alone is never the readiness gate.
 
 ## Automated candidate results
 
-The complete `make check` passed: documentation links, ten Python tests,
+The complete `make check` passed on the installed checkpoint: documentation links, ten Python tests,
 formatting, `go vet` and the full Go race suite. Three Go binaries and the native
 Apple browser built; the browser signature verified. The existing installed
 configuration passes the candidate CLI `config-check`. Pinned Staticcheck, module
@@ -301,6 +323,7 @@ Clean local package provenance:
 
 | Source revision | Archive SHA-256 | Deployment |
 |---|---|---|
+| `7e9c5ad6e2f1f331b102dc10819c5ca12d0bc37f` | `b848c75a6f97816f979c2107b8873edf623ff7430424e16f6e963082db9512b1` | Installed; exact MCP and two native Sonoma reboot cycles passed; overall runner stopped on desktop HTTP503 |
 | `edcb7563f8aa02a019ff4cb8e575d8daabc2bd2d` | `82b7f7199948ba117a58a4e5067f4b12c56ab7811919038f2eadda7f8a0f80c1` | Installed; exact MCP passed; both node clones initially ready, post-reboot acceptance still failed |
 | `2724f94ed52696e5482ad8431a19d1a62a427e0b` | `7cff304d53dd3a59a1aed59fe25907d88495043a66bbb7c3f64ad07813bbe6d4` | Installed; MCP and controller rollback/forward passed; node repeat exposed short GUI observation deadlines |
 | `2f23ae609a4f650130f5c84835f89931d6e70592` | `9defb127d54a06c722d403e02ce90b2b427b2597613d51145d6eba2b81de60a1` | Installed earlier; complete factory/private GHCR roundtrip passed |
@@ -332,9 +355,9 @@ revocation alongside SSH, cross-key/image-key rejection, workload and artifacts.
 
 - Repeat exact-source local CI and clean packaging for subsequent code changes;
   remote CI is deferred by the operator. Existing package provenance is recorded above.
-- Install node invariant-TSC, console-observation and virtual-keyboard corrections
-  in an idle pool and complete HTPC native/resource/reboot/UI acceptance with
-  disposable clones. Repeat native Monterey acceptance for the guest changes.
+- Install the corrected outer preparation deadline and acceptance runner in an
+  idle pool; complete HTPC native/resource/reboot/UI acceptance with disposable
+  clones and repeat native Monterey acceptance for the guest changes.
   Node conversion privacy and overall preparation corrections are installed;
   factory roundtrip and controller-binary rollback/forward passed.
 - Reconnect the actual owning MCP clients after installation and verify their
