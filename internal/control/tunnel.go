@@ -17,13 +17,15 @@ import (
 // Screen Sharing, which authenticates with the lease password. They never
 // terminate a protocol or accept caller-selected destinations.
 type tunnel struct {
-	closed      bool
-	listener    net.Listener
-	mu          sync.Mutex
-	connections map[net.Conn]bool
-	clients     int
-	lease       domain.Lease
-	dial        func(context.Context) (net.Conn, error)
+	closed         bool
+	paused         bool
+	listener       net.Listener
+	mu             sync.Mutex
+	connections    map[net.Conn]bool
+	clients        int
+	lease          domain.Lease
+	dial           func(context.Context) (net.Conn, error)
+	verifyEndpoint func() bool
 }
 
 func tunnelKey(id, service string) string { return id + "/" + service }
@@ -105,6 +107,12 @@ func (c *Controller) OpenTunnel(ctx context.Context, id, service string) (domain
 		return domain.Tunnel{}, domain.Err("tunnel_unavailable", "Cannot allocate loopback tunnel")
 	}
 	t := &tunnel{listener: ln, connections: map[net.Conn]bool{}, lease: l}
+	t.verifyEndpoint = func() bool {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		vm, exists := c.vm(l)
+		return c.tunnels[key] == t && c.leaseObservationVerified(l, vm, exists) && exists && vm.State == "running" && vm.IP == l.IP && vm.SSHPort == l.SSHPort
+	}
 	t.dial = func(ctx context.Context) (net.Conn, error) {
 		dialer := net.Dialer{Timeout: 5 * time.Second}
 		return dialer.DialContext(ctx, "tcp", net.JoinHostPort(l.IP, strconv.Itoa(l.SSH.Port)))
@@ -151,9 +159,20 @@ func (c *Controller) CloseTunnel(ctx context.Context, id, service string) error 
 func (c *Controller) reconcileTunnels(ls []domain.Lease) {
 	for key, t := range c.tunnels {
 		keep := false
+		paused := false
 		for _, l := range ls {
+			if l.ID != t.lease.ID || l.State != "ready" || l.IP != t.lease.IP || l.SSHPort != t.lease.SSHPort || !l.ExpiresAt.After(c.now()) {
+				continue
+			}
 			vm, exists := c.vm(l)
-			if l.ID == t.lease.ID && l.State == "ready" && l.IP == t.lease.IP && l.ExpiresAt.After(c.now()) && exists && vm.State == "running" && vm.IP == l.IP && vm.SSHPort == l.SSHPort && l.SSHPort == t.lease.SSHPort {
+			if !c.leaseObservationVerified(l, vm, exists) {
+				// Keep established streams to their already verified peer. A
+				// cached listener must reject new clients until fresh inventory
+				// verifies the endpoint again, then resume on the same port.
+				keep, paused = true, true
+				break
+			}
+			if exists && vm.State == "running" && vm.IP == l.IP && vm.SSHPort == l.SSHPort {
 				keep = true
 				break
 			}
@@ -161,6 +180,10 @@ func (c *Controller) reconcileTunnels(ls []domain.Lease) {
 		if !keep {
 			t.close()
 			delete(c.tunnels, key)
+		} else {
+			t.mu.Lock()
+			t.paused = paused
+			t.mu.Unlock()
 		}
 	}
 }
@@ -172,6 +195,15 @@ func (c *Controller) closeTunnels() {
 		delete(c.tunnels, id)
 	}
 }
+
+func (c *Controller) pauseTunnels() {
+	for _, t := range c.tunnels {
+		t.mu.Lock()
+		t.paused = true
+		t.mu.Unlock()
+	}
+}
+
 func (t *tunnel) serve() {
 	for {
 		in, err := t.listener.Accept()
@@ -179,7 +211,7 @@ func (t *tunnel) serve() {
 			return
 		}
 		t.mu.Lock()
-		if t.closed || t.clients >= 32 {
+		if t.closed || t.paused || t.clients >= 32 {
 			t.mu.Unlock()
 			in.Close()
 			continue
@@ -189,6 +221,9 @@ func (t *tunnel) serve() {
 		t.mu.Unlock()
 		go func() {
 			defer func() { in.Close(); t.mu.Lock(); delete(t.connections, in); t.clients--; t.mu.Unlock() }()
+			if t.verifyEndpoint != nil && !t.verifyEndpoint() {
+				return
+			}
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			out, err := t.dial(ctx)
 			cancel()
@@ -196,8 +231,11 @@ func (t *tunnel) serve() {
 				return
 			}
 			defer out.Close()
+			if t.verifyEndpoint != nil && !t.verifyEndpoint() {
+				return
+			}
 			t.mu.Lock()
-			if t.closed {
+			if t.closed || t.paused {
 				t.mu.Unlock()
 				return
 			}

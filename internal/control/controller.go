@@ -745,6 +745,7 @@ func (c *Controller) Tick(ctx context.Context) error {
 			c.log.Warn("runtime observation failed; admission paused", "provider", provider.Name(c.backend), "error", obsErr)
 		}
 		c.observation.Error = &domain.Error{Code: "backend_unavailable", Message: "Cannot verify " + provider.Name(c.backend) + " inventory; starts and cleanup are paused.", Retryable: true}
+		c.pauseTunnels()
 		return nil
 	}
 	if o.HostMax < 1 || o.HostUsed < 0 || o.At.IsZero() {
@@ -870,6 +871,9 @@ func (c *Controller) vm(l domain.Lease) (domain.VM, bool) {
 // does not need a destructive replacement. New tunnels still require verified
 // observations, and existing tunnels retain their address/state/expiry guards.
 func (c *Controller) leaseObservationVerified(l domain.Lease, vm domain.VM, exists bool) bool {
+	if c.healthy() != nil {
+		return false
+	}
 	hostID := vm.HostID
 	if hostID == "" {
 		for _, container := range c.observation.StorageContainers {

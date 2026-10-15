@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"errors"
+	"io"
 	"net"
 	"testing"
 	"time"
@@ -78,6 +79,113 @@ func TestTunnelRevokedOnExpiryWithUnavailableBackendAndOnDrift(t *testing.T) {
 				t.Fatal("tunnel revocation must not force VM deletion")
 			}
 		})
+	}
+}
+
+func TestUnverifiedAddressPreservesExistingStreamAndPausesNewConnections(t *testing.T) {
+	c, l := readyVMLease(t, "uncertain-stream")
+	defer c.closeTunnels()
+	c.dialDesktop = func(context.Context, domain.Lease) (net.Conn, error) {
+		client, peer := net.Pipe()
+		go func() { defer peer.Close(); _, _ = io.Copy(peer, peer) }()
+		return client, nil
+	}
+	tunnel, err := c.OpenTunnel(context.Background(), l.ID, "desktop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dial := func() net.Conn {
+		conn, err := net.DialTimeout("tcp", tunnel.Address, time.Second)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { conn.Close() })
+		return conn
+	}
+	echo := func(conn net.Conn) {
+		conn.SetDeadline(time.Now().Add(time.Second))
+		if _, err := conn.Write([]byte("verified-stream")); err != nil {
+			t.Fatal("verified stream was interrupted", err)
+		}
+		data := make([]byte, len("verified-stream"))
+		if _, err := io.ReadFull(conn, data); err != nil || string(data) != "verified-stream" {
+			t.Fatal("verified stream was interrupted", err)
+		}
+	}
+	established := dial()
+	echo(established)
+	b := c.backend.(*fakeBackend)
+	b.mu.Lock()
+	v := b.vms[l.Key()]
+	v.IP = ""
+	b.vms[l.Key()] = v
+	b.mu.Unlock()
+	tick(t, c)
+	echo(established)
+	_, err = c.OpenTunnel(context.Background(), l.ID, "desktop")
+	code(t, err, "backend_unavailable")
+	paused := dial()
+	paused.SetDeadline(time.Now().Add(time.Second))
+	_, _ = paused.Write([]byte("must-not-forward"))
+	if _, err := paused.Read(make([]byte, 1)); err == nil {
+		t.Fatal("paused listener forwarded a new unverified connection")
+	} else if timeout, ok := err.(net.Error); ok && timeout.Timeout() {
+		t.Fatal("paused listener did not reject the connection")
+	}
+	b.mu.Lock()
+	v.IP = l.IP
+	b.vms[l.Key()] = v
+	b.mu.Unlock()
+	tick(t, c)
+	recovered, err := c.OpenTunnel(context.Background(), l.ID, "desktop")
+	if err != nil || recovered.Address != tunnel.Address {
+		t.Fatal("inventory recovery replaced a verified endpoint", recovered, err)
+	}
+	echo(dial())
+	// A failed whole-fleet refresh must pause cached listeners immediately,
+	// not only after the next successful inventory or the next tick.
+	b.mu.Lock()
+	b.err = errors.New("inventory unavailable")
+	b.mu.Unlock()
+	tick(t, c)
+	echo(established)
+	_, err = c.OpenTunnel(context.Background(), l.ID, "desktop")
+	code(t, err, "backend_unavailable")
+	paused = dial()
+	paused.SetDeadline(time.Now().Add(time.Second))
+	if _, err := paused.Read(make([]byte, 1)); err == nil {
+		t.Fatal("failed inventory allowed a cached listener to forward")
+	} else if timeout, ok := err.(net.Error); ok && timeout.Timeout() {
+		t.Fatal("failed inventory did not pause the listener immediately")
+	}
+	b.mu.Lock()
+	b.err = nil
+	b.mu.Unlock()
+	tick(t, c)
+	echo(dial())
+	// Cached clients must also observe the freshness deadline while a slow
+	// refresh is still in flight and has not reported an error or ticked.
+	c.mu.Lock()
+	c.lastObservedMono = time.Now().Add(-11 * time.Second)
+	c.mu.Unlock()
+	echo(established)
+	paused = dial()
+	paused.SetDeadline(time.Now().Add(time.Second))
+	if _, err := paused.Read(make([]byte, 1)); err == nil {
+		t.Fatal("stale cached listener forwarded a new connection")
+	} else if timeout, ok := err.(net.Error); ok && timeout.Timeout() {
+		t.Fatal("stale cached listener failed to reject the connection")
+	}
+	tick(t, c)
+	echo(dial())
+	c.now = func() time.Time { return l.ExpiresAt.Add(time.Second) }
+	b.mu.Lock()
+	b.err = errors.New("inventory unavailable")
+	b.mu.Unlock()
+	tick(t, c)
+	if conn, err := net.DialTimeout("tcp", tunnel.Address, time.Second); err == nil {
+		conn.Close()
+		t.Fatal("unverified inventory suppressed expiry revocation")
 	}
 }
 

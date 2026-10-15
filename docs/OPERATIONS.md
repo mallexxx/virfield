@@ -420,8 +420,11 @@ become new requests after pruning. Migration snapshots are retained separately.
 A temporarily unavailable host, or a running VM whose address is currently
 unknown, does not prove `vm_drift`. The controller preserves the ready lease's
 verified identity, pauses new tunnels with retryable `backend_unavailable`, and
-re-evaluates after inventory recovers. Existing tunnels retain their
-address/state/expiry revocation checks. Two verified observations of an absent or
+re-evaluates after inventory recovers. Established tunnel streams remain connected
+to their verified peer. Cached listeners reject new connections while the host,
+address or inventory freshness is unverified; they resume on the same port after
+recovery. Endpoints are checked before and after each new upstream dial. Release,
+expiry and verified identity/state changes still revoke the tunnels. Two verified observations of an absent or
 stopped VM or a changed known endpoint still require release. Never repair a real
 drift by rewriting stored addresses or disabling SSH pins.
 

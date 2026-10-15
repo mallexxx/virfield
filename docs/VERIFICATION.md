@@ -99,6 +99,31 @@ remains required.
 Evidence: the journal above, `virfield-a0bc-vm-drift-20261015.json`, and the private
 `virfield-drift-red/green-20261015.log` and `virfield-credential-progress-red-20261015.log`.
 
+Installed `750a896` / `0.0.0-observation-recovery` passed exact HTTP/fresh stdio
+MCP in 1.24 seconds and two complete sequential Samsung Monterey 12.7.6 /
+Xcode 13.4.1 cycles: native Aqua/new SSH I/O before/after real reboot, fresh
+scope/boot/nonce, 1920×1080, cross-key rejection, Swift compile/run, workload,
+artifact, RFB, release and tunnel revocation. The separate iPad template's new
+repeat is storage-blocked: its internal container had about 100 GB available,
+below the approximately 150 GB full-growth-plus-reserve admission requirement.
+No reserve was lowered and no cross-container workaround or foreign cleanup was
+attempted. Earlier accepted iPad receipts retain their dated scope. A new
+concurrent HTPC matrix on `750a896` is still running; the first Sonoma passed
+native I/O before its reboot. Private journals:
+`/private/tmp/virfield-installed-samsung-monterey-750a896-20261015` and
+`/private/tmp/virfield-installed-htpc-native-750a896-20261015`.
+
+A further real-TCP regression found that preserving the lease alone still closed
+an established stream when its address became unverified. Source now preserves
+existing streams, pauses new clients on cached listeners, checks endpoint
+freshness before and after a new upstream dial, and resumes the same listener
+after recovery. The test covers unknown address, whole-fleet failure, freshness
+expiry without another tick, recovery and final lease expiry. Observed stop or
+changed known endpoint still revokes connections. Full local CI (seventeen Python tests, Go vet/race) and pinned Staticcheck
+passed. This source-only correction awaits an idle installation; it is not
+included in `750a896`.
+Evidence: `virfield-tunnel-continuity-red/green-20261015.log`.
+
 An earlier code checkpoint installed `8c521fe`, version
 `0.0.0-desktop-preflight`. Subsequent runbook/acceptance-tool packages retain this
 dated code-test provenance and carry their own exact `release.json` revision.
