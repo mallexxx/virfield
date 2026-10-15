@@ -22,6 +22,7 @@ import (
 
 	"github.com/mallexxx/virfield/internal/domain"
 	"github.com/mallexxx/virfield/internal/guestkeychain"
+	"github.com/mallexxx/virfield/internal/qualify"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -325,6 +326,16 @@ func (g *Client) RunMutation(ctx context.Context, command, input string) (string
 func (g *Client) RunReader(ctx context.Context, timeout time.Duration, command string, input io.Reader) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+	// A timeout alone cannot distinguish a stalled SSH channel/request from a
+	// command that actually started. Retain transport stages only for the fixed
+	// read-only desktop probe; never record commands, input or credentials.
+	started, phase := time.Now(), "opening_session"
+	var transportError error
+	if command == qualify.DesktopProbe {
+		defer func() {
+			g.reportDesktopCommand(started, phase, timeout, ctx.Err(), transportError)
+		}()
+	}
 	if ctx.Err() != nil {
 		return "", ctx.Err()
 	}
@@ -335,6 +346,7 @@ func (g *Client) RunReader(ctx context.Context, timeout time.Duration, command s
 	defer func() { _ = g.raw.SetDeadline(time.Time{}) }()
 	session, err := g.client.NewSession()
 	if err != nil {
+		transportError = err
 		if ctx.Err() != nil {
 			return "", ctx.Err()
 		}
@@ -350,7 +362,16 @@ func (g *Client) RunReader(ctx context.Context, timeout time.Duration, command s
 	session.Stdout = &out
 	session.Stderr = &out
 	done := make(chan error, 1)
-	go func() { done <- session.Run(command) }()
+	go func() {
+		phase = "exec_request"
+		err := session.Start(command)
+		if err == nil {
+			phase = "waiting_exit"
+			err = session.Wait()
+		}
+		transportError = err
+		done <- err
+	}()
 	select {
 	case <-ctx.Done():
 		g.Close()

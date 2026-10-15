@@ -10,16 +10,65 @@ are distinct artifacts.
 
 ## Acceptance checkpoint (2026-10-15)
 
-Current deployment is `03b0d23` / `0.0.0-native-login-auth`, installed in a
-verified idle pool with private backup, the previous signing/FDA identity,
-configuration, keys and all seven baseline image manifests preserved. Exact
-installed HTTP/fresh stdio version, all four runbooks/resources, discovery, status
-and anonymous 401 passed in 1.26 seconds. Full local CI (seventeen Python tests,
-Go vet and the complete race suite), pinned Staticcheck 0.7.0 and Gitleaks (227
-commits) passed for that commit. The actual owning MCP transport closed after its
-old process was terminated and did not reconnect automatically. The user confirmed
-manual Virfield MCP Restart, but the subsequent owning-client help call still
-returned `Transport closed`. Fresh stdio is not current-client acceptance.
+Deployment checkpoint: `614daf5` / `0.0.0-keychain-cache-refresh` is installed
+with private backup, the previous signing/FDA identity, configuration, keys and
+all seven baseline images/manifests preserved. Exact archive stdio and installed
+HTTP/fresh stdio version, all four runbooks/resources, discovery, status and
+anonymous 401 passed (installed check: 1.21 seconds). Full local CI (seventeen
+Python tests, Go vet and the complete race suite), pinned Staticcheck 0.7.0 and
+Gitleaks (228 commits) passed for that commit. The user confirmed manual Virfield
+MCP Restart; subsequent actual owning-client help still returned `Transport
+closed`. Fresh stdio does not replace current-client acceptance.
+
+Two fresh Samsung Monterey leases passed native Aqua/new SSH WhenUnlocked I/O,
+actual 1920×1080, new boot UUIDs/nonces after real reboot, exact Xcode 13.4.1/13F100
+plus Swift compile/run, workload, artifact export, RFB and release/revocation.
+A fresh public-base Ventura factory qualified; two of its clones passed the same
+native/reboot/workload/artifact/RFB cycle. Its own image and workers were deleted,
+preserving all seven baseline manifests. No registry upload was repeated.
+Evidence: `virfield-installed-samsung-monterey-614daf5-20261015` and
+`virfield-installed-native-factory-614daf5-20261015` under `/private/tmp`.
+
+The first HTPC Sonoma authenticated with current/password-copy-validation and
+cache-refresh both true, status 0. Native GUI/new SSH I/O, unlocked console,
+unobstructed desktop and 1920×1080 passed before reboot. Its verifier then aborted
+on one 60-second read-only SSH reconnect timeout despite a twenty-minute overall
+reboot budget. The retained hypervisor framebuffer still showed boot progress.
+Both own fixtures were released/revoked; this was not reboot acceptance. The
+private verifier now retries only that read-only reconnect within the original
+deadline; auth/host-pin failures remain fatal and the reboot is sent once.
+
+A distinct fresh HTPC pair then failed inherited-desktop preflight before worker
+credentials were created. Its original private `desktop.log` records an empty
+output and command context deadline after one minute, before the two-minute
+desktop deadline. Later read-only inherited SSH diagnostics succeeded. This does
+not establish which SSH/guest substage stalled or prove a new keychain failure.
+Both fixtures were released with original journaled keys after evidence capture.
+Evidence: `virfield-installed-htpc-native-614daf5-coexist-20261015` and
+`virfield-installed-htpc-native-614daf5-reconnect-20261015` under `/private/tmp`.
+
+The next source adds a private fixed-desktop-probe transport trace distinguishing
+channel-open, exec acknowledgement and command-exit waits. It records no command
+or input. Real stalled-SSH fixtures verify all three stages, cancellation and
+owner-only diagnostic files. This adds evidence, not an unverified timeout fix.
+The GUI browser launched and its registered URL scheme opened Apple's real
+sign-in page using a synthetic, non-authenticating link; no account credentials
+were entered or Xcode download resumed. A long address displaced Continue beyond
+the window, so the next layout gives the address its own bounded row. The build
+also now targets the plist's macOS 13 minimum explicitly: the previous Mach-O
+required 26 despite the plist claiming 13. The new build's Mach-O reports 13;
+this metadata/compiler check is not a live macOS 13 host acceptance. New GUI
+visual acceptance and clean packaging remain required.
+
+Lume was rechecked at 14:07 UTC: disabled, unloaded and port 7777 closed. The
+installed root LaunchDaemon remains Background; the separate reviewed migration
+to Standard awaits administrator authorization. Existing HTPC golden permission
+migration remains separately unapproved. The user confirmed the Mac is unlocked;
+GUI work is authorized, while authenticated Apple download completion is a
+separate untested flow. Full release acceptance remains open.
+
+The following paragraphs retain earlier native-auth failure research and dated
+receipts; the checkpoint above supersedes their deployment/pending statuses.
 
 Fresh native `03b0d23` acceptance failed: both Sonoma fixtures and one Samsung
 Monterey failed in GUI `login-rekey`. All three were released and SSH revocation
@@ -52,7 +101,8 @@ cover locked/unlocked/public-base fixtures and injected stale-cache responses
 with real copy authentication, refresh, cleanup and existing-item preservation.
 The agent records native substages/all attempts and propagates an exact
 scope/boot/mode/nonce exit receipt promptly; stale failures cannot abort a new
-request. These changes still require a clean package and fresh installed matrix.
+request. These changes were subsequently installed as `614daf5`; current provider results
+are recorded in the checkpoint above.
 A staged second account rotation on the diagnostic Monterey preserved a fixture
 item and passed full native Aqua I/O, unlocked console, no visible assistants or
 SecurityAgent, and 1920×1080. That run did not reproduce the cache fault and is not
@@ -796,13 +846,14 @@ revocation alongside SSH, cross-key/image-key rejection, workload and artifacts.
   Fresh native Monterey acceptance passed on the corrected guest code.
   Node conversion privacy and overall preparation corrections are installed;
   factory roundtrip and controller-binary rollback/forward passed.
-- Install the clean post-reboot verification-budget candidate after unrelated
-  leases/jobs are actually clear, then repeat the complete HTPC matrix and exact
-  installed MCP acceptance. The prepared archive smoke does not close this gate.
+- Investigate the retained inherited-desktop SSH command timeout; the next private
+  transport trace distinguishes channel, exec and exit waits. Complete the HTPC
+  matrix after a verified correction, without extending deadlines blindly.
 - Reconnect the actual owning MCP clients after installation and verify their
   version, runbooks and workflow; a fresh adapter alone cannot attest old sessions.
-- Accept the native Apple browser GUI/URL-scheme flow after the Mac is unlocked;
-  compiled trust checks and registration do not replace GUI acceptance.
+- Finish native browser visual acceptance after the long-address layout fix.
+  GUI launch/URL handoff/real Apple sign-in-page loading passed; authenticated
+  cookie handoff/download completion has not been exercised by this GUI smoke.
 - Complete permission migration for existing HTPC secured goldens after approval;
   separate authorization is still pending, and read-only inspection confirmed mode 0444.
 - Preserve the accepted private GHCR roundtrip receipt above; repeat this gate

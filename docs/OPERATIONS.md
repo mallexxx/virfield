@@ -516,6 +516,9 @@ before closing its provisioning connection. It omits the identity/password file
 and keychain contents. A failed GUI installation can make the new SSH bridge
 unavailable, so collect this host log before releasing the owned fixture: cleanup
 removes its private directory. Public API errors/events never contain these logs.
+`desktop-command.log` additionally records whether the fixed desktop probe was
+waiting for an SSH channel, exec acknowledgement or command exit, with its budget
+and original transport/context errors. It never records command text or stdin.
 Native attempts record only candidate mode, substage and status. The agent's
 private exit receipt includes scope, boot, mode, nonce, exit code and phase; the
 installer fails promptly only for its exact request instead of waiting five

@@ -32,6 +32,7 @@ final class AppleBrowser: NSObject, NSApplicationDelegate, NSWindowDelegate, WKN
 
         address = NSTextField(labelWithString: "Waiting for Apple Developer link")
         address.lineBreakMode = .byTruncatingMiddle
+        address.usesSingleLineMode = true
         address.isSelectable = true
         address.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         status = NSTextField(labelWithString: "Open the one-time link from Virfield.")
@@ -41,13 +42,18 @@ final class AppleBrowser: NSObject, NSApplicationDelegate, NSWindowDelegate, WKN
         backButton.isEnabled = false
         let restartButton = NSButton(title: "Restart Sign-In", target: self, action: #selector(restartSignIn))
         let button = NSButton(title: "Continue Xcode download", target: self, action: #selector(continueDownload))
-        let controls = NSStackView(views: [backButton, restartButton, address, button])
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(.fittingSizeCompression, for: .horizontal)
+        spacer.setContentCompressionResistancePriority(.fittingSizeCompression, for: .horizontal)
+        let controls = NSStackView(views: [backButton, restartButton, spacer, button])
         controls.orientation = .horizontal
         controls.spacing = 12
         controls.distribution = .fill
         controls.translatesAutoresizingMaskIntoConstraints = false
+        address.translatesAutoresizingMaskIntoConstraints = false
         status.translatesAutoresizingMaskIntoConstraints = false
-        address.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        backButton.setContentHuggingPriority(.required, for: .horizontal)
+        restartButton.setContentHuggingPriority(.required, for: .horizontal)
         button.setContentHuggingPriority(.required, for: .horizontal)
 
         let configuration = WKWebViewConfiguration()
@@ -57,15 +63,19 @@ final class AppleBrowser: NSObject, NSApplicationDelegate, NSWindowDelegate, WKN
         webView.uiDelegate = self
         webView.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(controls)
+        content.addSubview(address)
         content.addSubview(status)
         content.addSubview(webView)
         NSLayoutConstraint.activate([
             controls.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
             controls.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -12),
             controls.topAnchor.constraint(equalTo: content.topAnchor, constant: 12),
+            address.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
+            address.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -12),
+            address.topAnchor.constraint(equalTo: controls.bottomAnchor, constant: 8),
             status.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
             status.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -12),
-            status.topAnchor.constraint(equalTo: controls.bottomAnchor, constant: 8),
+            status.topAnchor.constraint(equalTo: address.bottomAnchor, constant: 8),
             webView.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: content.trailingAnchor),
             webView.topAnchor.constraint(equalTo: status.bottomAnchor, constant: 8),

@@ -2,11 +2,21 @@ package guestssh
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 )
+
+func (g *Client) reportDesktopCommand(started time.Time, phase string, budget time.Duration, contextError, transportError error) {
+	if g.diagnosticDir == "" || os.MkdirAll(g.diagnosticDir, 0700) != nil {
+		return
+	}
+	_ = writePrivateDiagnostic(g.diagnosticDir, "desktop-command.log", fmt.Sprintf(
+		"at=%s phase=%s elapsed=%s command_budget=%s context_error=%v transport_error=%v\n",
+		started.UTC().Format(time.RFC3339Nano), phase, time.Since(started), budget, contextError, transportError))
+}
 
 // ReportDesktopFailure saves the observations already obtained on the pinned
 // SSH connection. A command timeout closes that connection: do not reconnect,

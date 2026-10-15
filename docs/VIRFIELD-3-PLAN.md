@@ -37,9 +37,11 @@ the new candidate, with durable reservations and post-wake resource checks; live
 Configured worker reservations/private HDD placement and partial native provider
 cycles have live evidence, but the full current HTPC matrix remains open. The
 post-reboot, mount-bound UUID lookup, demand-start and tunnel-continuity corrections
-are installed in `f8b64f5`. Its fresh native matrix exposed a GUI login-rekey
-hang; the native noninteractive correction still requires a new installed repeat.
-See the current deployment checkpoint in Verification.
+are installed, including the `614daf5` native authentication/cache refresh.
+Two fresh Monterey cycles and a new public-base factory with two native/reboot
+clone cycles passed. The full HTPC matrix remains open after a separately
+reproduced inherited-desktop SSH command timeout; the original five-minute wait
+did not prove a native/CLI hang. See the deployment checkpoint in Verification.
 Remaining: node-agent with signed inventory/heartbeats, same-L2 WoL relay, durable power
 intents and connection grants/connectors. Browser noVNC and physical-host desktop
 are not implemented. The Intel Mac has no accepted WoL capability; the original
