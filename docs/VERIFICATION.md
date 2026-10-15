@@ -10,8 +10,9 @@ are distinct artifacts.
 
 ## Acceptance checkpoint (2026-10-15, before the next installation)
 
-The latest completed installation at this checkpoint is `ab9a2ad`; the factory
-capacity correction in the source still requires a new package and live repeat.
+The latest completed installation at this checkpoint is `2f23ae6`. The factory
+capacity correction passed live; the additional node temporary-file permission
+correction in the source still requires a new package.
 The `8e07015` checkpoint introduced native GUI/SSH keychain readiness, explicit
 `1920x1080px` Tart displays, interrupted-inventory protection and the separate
 private HTPC HDD root. Its native Apple browser accepts a separate private
@@ -70,7 +71,28 @@ reported 14 GB free. Packer exited and removed its VM; logs and the operation
 were preserved before exact-name journaled cleanup. Source now checks writable
 Data capacity with bounded observation after a single resize. Delayed capacity,
 stale-root, shortage and invalid-statistics fixtures pass; live verification of
-the correction remains pending. No registry upload has started.
+the correction subsequently passed on factory attempt 2.
+
+Factory/private GHCR roundtrip passed on installed `2f23ae6`: fresh public-base
+factory and two worker clones; a separate portable rebuild with public bootstrap
+credentials, sanitization and push; verified private package visibility and digest;
+pull, qualification, two further clone workloads and confirmed own cleanup.
+All seven baseline image IDs/manifests were preserved. The source private golden
+was not the exported disk. The private reference is
+`mallexxx/virfield-hardening-acceptance:release-check-0644cb90dac8`, digest
+`sha256:a5d42b4e6e48641fba1af7171158de39252e4439d3087c1b019f392223054e73`,
+21,460,835,255 descriptor bytes. Evidence:
+`/private/tmp/virfield-release-roundtrip-20261014/journal.json` and `evidence/`.
+The initial failed build and its cleanup remain in the same durable journal.
+
+A real empty-image Podman probe reproduced another permission defect: conversion
+created mode `0644` despite the outer SSH shell's umask. In the traversable golden
+directory this exposed a temporary private disk before the final chmod. Explicit
+OCI `--umask 0077` produced `0600`. Source now sets both shell/OCI umasks and
+applies `0400` before publishing the disk, refuses ambiguous existing staging and
+cleans only that image's staging on exact-name deletion. Regression tests observe
+permissions before rename, not only the final mode. Existing secured golden
+permissions remain unchanged pending the separate approval.
 
 The old owning MCP adapter was identified by the sole new API socket from this
 session's completed read-only status request and stopped without touching other
@@ -86,7 +108,7 @@ switched atomically and returned to byte-exact original config/state, preserving
 all seven goldens. One manager/listener ran at a time. Runtime disks were not
 included. Evidence: `/private/tmp/virfield-live-restore-drill-20261015/report.json`.
 
-Factory/private GHCR roundtrip, current-client reconnection, controller binary
+Node native acceptance, current-client reconnection, controller binary
 rollback and existing HTPC golden permission migration remain open.
 The following sections retain dated evidence from earlier candidates.
 
@@ -111,7 +133,8 @@ internal container passed pinned SSH, cross-key rejection, distinct host keys,
 OS/build/SIP, desktop, artifact export and confirmed cleanup.
 The supplemental storage-routing, inventory and keychain/UI fixes were later
 installed after both unrelated leases were released; see the current checkpoint.
-Node clone acceptance and the private GHCR roundtrip are still outstanding.
+Node clone acceptance and private GHCR roundtrip were outstanding at that earlier
+checkpoint; the current results above supersede it.
 The older service snapshot below is a dated checkpoint.
 
 | Audit defect | Candidate implementation and verification |
@@ -134,7 +157,7 @@ The older service snapshot below is a dated checkpoint.
 | Existing node golden permissions | New commits use owner-only mode 0400; the two older secured HTPC qcow2/OpenCore goldens still have mode 0444 under traversable directories. Their permission migration awaits separate operator approval; files are unchanged |
 | Tart clone routing | A factory golden on internal storage selected the deployment's external default; source-container compatibility is now checked before reservation, and the acceptance runner selects each golden's own container |
 | Interrupted Tart inventory | Regression tests reproduced canceled address/container probes returning partial healthy snapshots; refresh now fails on cancellation and Control preserves the last complete inventory while pausing admission; installed in the current candidate |
-| Cold Tart transfer | First live factory attempt failed with Packer EOF during source transfer; journaled recovery deleted only its own failed record after process/inventory inspection. New candidate prefetches the pinned digest in retryable resolve and disables automatic cache pruning; roundtrip not yet accepted |
+| Cold Tart transfer | First live factory attempt failed with Packer EOF during source transfer; journaled recovery deleted only its own failed record after process/inventory inspection. Pinned prefetch/retryable resolve and disabled automatic pruning later passed the full private roundtrip recorded above |
 | GUI/SSH keychain | Private Aqua/SSH session preparation, retained/rekeyed login items, native WhenUnlocked add/read/delete and fresh boot evidence; Ventura/macOS 27 live fixtures and real DDG CI Downloads smoke passed |
 | UI desktop | Native persistent 1920×1080 logical mode in Aqua, host-side Tart configuration and no window refit; real Settings/General UI-test smoke passed |
 | macOS 27 ASIF factory | Explicit Recovery keep bypasses default deletion/file lock; full isolated source factory build/qualification passed |
@@ -246,17 +269,15 @@ revocation alongside SSH, cross-key/image-key rejection, workload and artifacts.
 
 - Repeat exact-source local CI and clean packaging for subsequent code changes;
   remote CI is deferred by the operator. Existing package provenance is recorded above.
-- Install subsequent factory/startup-budget corrections in an idle pool and
-  repeat factory and HTPC native/resource acceptance with disposable clones.
+- Install node conversion privacy correction in an idle pool and repeat HTPC
+  native/resource acceptance with disposable clones. Factory/startup corrections
+  are already installed; factory roundtrip passed.
 - Reconnect the actual owning MCP clients after installation and verify their
   version, runbooks and workflow; a fresh adapter alone cannot attest old sessions.
 - Complete permission migration for existing HTPC secured goldens after approval;
   separate authorization is still pending, and read-only inspection confirmed mode 0444.
-- Complete GHCR publication with real portable rebuild, push/pull-back/clone
-  workload; the factory/automation rebuild and clone workloads already passed.
-  The operator authorized an existing GHCR identity
-  and new private `mallexxx/virfield-hardening-acceptance` package; a dedicated
-  source and temporary internal Tart container are configured. Acceptance is in progress.
+- Preserve the accepted private GHCR roundtrip receipt above; repeat this gate
+  only when relevant factory/export/import behavior changes.
 - Broader Orchard, v3, soak/crash/debug/disaster-recovery gates remain below and
   in the roadmap. They are not silently claimed by local unit tests.
 
@@ -442,7 +463,7 @@ prompt and showed the Ventura desktop.
 
 ## Not yet accepted
 
-- Tart VS Code debug, GHCR publish/pull-back, restart during build and a full
+- Tart VS Code debug, restart during build and a full
   lifecycle crash matrix; prolonged soak and VM-disk disaster recovery.
 - Orchard lifecycle, guest credential isolation, forwarding, worker restart/drain.
 - Current candidate workflows in both Codex and Claude Code; full apple-browsers

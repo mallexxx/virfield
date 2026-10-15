@@ -18,7 +18,7 @@ is archived; its future contracts remain reference designs, not current APIs.
 | Guest account parameterization and per-lease SSH | Implemented; Tart two-clone acceptance |
 | Cirrus/Packer adoption and qualification | Implemented for configured profiles; Ventura/Monterey/macOS 27 accepted |
 | Broker v1 smoke | Passed 2026-10-08 on Tart |
-| Tart dynamic factory and GHCR publication | Factory rebuild, qualification and two sequential clones passed 2026-10-14; private GHCR roundtrip pending |
+| Tart dynamic factory and GHCR publication | Full fresh factory/private portable push/pull/clone workload/cleanup roundtrip passed 2026-10-15 on `2f23ae6`; seven baseline goldens preserved |
 | VS Code debug | Generated workspaces implemented; Tart live acceptance pending |
 | Orchard | Adapter only; isolated access and live pool acceptance incomplete |
 

@@ -379,6 +379,10 @@ These are VM reservations; physical-account workloads are not CPU/RAM sandboxed.
 Node QEMU disks use `cache=writeback` with threaded I/O so concurrent cold boots
 can share the host page cache on HDD storage. Guest cache flushes remain enabled;
 this is the standard QEMU writeback mode ([QEMU cache options](https://www.qemu.org/docs/master/system/invocation.html)).
+New node image conversion explicitly sets the OCI process umask to `0077`;
+the temporary qcow2 is private from creation and becomes mode `0400` before
+publication. Existing staging files are not overwritten; exact-name image
+deletion also removes that image's interrupted conversion file.
 Quotas and the HDD root are installed; two concurrent reservations were observed.
 Complete native node acceptance remains pending after HDD contention clears.
 

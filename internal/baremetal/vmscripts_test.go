@@ -187,11 +187,35 @@ func TestVMCommitWritesAReadOnlyGolden(t *testing.T) {
 		t.Fatal(err)
 	}
 	bin, log := fakePodman(t)
+	// Observe the permission boundary before the temporary disk becomes visible
+	// at the final golden name, rather than checking only the final chmod.
+	move := `#!/bin/sh
+if [ "$2" = ` + quote(filepath.Join(goldens, "htpc-sonoma.qcow2")) + ` ]; then
+  [ "$(ls -ld "$1" | awk '{print substr($1,1,10)}')" = '-r--------' ] || { echo 'disk not private before publication' >&2; exit 125; }
+fi
+exec /bin/mv "$@"
+`
+	if err := os.WriteFile(filepath.Join(bin, "mv"), []byte(move), 0755); err != nil {
+		t.Fatal(err)
+	}
 	if out, err := runVMScript(t, home, bin, vmCloneScript, "images", "htpc-sonoma", "sonoma-bootstrap", goldens, testVMImage, "22102", "2"); err != nil {
 		t.Fatal(out, err)
 	}
 	// The fake qemu-img create writes nothing either.
 	if err := os.WriteFile(filepath.Join(home, "virfield", "images", "htpc-sonoma", "storage", "data.qcow2"), []byte("overlay"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	staging := filepath.Join(goldens, ".htpc-sonoma.tmp")
+	if err := os.WriteFile(staging, []byte("interrupted conversion"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := runVMScript(t, home, bin, vmCommitScript, "images", "htpc-sonoma", goldens, testVMImage); err == nil {
+		t.Fatal("commit overwrote an ambiguous staging file", out)
+	}
+	if read(t, staging) != "interrupted conversion" || strings.Contains(read(t, log), " convert ") {
+		t.Fatal("refused commit changed or replayed conversion")
+	}
+	if err := os.Remove(staging); err != nil {
 		t.Fatal(err)
 	}
 	if out, err := runVMScript(t, home, bin, vmCommitScript, "images", "htpc-sonoma", goldens, testVMImage); err != nil {
@@ -203,6 +227,13 @@ func TestVMCommitWritesAReadOnlyGolden(t *testing.T) {
 	}
 	if !strings.Contains(read(t, log), "convert -O qcow2 /src/data.qcow2 "+goldens+"/.htpc-sonoma.tmp") {
 		t.Fatal(read(t, log))
+	}
+	if !strings.Contains(read(t, log), "run --rm --umask 0077 --entrypoint qemu-img") {
+		t.Fatal("OCI converter must set its own private umask", read(t, log))
+	}
+	plist, err := os.Stat(filepath.Join(goldens, "htpc-sonoma.opencore.plist"))
+	if err != nil || plist.Mode().Perm() != 0400 {
+		t.Fatal("OpenCore metadata is not private", err)
 	}
 	if _, err := os.Stat(filepath.Join(home, "virfield", "images", "htpc-sonoma")); !os.IsNotExist(err) {
 		t.Fatal("image clone kept after commit")
@@ -299,6 +330,10 @@ func TestNodeImageDeleteProtectsBackingGoldens(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(goldens, "secure.qcow2")); err != nil {
 		t.Fatal(err)
 	}
+	staging := filepath.Join(goldens, ".secure.tmp")
+	if err := os.WriteFile(staging, []byte("partial own image"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	if out, err := runVMScript(t, home, bin, vmDeleteScript, "leases", "vf-one", ""); err != nil {
 		t.Fatal(out, err)
 	}
@@ -307,5 +342,8 @@ func TestNodeImageDeleteProtectsBackingGoldens(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(goldens, "secure.qcow2")); !os.IsNotExist(err) {
 		t.Fatal("golden retained", err)
+	}
+	if _, err := os.Stat(staging); !os.IsNotExist(err) {
+		t.Fatal("own staging retained after image deletion", err)
 	}
 }

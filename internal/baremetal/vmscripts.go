@@ -108,16 +108,22 @@ done
 vf_stop_container
 vf_unhold "$d" "${4:-}"
 rm -rf "$d"
-rm -f "$3/$2.qcow2" "$3/$2.opencore.plist"
+rm -f "$3/$2.qcow2" "$3/$2.opencore.plist" "$3/.$2.tmp"
 `
 
 // vmCommitScript: $3 goldens dir, $4 image. Writes <goldens>/<vm>.qcow2 once,
 // with the source golden's OpenCore config, then removes the image clone.
 const vmCommitScript = vmDirs + `[ -f "$d/storage/data.qcow2" ]
+umask 077
 out="$3/$2.qcow2"
 [ ! -e "$out" ] || { echo "golden $2 exists" >&2; exit 3; }
-podman run --rm --entrypoint qemu-img -v "$3:$3:z" -v "$d/storage:/src:ro,Z" "$4" convert -O qcow2 /src/data.qcow2 "$3/.$2.tmp"
-mv "$3/.$2.tmp" "$out"
+temporary="$3/.$2.tmp"
+[ ! -e "$temporary" ] && [ ! -L "$temporary" ] || { echo "golden staging file exists; inspect before recovery" >&2; exit 3; }
+# The OCI process does not inherit the SSH shell's umask. Protect the disk from
+# its first byte, including when the operator's golden directory is traversable.
+podman run --rm --umask 0077 --entrypoint qemu-img -v "$3:$3:z" -v "$d/storage:/src:ro,Z" "$4" convert -O qcow2 /src/data.qcow2 "$temporary"
+chmod 400 "$temporary"
+mv "$temporary" "$out"
 cp "$3/$(cat "$d/golden").opencore.plist" "$3/$2.opencore.plist"
 chmod 400 "$out" "$3/$2.opencore.plist"
 rm -rf "$d"
