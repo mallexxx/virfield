@@ -6,6 +6,9 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import socket
+import threading
+import time
 import unittest
 import urllib.error
 from unittest.mock import patch
@@ -13,6 +16,45 @@ from unittest.mock import patch
 spec = importlib.util.spec_from_file_location('live_acceptance', Path(__file__).with_name('live-acceptance.py'))
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
+
+
+class DesktopGreetingTests(unittest.TestCase):
+    def server(self, writes):
+        listener = socket.socket()
+        listener.bind(('127.0.0.1', 0))
+        listener.listen(1)
+        self.addCleanup(listener.close)
+        def serve():
+            try:
+                connection, _ = listener.accept()
+                with connection:
+                    for delay, data in writes:
+                        time.sleep(delay)
+                        connection.sendall(data)
+            except OSError:
+                pass  # A deadline fixture deliberately closes its peer.
+        worker = threading.Thread(target=serve, daemon=True)
+        worker.start()
+        self.addCleanup(worker.join, 1)
+        return '%s:%s' % listener.getsockname()
+
+    def test_delayed_fragmented_rfb_greeting(self):
+        address = self.server([(0.02, b'R'), (0.02, b'FB 003.'), (0.02, b'889\n')])
+        self.assertEqual(module.read_desktop_banner(address, timeout=1), b'RFB 003.889\n')
+
+    def test_partial_greeting_does_not_extend_total_deadline(self):
+        address = self.server([(0.01, b'RFB '), (0.15, b'003.889\n')])
+        started = time.monotonic()
+        with self.assertRaises(TimeoutError):
+            module.read_desktop_banner(address, timeout=0.05)
+        self.assertLess(time.monotonic() - started, 0.3)
+
+    def test_eof_and_invalid_greetings_are_rejected(self):
+        for content in [b'RFB ', b'not RFB 123\n']:
+            with self.subTest(content=content):
+                address = self.server([(0, content)])
+                with self.assertRaises(RuntimeError):
+                    module.read_desktop_banner(address, timeout=1)
 
 
 class AcceptanceSafetyTests(unittest.TestCase):

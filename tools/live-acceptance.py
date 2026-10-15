@@ -10,6 +10,7 @@ import ipaddress
 import json
 import os
 from pathlib import Path
+import re
 import socket
 import subprocess
 import tempfile
@@ -23,6 +24,28 @@ import uuid
 class RefuseRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, request, fp, code, msg, headers, newurl):
         return None
+
+
+def read_desktop_banner(address, timeout=30):
+    # The local listener accepts before its remote connection is established.
+    # Control allows ten seconds for that dial; leave time for the RFB greeting
+    # too. TCP may split the twelve-byte greeting across arbitrary reads.
+    host, port = address.rsplit(':', 1)
+    deadline = time.monotonic() + timeout
+    with socket.create_connection((host, int(port)), timeout=min(10, timeout)) as connection:
+        banner = bytearray()
+        while len(banner) < 12:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError('Desktop greeting deadline expired')
+            connection.settimeout(remaining)
+            chunk = connection.recv(12 - len(banner))
+            if not chunk:
+                raise RuntimeError('Desktop closed before its complete RFB greeting')
+            banner.extend(chunk)
+    if not re.fullmatch(rb'RFB [0-9]{3}\.[0-9]{3}\n', banner):
+        raise RuntimeError('Desktop returned an invalid RFB greeting')
+    return bytes(banner)
 
 
 class Acceptance:
@@ -135,6 +158,21 @@ class Acceptance:
             time.sleep(3)
         raise RuntimeError('Acceptance deadline: ' + lease_id)
 
+    def desktop_banner(self, lease, tunnel):
+        started = time.monotonic()
+        try:
+            banner = read_desktop_banner(tunnel['address'])
+        except (OSError, RuntimeError) as error:
+            self.results.append(dict(stage='desktop-failed', lease_id=lease['id'],
+                                     error_type=type(error).__name__,
+                                     elapsed_seconds=time.monotonic() - started))
+            self.save()
+            raise
+        self.results.append(dict(stage='desktop-greeting', lease_id=lease['id'],
+                                 elapsed_seconds=time.monotonic() - started))
+        self.save()
+        return banner
+
     def pair(self, template, sequential=False):
         profiles = {t['id']: t for t in self.api('status')['templates']}
         selected = profiles[template]
@@ -209,11 +247,7 @@ class Acceptance:
                 if artifact.read_bytes() != b'virfield-acceptance\n':
                     raise RuntimeError('Artifact export mismatch')
                 tunnel = self.api('leases/' + lease['id'] + '/tunnel', dict(service='desktop'))
-                address = tunnel['address'].rsplit(':', 1)
-                with socket.create_connection((address[0], int(address[1])), timeout=10) as connection:
-                    banner = connection.recv(12)
-                if not banner.startswith(b'RFB '):
-                    raise RuntimeError('Desktop protocol is not reachable')
+                banner = self.desktop_banner(lease, tunnel)
                 self.results.append(dict(lease_id=lease['id'], template=template,
                     mode='sequential' if sequential else 'concurrent',
                     guest_checked=True, cross_key_rejected=True, desktop_banner=banner.decode().strip(),

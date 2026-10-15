@@ -10,8 +10,10 @@ are distinct artifacts.
 
 ## Acceptance checkpoint (2026-10-15)
 
-The latest completed installation at this checkpoint is `c85a899`, version
-`0.0.0-ssh-bounds`. Factory capacity, node temporary-file permission, stable-TSC
+The installed code acceptance baseline at this checkpoint is `8c521fe`, version
+`0.0.0-desktop-preflight`. Subsequent runbook/acceptance-tool packages retain this
+dated code-test provenance and carry their own exact `release.json` revision.
+Factory capacity, node temporary-file permission, stable-TSC
 capability, console/GUI observations and virtual keyboard corrections are installed. Exact-source local
 `make check` and Staticcheck passed; security scan evidence is recorded below.
 HTTP and fresh stdio MCP passed
@@ -180,7 +182,31 @@ credential mutation or secured lease identity creation. A real-SSH regression
 with an absent desktop fails on the old source and passes with the barrier;
 image credentials remain byte-identical. This closes the missing ordering
 precondition, without claiming it caused the earlier console-login failure.
-The installed provider matrix must be repeated with this correction.
+The correction was installed as `8c521fe`; its simultaneous-cold-boot HTPC
+matrix is in progress. Two new sequential iPad Monterey clones passed on this
+installed baseline: native GUI/new SSH keychain I/O before/after real reboot,
+fresh boot UUID/nonce, actual 1920x1080, exact OS/build/SIP, distinct host keys,
+cross-key refusal, workload/artifact/RFB, release and tunnel revocation.
+The second also reported Xcode 13.4.1 / 13F100 and Swift 5.6.1 and compiled and
+ran a Swift program. This is macOS 12.7.6 / 21H1320; Xcode's 13.4.1 is not the
+macOS version. Neither new clone reproduced the earlier iPad lease drift;
+that does not identify the old event's missing runtime error. Evidence:
+`/private/tmp/virfield-installed-ipad-monterey-8c521fe-20261015/journal.json`
+and `monterey-toolchain-proof.json` alongside it.
+
+Both simultaneous Sonoma clones on `8c521fe` passed native GUI/new SSH I/O
+before/after real reboot and the resource reservation checks. The first complete
+workflow passed; the second connected to the desktop listener but timed out on
+its ten-second RFB greeting read. Both fixtures were released and revoked;
+Sequoia was not started by that failed runner. The exact reason for that delay
+is not established. The acceptance reader separately assumed a whole greeting
+in one TCP read and used the same ten seconds as Control's upstream dial budget.
+It now reads all twelve bytes within one thirty-second total deadline, validates
+the RFB greeting and records elapsed time/failure type. Real TCP tests cover
+delayed fragmentation, a partial greeting not extending the deadline, EOF and
+invalid greetings. Production forwarding/guest code is unchanged by this runner
+correction. The next Sequoia and Sonoma runs preserve direct node RFB, framebuffer
+and console evidence before cleanup on a repeated failure.
 
 The physical HTPC lease passed on `c85a899`: acquire/replay, exclusive-host
 refusal of a second lease, pinned SSH workload, artifact export and release.
@@ -368,17 +394,21 @@ Native tool exit status alone is never the readiness gate.
 
 ## Automated candidate results
 
-The complete `make check` passed on the installed checkpoint: documentation links, ten Python tests,
+The complete `make check` passed on code baseline `8c521fe`: documentation links, twelve Python tests,
 formatting, `go vet` and the full Go race suite. Three Go binaries and the native
 Apple browser built; the browser signature verified. The existing installed
 configuration passes the candidate CLI `config-check`. Pinned Staticcheck, module
 integrity and current-tree Gitleaks pass; govulncheck results are recorded above.
 Live mutation tests remain opt-in and were run separately as recorded above.
+The RFB reader correction adds three TCP regression tests (fifteen Python tests
+in total); full local CI also passed for that subsequent acceptance-tool change.
 
 Clean local package provenance:
 
 | Source revision | Archive SHA-256 | Deployment |
 |---|---|---|
+| `8c521fe1a6c25656368810c0c8fb820b6927e5a0` | `282064aa6829d4b6c33600bc7e541d2ddc7956a89799ecc2a2a3615d74cd44db` | Installed; exact MCP and two fresh iPad Monterey native/reboot/workload cycles plus Xcode/Swift passed |
+| `c85a89974a4d2e707e732cfd3c15eaf92a5b4e7e` | `75dea2278095f682706acb5eb67aa9d933a53b2a79e00e6c9d119786112d373a` | Installed earlier; SSH bounds and physical HTPC lease passed; two staggered native Sonoma cycles passed after a failed simultaneous boot |
 | `083801895ec9d78b80328645436801b4215dbfdb` | `a74d66420b935ab5a3e076e24a298458f93c76658de683957dcadc91f775f0e6` | Installed; exact MCP passed; outer SSH command budget now follows the existing job deadline |
 | `7e9c5ad6e2f1f331b102dc10819c5ca12d0bc37f` | `b848c75a6f97816f979c2107b8873edf623ff7430424e16f6e963082db9512b1` | Installed; exact MCP and two native Sonoma reboot cycles passed; overall runner stopped on desktop HTTP503 |
 | `edcb7563f8aa02a019ff4cb8e575d8daabc2bd2d` | `82b7f7199948ba117a58a4e5067f4b12c56ab7811919038f2eadda7f8a0f80c1` | Installed; exact MCP passed; both node clones initially ready, post-reboot acceptance still failed |
@@ -412,9 +442,9 @@ revocation alongside SSH, cross-key/image-key rejection, workload and artifacts.
 
 - Repeat exact-source local CI and clean packaging for subsequent code changes;
   remote CI is deferred by the operator. Existing package provenance is recorded above.
-- Install node SSH channel cancellation correction in an idle pool; complete HTPC
-  native/resource/reboot/UI acceptance with disposable
-  clones and repeat native Monterey acceptance for the guest changes.
+- Node SSH cancellation bounds and inherited-desktop preflight are installed;
+  complete HTPC native/resource/reboot/UI acceptance with disposable clones.
+  Fresh native Monterey acceptance passed on the corrected guest code.
   Node conversion privacy and overall preparation corrections are installed;
   factory roundtrip and controller-binary rollback/forward passed.
 - Reconnect the actual owning MCP clients after installation and verify their
