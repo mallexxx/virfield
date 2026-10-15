@@ -213,6 +213,7 @@ func (r *Runtime) probe(ctx context.Context, n Node, now time.Time) (probe, erro
 	storage := container(n, "available", "", now)
 	storage.Path = n.VMsStorageDir()
 	storage.CapacityBytes, storage.AvailableBytes, storage.CacheBytes = p.diskCapacity, p.diskAvailable, p.cacheBytes
+	storage.Disks = p.disks
 	return probe{golden: golden, host: h, leases: p.leases, goldens: p.goldens, goldenDisks: p.goldenDisks, storage: storage, vms: p.vms, ip: ip, at: now}, nil
 }
 
@@ -454,6 +455,7 @@ func command(script string, args ...string) string {
 func quote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'"'"'`) + "'" }
 
 type probeResult struct {
+	disks                                   []domain.StorageDisk
 	volume                                  string
 	uiTesting                               string
 	cpu                                     int
@@ -479,12 +481,17 @@ func normalizeVolume(v string) string {
 
 func parseProbe(out string) (probeResult, error) {
 	p := probeResult{leases: map[string]string{}, goldens: map[string]bool{}, goldenDisks: map[string]int64{}, vms: map[string]vmRecord{}}
+	disks := map[string]domain.StorageDisk{}
 	for _, line := range strings.Split(out, "\n") {
 		key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
 		if !ok {
 			continue
 		}
 		switch key {
+		case "overlay_disk", "golden_disk":
+			device, free, ok := strings.Cut(value, " ")
+			n, err := strconv.ParseInt(free, 10, 64)
+			disks[key] = domain.StorageDisk{Purpose: key, DeviceIdentity: device, AvailableBytes: n, Observed: ok && err == nil && n >= 0 && device != ""}
 		case "volume":
 			p.volume = normalizeVolume(value)
 		case "ui_testing":
@@ -518,6 +525,11 @@ func parseProbe(out string) (probeResult, error) {
 			if strings.HasPrefix(name, "vf-") && domain.ValidName(name) && (state == "running" || state == "stopped") {
 				p.leases[name] = state
 			}
+		}
+	}
+	for _, purpose := range []string{"overlay_disk", "golden_disk"} {
+		if disk, ok := disks[purpose]; ok {
+			p.disks = append(p.disks, disk)
 		}
 	}
 	if !domain.ValidName(p.volume) || p.cpu < 1 || p.memory < 1 {

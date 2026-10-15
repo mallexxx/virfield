@@ -6,6 +6,7 @@ let cursor = 0;
 let pendingAcquire = null;
 let refreshInFlight = null;
 let pollTimer = null;
+let admissionState = null;
 const releaseKeys = new Map();
 const imageKeys = new Map();
 const tunnelAddresses = new Map();
@@ -244,6 +245,7 @@ function vmRow(vm) {
 }
 
 function renderLeaseForm(state) {
+  admissionState = state;
   const currentTemplate = el('template').value;
   const availability = new Map((state.template_availability || []).map(item => [item.template_id, item]));
   el('template').replaceChildren(...state.templates.map(template => {
@@ -254,17 +256,38 @@ function renderLeaseForm(state) {
     return option;
   }));
   if (state.templates.some(template => template.id === currentTemplate)) el('template').value = currentTemplate;
+  renderDestinations(state);
+  el('prepare').disabled = Boolean(state.observation.error) || state.capacity.available === 0;
+  renderAdmission();
+}
 
+function renderDestinations(state) {
   const currentDestination = el('destination').value;
-  const locations = [...new Set(state.templates.map(template => template.location).filter(Boolean))].sort();
-  el('destination').replaceChildren(node('option', 'Automatic'), ...locations.map(location => {
+  const estimates = state.resource_admission?.[el('template').value]?.destinations;
+  const locations = estimates ? Object.keys(estimates).sort() : [...new Set(state.templates.map(template => template.location).filter(Boolean))].sort();
+  const automatic = node('option', 'Automatic');
+  automatic.value = '';
+  el('destination').replaceChildren(automatic, ...locations.map(location => {
     const option = node('option', location);
     option.value = location;
     return option;
   }));
   if (locations.includes(currentDestination)) el('destination').value = currentDestination;
-  el('prepare').disabled = Boolean(state.observation.error) || state.capacity.available === 0;
 }
+
+function renderAdmission() {
+  const report = admissionState?.resource_admission?.[el('template').value];
+  const snapshot = el('destination').value ? report?.destinations?.[el('destination').value] : report?.acquire;
+  const text = !snapshot ? 'Resource estimate unavailable for this selection.' :
+    `${report.inventory_verified ? '' : 'Inventory is unverified; admission is paused.\n'}${snapshot.allowed ? 'Fits resource quotas' : 'Resource refusal'} on ${snapshot.host}${snapshot.selected_location ? ' / ' + snapshot.selected_location : ''}.\n${snapshot.summary.replaceAll('; ', '\n')}\nEstimate only: current reservations and inventory are checked again when preparing the VM.`;
+  el('resource-admission-text').textContent = text;
+}
+
+el('template').addEventListener('change', () => {
+  if (admissionState) renderDestinations(admissionState);
+  renderAdmission();
+});
+el('destination').addEventListener('change', renderAdmission);
 
 function renderLeases(state) {
   const leases = state.leases.filter(lease => lease.purpose !== 'image');

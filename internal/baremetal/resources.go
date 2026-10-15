@@ -2,7 +2,11 @@ package baremetal
 
 import (
 	"context"
+	"fmt"
+	"math"
+
 	"github.com/mallexxx/virfield/internal/domain"
+	budget "github.com/mallexxx/virfield/internal/resourcebudget"
 )
 
 // Admission reserves durably in Control. Recheck real storage and VM allocation
@@ -20,8 +24,9 @@ func (r *Runtime) checkVMResources(ctx context.Context, n Node, l domain.Lease, 
 		source = p.vms[l.VMName].Golden
 	}
 	configured := vmResources(n)
+	unknown := ""
 	if request.CPU < configured.CPU || request.MemoryBytes < configured.MemoryBytes || request.DiskBytes < configured.DiskBytes || request.DiskBytes < p.goldenDisks[source] || p.goldenDisks[source] < 1 {
-		return domain.Err("resource_unknown", "Node source disk does not match its accepted resource reservation")
+		unknown = fmt.Sprintf("Node source/reservation mismatch: observed source disk %d bytes, accepted full potential %d bytes, configured bound %d bytes", p.goldenDisks[source], request.DiskBytes, configured.DiskBytes)
 	}
 	limits := domain.ResourceLimits{CPU: p.host.Capacity.Total.CPU, MemoryBytes: p.host.Capacity.Total.MemoryBytes - (4 << 30), DiskReserveBytes: 20 << 30}
 	if n.VMs.ResourceLimits != nil {
@@ -36,7 +41,12 @@ func (r *Runtime) checkVMResources(ctx context.Context, n Node, l domain.Lease, 
 			continue
 		}
 		if vm.Resources.CPU < 1 || vm.Resources.MemoryBytes < 1 || vm.Resources.DiskBytes < 1 {
-			return domain.Err("resource_unknown", "Node VM allocation cannot be verified before cloning")
+			unknown = "Node VM allocation cannot be verified before cloning"
+			continue
+		}
+		if vm.Resources.CPU > int(^uint(0)>>1)-used.CPU || vm.Resources.MemoryBytes > math.MaxInt64-used.MemoryBytes || vm.Resources.DiskBytes > math.MaxInt64-used.DiskBytes {
+			unknown = "Node resource reservation arithmetic overflow; admission paused"
+			continue
 		}
 		used.CPU += vm.Resources.CPU
 		used.MemoryBytes += vm.Resources.MemoryBytes
@@ -45,11 +55,6 @@ func (r *Runtime) checkVMResources(ctx context.Context, n Node, l domain.Lease, 
 			pendingCache += vm.Resources.DiskBytes
 		}
 	}
-	if used.CPU+request.CPU > limits.CPU || used.MemoryBytes+request.MemoryBytes > limits.MemoryBytes || used.DiskBytes+request.DiskBytes+limits.DiskReserveBytes > p.storage.AvailableBytes {
-		return domain.Err("resource_exhausted", "Fresh node observation cannot fit the accepted VM reservation")
-	}
-	if building && n.VMs.CacheLimitBytes > 0 && p.storage.CacheBytes+pendingCache+request.DiskBytes > n.VMs.CacheLimitBytes {
-		return domain.Err("resource_exhausted", "Node image cache quota changed before cloning")
-	}
-	return nil
+	report := domain.ResourceStatus{Limits: limits, Reserved: used, DiskAvailable: map[string]int64{n.ID: p.storage.AvailableBytes}, Disks: p.storage.Disks, CacheBytes: p.storage.CacheBytes, CacheLimitBytes: n.VMs.CacheLimitBytes}
+	return budget.Error(budget.Node(n.ID, request, report, pendingCache, building, unknown))
 }

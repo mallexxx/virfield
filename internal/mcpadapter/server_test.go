@@ -10,8 +10,48 @@ import (
 	"testing"
 
 	"github.com/mallexxx/virfield/internal/client"
+	"github.com/mallexxx/virfield/internal/domain"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+func TestAdmissionArithmeticSurvivesClientAndMCPErrorProjection(t *testing.T) {
+	headroom := int64(-1)
+	snapshot := domain.AdmissionSnapshot{Host: "local", ErrorCode: "resource_exhausted", Summary: "disk[external]: observed free 119 bytes (0.000 GB, 0.000 GiB) - reserved 0 bytes - requested full potential 100 bytes - safety reserve 20 bytes = headroom -1 bytes", Constraints: []domain.AdmissionConstraint{{Resource: "disk", Location: "external", Unit: "bytes", Limit: 119, Requested: 100, SafetyReserve: 20, Headroom: &headroom}}}
+	fault := &domain.Error{Code: snapshot.ErrorCode, Message: snapshot.Summary, Admission: &snapshot}
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		if err := json.NewEncoder(w).Encode(map[string]any{"error": fault}); err != nil {
+			t.Error(err)
+		}
+	}))
+	defer api.Close()
+	c, err := client.New(api.URL, "secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := c.Do(context.Background(), "POST", "leases", nil, "admission-request")
+	if err == nil || !strings.Contains(err.Error(), "119 bytes") || !strings.Contains(err.Error(), "GiB") {
+		t.Fatal("CLI client lost quota explanation", err)
+	}
+	res, _, err := result(data, err)
+	if err != nil || !res.IsError {
+		t.Fatal(res, err)
+	}
+	body, err := json.Marshal(res.StructuredContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded struct {
+		Error domain.Error `json:"error"`
+	}
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Error.Admission == nil || *decoded.Error.Admission.Constraints[0].Headroom != -1 || decoded.Error.Message != snapshot.Summary {
+		t.Fatal(string(body))
+	}
+}
 
 func TestMCPProxiesToAPIAndPreservesIdempotency(t *testing.T) {
 	calls := 0

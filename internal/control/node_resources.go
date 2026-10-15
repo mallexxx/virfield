@@ -1,6 +1,12 @@
 package control
 
-import "github.com/mallexxx/virfield/internal/domain"
+import (
+	"math"
+	"strings"
+
+	"github.com/mallexxx/virfield/internal/domain"
+	budget "github.com/mallexxx/virfield/internal/resourcebudget"
+)
 
 // Node VM admission has its own budget; physical account leases retain their
 // exclusive slot. These limits reserve VM growth, never prune operator images.
@@ -29,10 +35,24 @@ func (c *Controller) nodeResourceUsage(ls []domain.Lease, location string) (doma
 		if storage.ID == location && storage.Availability == "available" {
 			report.DiskAvailable[location] = storage.AvailableBytes
 			report.CacheBytes = storage.CacheBytes
+			report.Disks = storage.Disks
 		}
 	}
-	if report.Limits.CPU < 1 || report.Limits.MemoryBytes < 1 || report.DiskAvailable[location] < 1 {
-		return report, 0, domain.Err("resource_unknown", "Node CPU/RAM/storage inventory must be observed before VM admission")
+	var missing []string
+	if report.Limits.CPU < 1 {
+		missing = append(missing, "CPU capacity/limit")
+	}
+	if report.Limits.MemoryBytes < 1 {
+		missing = append(missing, "RAM capacity/limit")
+	}
+	if free, ok := report.DiskAvailable[location]; !ok || free < 0 {
+		missing = append(missing, "storage free bytes for "+location)
+	}
+	if report.CacheBytes < 0 {
+		missing = append(missing, "image-cache allocated bytes")
+	}
+	if len(missing) > 0 {
+		return report, 0, domain.Err("resource_unknown", "Node inventory unavailable: "+strings.Join(missing, ", "))
 	}
 	seen, physical := map[string]bool{}, map[string]bool{}
 	var pendingCache int64
@@ -43,6 +63,9 @@ func (c *Controller) nodeResourceUsage(ls []domain.Lease, location string) (doma
 		seen[key] = true
 		if r.CPU < 1 || r.MemoryBytes < 1 || r.DiskBytes < 1 {
 			return domain.Err("resource_unknown", "Node VM resource reservation is unavailable")
+		}
+		if r.CPU > int(^uint(0)>>1)-report.Reserved.CPU || r.MemoryBytes > math.MaxInt64-report.Reserved.MemoryBytes || r.DiskBytes > math.MaxInt64-report.Reserved.DiskBytes {
+			return domain.Err("resource_unknown", "Node resource reservation arithmetic overflow; admission paused")
 		}
 		report.Reserved.CPU += r.CPU
 		report.Reserved.MemoryBytes += r.MemoryBytes
@@ -82,9 +105,15 @@ func (c *Controller) nodeResourceUsage(ls []domain.Lease, location string) (doma
 }
 
 func (c *Controller) admitNodeResources(ls []domain.Lease, t domain.Template, building bool) (domain.Resources, error) {
+	r, snapshot := c.nodeAdmission(ls, t, building)
+	return r, budget.Error(snapshot)
+}
+
+func (c *Controller) nodeAdmission(ls []domain.Lease, t domain.Template, building bool) (domain.Resources, domain.AdmissionSnapshot) {
 	policy, configured := c.nodeResourcePolicies[t.Location]
+	s := domain.AdmissionSnapshot{Host: t.Location}
 	if t.Image == nil || !configured {
-		return t.Resources, nil
+		return t.Resources, budget.Finish(s, "")
 	}
 	r := policy.VMResources
 	source := t.Name
@@ -98,18 +127,13 @@ func (c *Controller) admitNodeResources(ls []domain.Lease, t domain.Template, bu
 			known = true
 		}
 	}
+	unknown := ""
 	if !known || r.CPU < 1 || r.MemoryBytes < 1 || r.DiskBytes < 1 {
-		return r, domain.Err("resource_unknown", "Node source disk size must be observed before cloning")
+		unknown = "Node source CPU/RAM/full potential disk size must be observed before cloning"
 	}
 	report, pendingCache, err := c.nodeResourceUsage(ls, t.Location)
 	if err != nil {
-		return r, err
+		unknown = err.Error()
 	}
-	if report.Reserved.CPU+r.CPU > report.Limits.CPU || report.Reserved.MemoryBytes+r.MemoryBytes > report.Limits.MemoryBytes || report.Reserved.DiskBytes+r.DiskBytes+report.Limits.DiskReserveBytes > report.DiskAvailable[t.Location] {
-		return r, domain.Err("resource_exhausted", "Node CPU/RAM/disk budget cannot fit another VM or image build")
-	}
-	if building && policy.CacheLimitBytes > 0 && report.CacheBytes+pendingCache+r.DiskBytes > policy.CacheLimitBytes {
-		return r, domain.Err("resource_exhausted", "Node image cache quota cannot fit another golden's full potential size")
-	}
-	return r, nil
+	return r, budget.Node(t.Location, r, report, pendingCache, building, unknown)
 }

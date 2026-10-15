@@ -131,5 +131,5 @@ func TestNodeImageCacheAndDiskBudgetsCountUnfinishedBuilds(t *testing.T) {
 		}
 	}
 	_, err = c.admitNodeResources(nil, template, false)
-	code(t, err, "resource_unknown")
+	code(t, err, "resource_exhausted")
 }

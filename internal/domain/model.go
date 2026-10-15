@@ -16,9 +16,10 @@ const MaxVMs = 1024
 
 // Error is a safe, machine-readable failure returned to API clients.
 type Error struct {
-	Code      string `json:"code"`
-	Message   string `json:"message"`
-	Retryable bool   `json:"retryable"`
+	Code      string             `json:"code"`
+	Message   string             `json:"message"`
+	Retryable bool               `json:"retryable"`
+	Admission *AdmissionSnapshot `json:"admission,omitempty"`
 }
 
 func (e *Error) Error() string        { return e.Code + ": " + e.Message }
@@ -190,15 +191,16 @@ func (c Capacity) FullError() *Error {
 }
 
 type Status struct {
-	Resources            *ResourceStatus           `json:"resources,omitempty"`
-	NodeResources        map[string]ResourceStatus `json:"node_resources,omitempty"`
-	ImageReservations    []ImageReservation        `json:"image_reservations,omitempty"`
-	Capacity             Capacity                  `json:"capacity"`
-	Observation          Observation               `json:"observation"`
-	Leases               []Lease                   `json:"leases"`
-	Jobs                 []Job                     `json:"jobs"`
-	Templates            []Template                `json:"templates"`
-	TemplateAvailability []TemplateAvailability    `json:"template_availability,omitempty"`
+	ResourceAdmission    map[string]TemplateAdmission `json:"resource_admission,omitempty"`
+	Resources            *ResourceStatus              `json:"resources,omitempty"`
+	NodeResources        map[string]ResourceStatus    `json:"node_resources,omitempty"`
+	ImageReservations    []ImageReservation           `json:"image_reservations,omitempty"`
+	Capacity             Capacity                     `json:"capacity"`
+	Observation          Observation                  `json:"observation"`
+	Leases               []Lease                      `json:"leases"`
+	Jobs                 []Job                        `json:"jobs"`
+	Templates            []Template                   `json:"templates"`
+	TemplateAvailability []TemplateAvailability       `json:"template_availability,omitempty"`
 }
 
 type Host struct {
@@ -225,19 +227,20 @@ type HostCapacity struct {
 }
 
 type StorageContainer struct {
-	ID                string    `json:"id"`
-	PoolID            string    `json:"pool_id,omitempty"`
-	HostID            string    `json:"host_id"`
-	Provider          string    `json:"provider"`
-	Kind              string    `json:"kind"`
-	Path              string    `json:"path,omitempty"`
-	DeviceIdentity    string    `json:"device_identity,omitempty"`
-	Availability      string    `json:"availability"`
-	UnavailableReason string    `json:"unavailable_reason,omitempty"`
-	CapacityBytes     int64     `json:"capacity_bytes,omitempty"`
-	AvailableBytes    int64     `json:"available_bytes,omitempty"`
-	CacheBytes        int64     `json:"cache_bytes,omitempty"`
-	LastSeenAt        time.Time `json:"last_seen_at,omitempty"`
+	Disks             []StorageDisk `json:"disks,omitempty"`
+	ID                string        `json:"id"`
+	PoolID            string        `json:"pool_id,omitempty"`
+	HostID            string        `json:"host_id"`
+	Provider          string        `json:"provider"`
+	Kind              string        `json:"kind"`
+	Path              string        `json:"path,omitempty"`
+	DeviceIdentity    string        `json:"device_identity,omitempty"`
+	Availability      string        `json:"availability"`
+	UnavailableReason string        `json:"unavailable_reason,omitempty"`
+	CapacityBytes     int64         `json:"capacity_bytes,omitempty"`
+	AvailableBytes    int64         `json:"available_bytes,omitempty"`
+	CacheBytes        int64         `json:"cache_bytes,omitempty"`
+	LastSeenAt        time.Time     `json:"last_seen_at,omitempty"`
 }
 
 type TemplateAvailability struct {

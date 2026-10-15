@@ -165,11 +165,15 @@ dialog. A running Finder or successful native I/O alone does not prove this.
 Confirmed `vm_drift` cannot currently be restored to `ready` in place. Operator
 resolve queues cleanup; never call it to preserve a workspace. Unverified
 temporary inventory is handled separately and can recover without replacing a
-ready lease. Non-destructive drift revalidation, durable drift/tunnel reasons,
-full resource arithmetic, verified local golden transfer and an optional legacy
-iOS profile are planned, not available MCP tools. Status exposes reservations
-and free bytes, but a generic disk/node refusal does not yet explain every term;
-report that gap instead of guessing from visible disk free space.
+ready lease. Non-destructive drift revalidation, durable drift/tunnel reasons and
+an optional legacy iOS profile remain planned. Explicit verified local transfer
+is installed/live accepted on a45655f; inspect current tool metadata before use.
+The F3 source candidate adds `resource_admission` to status and `error.admission`
+to refusals: CPU/RAM, each storage's observed free, reserved full growth, requested
+full potential, safety reserve and signed headroom, plus configured image-cache
+quotas and explicit unknown inputs. CLI/MCP messages label exact bytes/GB/GiB;
+Console shows the chosen estimate. This source change is not yet installed.
+Do not infer a historical refusal's cause from today's visible free space.
 
 Tart workers use a fixed 1920×1080 logical desktop. Workspace sharing is not
 configured: copy the selected checkout and DerivedData over pinned SSH. For the

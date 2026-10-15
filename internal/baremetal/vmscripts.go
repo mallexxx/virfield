@@ -170,8 +170,10 @@ vf_disk_size() {
   [ -f "$1" ] && [ "$(od -An -tx1 -N4 "$1" | tr -d ' \n')" = 514649fb ] || { echo 0; return; }
   od -An -tu1 -j24 -N8 "$1" | awk '{for(i=1;i<=NF;i++){n=n*256+$i;c++}} END {printf "%.0f\n",(c==8 && n<=549755813888)?n:0}'
 }
-df -Pk "$vf_vm_root/leases" "$1" | awk 'NR>1 {if(!n || $2<c)c=$2; if(!n || $4<a)a=$4; n++} END {printf "disk_capacity=%.0f\ndisk_available=%.0f\n",c*1024,a*1024}'
-echo "cache_bytes=$(( $(du -sk "$1" | awk '{print $1}') * 1024 ))"
+vf_space=$(df -Pk "$vf_vm_root/leases" "$1") || exit 3
+printf '%s\n' "$vf_space" | awk 'NR>1 {if(!n || $2<c)c=$2; if(!n || $4<a)a=$4; printf "%s_disk=%s %.0f\n",(n==0?"overlay":"golden"),$1,$4*1024; n++} END {if(n!=2)exit 3; printf "disk_capacity=%.0f\ndisk_available=%.0f\n",c*1024,a*1024}' || exit 3
+vf_cache=$(du -sk "$1") || exit 3
+echo "cache_bytes=$(( $(printf '%s\n' "$vf_cache" | awk '{print $1}') * 1024 ))"
 for f in "$1"/*.qcow2; do
   [ -f "$f" ] && echo "golden=$(basename "$f" .qcow2) $(vf_disk_size "$f")"
 done

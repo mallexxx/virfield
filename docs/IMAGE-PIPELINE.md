@@ -151,9 +151,8 @@ The complete fresh public-base factory/private push/pull-back/clone workload and
 cleanup roundtrip passed on `2f23ae6` on 2026-10-15, preserving seven baseline
 images. Retain that receipt and repeat for relevant export/import pipeline
 changes; public manifest resolution alone is not that acceptance. See Verification
-for digest and scope. A local managed-golden transfer between Tart storages is
-separate planned work: current acquire rejects cross-container clones, and this
-registry workflow must not be used to upload a managed golden.
+for digest and scope. The explicit local managed-golden transfer below avoids
+registry publication; acquire itself still rejects cross-container clones.
 
 ## Recovery
 
@@ -203,8 +202,12 @@ accepted because a 44.8 GB allocated source became a 106.4 GB copy. That owned
 test copy was deleted through its durable image-delete job after preserving the
 receipt; all eight previous images and the source remain intact. The sparse
 correction has a real red/green APFS regression (512 KiB allocated data in a
-128 MiB logical file); packaging/installation and native destination acceptance
-of the correction remain pending.
+128 MiB logical file). Installed `a45655f` passed actual Monterey/Xcode transfer:
+120 GB logical, 44.79 GB allocated destination, all source/destination hashes and
+private identity equal. Two fresh complete native GUI/new SSH/reboot/Xcode/Swift/
+workspace/artifact/RFB/release cycles passed; source and eight baseline manifests
+remain unchanged. The accepted ninth image is retained. See Verification for the
+exact durable job, image and receipts.
 
 Interrupted/failed copies stay quarantined and reserve the source. Reusing the
 same request key returns the same operation; it never repeats the copy. Inspect

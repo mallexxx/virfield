@@ -2,10 +2,11 @@ package control
 
 import (
 	"fmt"
-	"strings"
+	"math"
 
 	"github.com/mallexxx/virfield/internal/domain"
 	"github.com/mallexxx/virfield/internal/provider"
+	budget "github.com/mallexxx/virfield/internal/resourcebudget"
 )
 
 type ResourceProbe func() (map[string]int64, error)
@@ -59,6 +60,9 @@ func (c *Controller) resources(ls []domain.Lease) (domain.Resources, map[string]
 		if r.CPU < 1 || r.MemoryBytes < 1 || r.DiskBytes < 1 {
 			return domain.Err("resource_unknown", "Cannot verify VM resource allocation; admission paused")
 		}
+		if r.CPU > int(^uint(0)>>1)-sum.CPU || r.MemoryBytes > math.MaxInt64-sum.MemoryBytes || r.DiskBytes > math.MaxInt64-sum.DiskBytes || r.DiskBytes > math.MaxInt64-disk[location] {
+			return domain.Err("resource_unknown", "VM resource reservation arithmetic overflow; admission paused")
+		}
 		sum.CPU += r.CPU
 		sum.MemoryBytes += r.MemoryBytes
 		sum.DiskBytes += r.DiskBytes
@@ -102,12 +106,7 @@ func (c *Controller) admitResources(ls []domain.Lease, t domain.Template, reques
 		resources, err := c.admitNodeResources(ls, t, false)
 		return resources, candidates[0], err
 	}
-	request := t.Resources
-	for _, v := range c.observation.VMs {
-		if v.Key() == t.Location+"/"+t.Name {
-			request = v.Resources
-		}
-	}
+	request := c.leaseResourceRequest(t)
 	candidates, err := c.cloneLocationCandidates(t, requestedLocation)
 	if err != nil {
 		return request, "", err
@@ -115,34 +114,22 @@ func (c *Controller) admitResources(ls []domain.Lease, t domain.Template, reques
 	return c.admitResourceBudget(ls, request, candidates)
 }
 
-func (c *Controller) admitResourceBudget(ls []domain.Lease, request domain.Resources, candidates []string) (domain.Resources, string, error) {
-	if c.resourceLimits == nil {
-		return request, candidates[0], nil
-	}
-	if c.resourceError != "" {
-		return request, "", domain.Err("resource_unavailable", c.resourceError)
-	}
-	sum, diskReserved, err := c.resources(ls)
-	if err != nil {
-		return request, "", err
-	}
-	lim := *c.resourceLimits
-	if request.CPU < 1 || request.MemoryBytes < 1 || request.DiskBytes < 1 {
-		return request, "", domain.Err("resource_unknown", "Source VM resources are unavailable")
-	}
-	if sum.CPU+request.CPU > lim.CPU {
-		return request, "", domain.Err("resource_exhausted", fmt.Sprintf("CPU quota exceeded: %d reserved + %d requested, limit %d", sum.CPU, request.CPU, lim.CPU))
-	}
-	if sum.MemoryBytes+request.MemoryBytes > lim.MemoryBytes {
-		return request, "", domain.Err("resource_exhausted", fmt.Sprintf("RAM quota exceeded: %d GiB reserved + %d GiB requested, limit %d GiB", sum.MemoryBytes>>30, request.MemoryBytes>>30, lim.MemoryBytes>>30))
-	}
-	for _, location := range candidates {
-		available, ok := c.diskAvailable[location]
-		if ok && available >= diskReserved[location]+request.DiskBytes+lim.DiskReserveBytes {
-			return request, location, nil
+func (c *Controller) leaseResourceRequest(t domain.Template) domain.Resources {
+	request := t.Resources
+	for _, v := range c.observation.VMs {
+		if v.Key() == t.Location+"/"+t.Name {
+			request = v.Resources
 		}
 	}
-	return request, "", domain.Err("resource_exhausted", "No eligible clone storage has enough free disk for reserved VM growth and host safety reserve: "+strings.Join(candidates, ", "))
+	return request
+}
+
+func (c *Controller) admitResourceBudget(ls []domain.Lease, request domain.Resources, candidates []string) (domain.Resources, string, error) {
+	snapshot := c.primaryAdmission(ls, request, candidates)
+	if err := budget.Error(snapshot); err != nil {
+		return request, "", err
+	}
+	return request, snapshot.SelectedLocation, nil
 }
 
 func (c *Controller) cloneLocationCandidates(t domain.Template, requestedLocation string) ([]string, error) {

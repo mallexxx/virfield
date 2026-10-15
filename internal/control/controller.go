@@ -384,7 +384,7 @@ func (c *Controller) Status(ctx context.Context) (domain.Status, error) {
 			o.Hosts[i] = h
 		}
 	}
-	return domain.Status{Resources: resources, NodeResources: nodeResources, ImageReservations: reservations, Capacity: capacity, Observation: o, Leases: ls, Jobs: js, Templates: ts, TemplateAvailability: availability}, nil
+	return domain.Status{ResourceAdmission: c.resourceAdmissionStatus(ls, ts), Resources: resources, NodeResources: nodeResources, ImageReservations: reservations, Capacity: capacity, Observation: o, Leases: ls, Jobs: js, Templates: ts, TemplateAvailability: availability}, nil
 }
 func (c *Controller) Acquire(ctx context.Context, key string, r domain.AcquireRequest) (domain.Operation, error) {
 	return c.AcquireAs(ctx, key, r, "")
@@ -902,9 +902,12 @@ func (c *Controller) save(ctx context.Context, l domain.Lease, j domain.Job, typ
 	j.UpdatedAt = c.now()
 	return c.store.Save(ctx, l, &j, "", "", typ, msg)
 }
-func (c *Controller) attention(ctx context.Context, l domain.Lease, j domain.Job, code, msg string, quarantine bool) error {
+func (c *Controller) attention(ctx context.Context, l domain.Lease, j domain.Job, code, msg string, quarantine bool, admission ...*domain.AdmissionSnapshot) error {
 	j.State = "needs_attention"
 	j.Error = domain.Err(code, msg)
+	if len(admission) > 0 {
+		j.Error.Admission = admission[0]
+	}
 	l.Error = j.Error
 	if quarantine {
 		l.State = "quarantined"
@@ -943,6 +946,9 @@ func (c *Controller) advance(ctx context.Context, l domain.Lease, j domain.Job) 
 		if !ok {
 			return c.attention(ctx, l, j, "template_unavailable", "Template removed from configuration", false)
 		}
+		if allowed, err := c.recheckResources(ctx, l, j); err != nil || !allowed {
+			return err
+		}
 		// Local sources must remain present and stopped. A digest-pinned remote
 		// source is resolved and verified by the selected runtime.
 		if t.Source == "" {
@@ -978,11 +984,8 @@ func (c *Controller) advance(ctx context.Context, l domain.Lease, j domain.Job) 
 		if _, running, _ := c.hostLoad(l.Location); cap.Used > cap.Limit || running >= cap.Limit {
 			return nil
 		}
-		if c.resourceLimits != nil {
-			sum, _, err := c.resources(ls)
-			if err != nil || c.resourceError != "" || sum.CPU > c.resourceLimits.CPU || sum.MemoryBytes > c.resourceLimits.MemoryBytes {
-				return nil
-			}
+		if allowed, err := c.recheckResources(ctx, l, j); err != nil || !allowed {
+			return err
 		}
 
 		return c.dispatch(ctx, l, j, "start_dispatched", func(ctx context.Context) error { return c.backend.Start(ctx, l) })
@@ -1077,6 +1080,10 @@ func (c *Controller) cleanup(ctx context.Context, l domain.Lease, j domain.Job, 
 	return nil
 }
 func (c *Controller) dispatch(ctx context.Context, l domain.Lease, j domain.Job, phase string, fn func(context.Context) error) error {
+	if j.Error != nil && j.Error.Admission != nil {
+		l.Error, j.Error = nil, nil
+		j.Progress = ""
+	}
 	j.Phase = phase
 	j.State = "running"
 	if phase == "start_dispatched" {
@@ -1113,19 +1120,36 @@ func (c *Controller) dispatch(ctx context.Context, l domain.Lease, j domain.Job,
 		}
 		l = fresh
 		if err != nil {
+			var fault *domain.Error
+			var admission *domain.AdmissionSnapshot
+			if errors.As(err, &fault) {
+				admission = fault.Admission
+			}
 			if phase == "transfer_discard_dispatched" {
 				err = c.attention(saveCtx, l, j, "image_outcome_unknown", "Partial copy cleanup did not return confirmed success; inspect before any replay", true)
 			} else if phase == "clone_dispatched" {
-				err = c.attention(saveCtx, l, j, "clone_outcome_unknown", "Runtime create did not return confirmed success. Automatic replay and deletion are blocked.", true)
+				message := "Runtime create did not return confirmed success. Automatic replay and deletion are blocked."
+				if admission != nil {
+					message += " Resource admission: " + admission.Summary
+				}
+				err = c.attention(saveCtx, l, j, "clone_outcome_unknown", message, true, admission)
 			} else if phase == "start_dispatched" && definitiveMutation(err) {
 				l.StartRejected = true
 				j.Error = domain.Err("start_rejected", "Runtime rejected VM start; cleanup will confirm stable stopped or absent state")
+				j.Error.Admission = admission
+				if admission != nil {
+					j.Error.Message += " Resource admission: " + admission.Summary
+				}
 				err = c.save(saveCtx, l, j, "job.start_rejected", j.Error.Message)
 				if err == nil {
 					_, err = c.queueCleanup(saveCtx, l, "", "")
 				}
 			} else {
 				j.Error = domain.Err("outcome_unknown", "Runtime mutation did not return confirmed success; observing without replay")
+				j.Error.Admission = admission
+				if admission != nil {
+					j.Error.Message += " Resource admission: " + admission.Summary
+				}
 				err = c.save(saveCtx, l, j, "job.outcome_unknown", j.Error.Message)
 			}
 		} else {

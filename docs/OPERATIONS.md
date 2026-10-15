@@ -432,10 +432,23 @@ space on both golden and overlay storage; unavailable metrics refuse admission.
 Clone/start/commit recheck after wake. Status exposes separate `node_resources`.
 Existing probe records need a successful new observation before VM admission.
 These are VM reservations; physical-account workloads are not CPU/RAM sandboxed.
-Status exposes limits, reserved resources and per-storage free bytes, but disk
-and node/cache refusal messages do not yet report every admission term. The
-planned explanation must include free, reserved growth, requested full size,
-safety reserve and remaining headroom for each eligible storage. Visible free
+The F3 source candidate adds `status.resource_admission[TEMPLATE]`: `acquire`,
+strict `destinations[LOCATION]` and, where applicable, `image_build`. Each snapshot
+reports CPU/RAM and every candidate disk, with observed free bytes, reservations
+for full potential growth, requested full size, safety reserve and signed remaining
+headroom. Node snapshots report both overlay and golden filesystems, including
+device identities; both must fit and shared-device reservations are not added
+together. The fresh post-wake node runtime uses the same quota evaluator.
+Image-build cache quotas include observed allocated cache plus pending
+full-size builds. Unknown inputs carry `unknown_reason` and null headroom; zero
+observed free bytes is a known refusal. Errors retain this structured snapshot
+under `error.admission`, with exact bytes and labelled decimal GB/binary GiB in
+the CLI/MCP message. Console's Prepare form shows the selected estimate.
+These are advisory snapshots; `inventory_verified` must be true, and admission
+and mutation dispatch recheck the same calculation under the controller lock.
+A changed budget waits with the original lease/reservation/deadline and persists
+its first refusal without repeated polling events. Limits are unchanged. This
+source change is not yet installed/live accepted; see Verification. Visible free
 space alone is insufficient to diagnose an older refusal. Do not reduce reserve
 or assume copy-on-write physical allocation is the maximum VM growth.
 Node QEMU disks use `cache=writeback` with threaded I/O so concurrent cold boots

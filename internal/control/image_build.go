@@ -146,9 +146,15 @@ func (c *Controller) advanceImageBuild(ctx context.Context, l domain.Lease, j do
 		step = "provision"
 	}
 	if step == "create" || step == "build" {
+		if allowed, err := c.recheckResources(ctx, l, j); err != nil || !allowed {
+			return err
+		}
 		if _, exists := c.vm(l); exists {
 			return c.attention(ctx, l, j, "name_collision", "Image destination appeared before create; refusing to overwrite it", true)
 		}
+	}
+	if j.Error != nil && j.Error.Admission != nil {
+		l.Error, j.Error = nil, nil
 	}
 	j.Phase = step + "_dispatched"
 	j.State = "running"
@@ -200,11 +206,13 @@ func (c *Controller) advanceImageBuild(ctx context.Context, l domain.Lease, j do
 			}
 			// Adapter errors are safe typed messages. Never publish raw subprocess output.
 			code, msg := "image_step_failed", "Image step "+step+" failed; inspect private stage logs. No mutation will be replayed."
+			var admission *domain.AdmissionSnapshot
 			if e, ok := err.(*domain.Error); ok {
 				code = e.Code
 				msg = e.Message
+				admission = e.Admission
 			}
-			if e := c.attention(saveCtx, l, j, code, msg, step != "download" && step != "resolve"); e != nil {
+			if e := c.attention(saveCtx, l, j, code, msg, step != "download" && step != "resolve", admission); e != nil {
 				c.log.Error("persist image failure", "error", e)
 			}
 			return

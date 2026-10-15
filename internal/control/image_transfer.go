@@ -151,7 +151,12 @@ func (c *Controller) advanceImageTransfer(ctx context.Context, l domain.Lease, j
 		}
 	}
 	if _, _, err := c.admitResourceBudget(other, l.Resources, []string{l.Location}); err != nil {
-		return c.attention(ctx, l, j, "resource_unavailable", "Destination admission changed before transfer; inspect or delete the unstarted copy", true)
+		var fault *domain.Error
+		var admission *domain.AdmissionSnapshot
+		if errors.As(err, &fault) {
+			admission = fault.Admission
+		}
+		return c.attention(ctx, l, j, "resource_unavailable", "Destination admission changed before transfer; inspect or delete the unstarted copy: "+err.Error(), true, admission)
 	}
 	if vm, exists := c.vm(j.Transfer.Source); !exists || vm.State != "stopped" {
 		return c.attention(ctx, l, j, "image_in_use", "Source disappeared or started before transfer; nothing copied", true)
