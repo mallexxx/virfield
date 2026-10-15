@@ -10,6 +10,31 @@ are distinct artifacts.
 
 ## Acceptance checkpoint (2026-10-15)
 
+Installed checkpoint at 14:48 UTC: `f60efe3` / `0.0.0-browser-transport-trace`,
+daemon PID 56593. Full local CI, pinned Staticcheck 0.7.0, Gitleaks (229 commits),
+clean archive smoke and exact installed HTTP/fresh stdio version/runbooks/resources/
+status/anonymous 401 passed (1.22 seconds). Archive SHA-256:
+`941da8a267107103918ddc553290419f104148f5bebb7503917b130328265c00`.
+The original installer replaced the binaries successfully but its final check
+incorrectly required a deleted disposable catalog template to be available.
+Read-only attestation resumed without repeating installation or restart: staged
+and installed signed hashes, prior Team identity, unchanged config values and
+all seven baseline image manifests were verified. Receipt:
+`upgrades/*-f60efe3/installed.json`; private resume log:
+`/private/tmp/virfield-complete-install-f60efe3.log`.
+
+The browser layout/OS-minimum corrections and private desktop SSH-stage trace
+described below are now installed. New layout visual acceptance and targeted HTPC
+diagnosis remain open; the diagnostic does not establish the old timeout's cause.
+The user explicitly authorized the reviewed Background-to-Standard service
+migration. `sudo -n` required a password, and the GUI tool refused Terminal access;
+the operator was given the exact prepared command to execute locally. At 14:51 UTC
+the service was still Background. No concurrent VM or daemon mutation may race
+that pending maintenance. Existing golden permission approval remains separate.
+The actual owning MCP still has no accepted reconnect.
+
+The following `614daf5` paragraphs retain the preceding guest-policy evidence.
+
 Deployment checkpoint: `614daf5` / `0.0.0-keychain-cache-refresh` is installed
 with private backup, the previous signing/FDA identity, configuration, keys and
 all seven baseline images/manifests preserved. Exact archive stdio and installed
