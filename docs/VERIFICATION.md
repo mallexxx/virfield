@@ -24,14 +24,25 @@ all seven baseline image manifests were verified. Receipt:
 `/private/tmp/virfield-complete-install-f60efe3.log`.
 
 The browser layout/OS-minimum corrections and private desktop SSH-stage trace
-described below are now installed. New layout visual acceptance and targeted HTPC
-diagnosis remain open; the diagnostic does not establish the old timeout's cause.
-The user explicitly authorized the reviewed Background-to-Standard service
-migration. `sudo -n` required a password, and the GUI tool refused Terminal access;
-the operator was given the exact prepared command to execute locally. At 14:51 UTC
-the service was still Background. No concurrent VM or daemon mutation may race
-that pending maintenance. Existing golden permission approval remains separate.
-The actual owning MCP still has no accepted reconnect.
+described below are installed. After the operator executed the explicitly approved
+service migration, external verification confirmed that only `ProcessType` changed
+from Background to Standard. The daemon restarted as PID 65903; signed binary
+hashes, configuration, keys and all seven baseline images remained intact. The API
+was healthy and the pool idle. Exact installed HTTP/fresh stdio version, all four
+runbooks/resources, status and anonymous 401 passed again (0.18 seconds). Receipt:
+`/private/tmp/virfield-standard-migration-external-verification-20261015.json`.
+
+A fresh installed browser process passed Safari URL handoff and loaded Apple's
+real sign-in page with a synthetic, non-authenticating link. Visual inspection
+confirmed that the long URL occupies a separate bounded row and Continue remains
+visible. Clicking Continue rejected the invalid link with an expired-link message.
+No account credentials were entered or authenticated download resumed. Only the
+own test app and Safari tab were closed. Receipt:
+`/private/tmp/virfield-native-browser-gui-f60efe3-20261015.json`.
+Targeted HTPC transport diagnosis remains open; the trace itself does not establish
+the old timeout's cause. Existing golden permission approval remains separate.
+The actual owning MCP still returns `Transport closed`; fresh stdio does not close
+that acceptance gate.
 
 The following `614daf5` paragraphs retain the preceding guest-policy evidence.
 
@@ -72,23 +83,23 @@ Both fixtures were released with original journaled keys after evidence capture.
 Evidence: `virfield-installed-htpc-native-614daf5-coexist-20261015` and
 `virfield-installed-htpc-native-614daf5-reconnect-20261015` under `/private/tmp`.
 
-The next source adds a private fixed-desktop-probe transport trace distinguishing
+Installed `f60efe3` adds a private fixed-desktop-probe transport trace distinguishing
 channel-open, exec acknowledgement and command-exit waits. It records no command
 or input. Real stalled-SSH fixtures verify all three stages, cancellation and
 owner-only diagnostic files. This adds evidence, not an unverified timeout fix.
 The GUI browser launched and its registered URL scheme opened Apple's real
 sign-in page using a synthetic, non-authenticating link; no account credentials
 were entered or Xcode download resumed. A long address displaced Continue beyond
-the window, so the next layout gives the address its own bounded row. The build
+the window; the installed correction gives the address its own bounded row. The build
 also now targets the plist's macOS 13 minimum explicitly: the previous Mach-O
 required 26 despite the plist claiming 13. The new build's Mach-O reports 13;
-this metadata/compiler check is not a live macOS 13 host acceptance. New GUI
-visual acceptance and clean packaging remain required.
+this metadata/compiler check is not a live macOS 13 host acceptance. Clean
+packaging and new GUI visual acceptance subsequently passed as recorded above.
 
 Lume was rechecked at 14:07 UTC: disabled, unloaded and port 7777 closed. The
-installed root LaunchDaemon remains Background; the separate reviewed migration
-to Standard awaits administrator authorization. Existing HTPC golden permission
-migration remains separately unapproved. The user confirmed the Mac is unlocked;
+root LaunchDaemon was still Background at that observation; its explicitly
+approved migration to Standard subsequently passed as recorded above. Existing
+HTPC golden permission migration remains separately unapproved. The user confirmed the Mac is unlocked;
 GUI work is authorized, while authenticated Apple download completion is a
 separate untested flow. Full release acceptance remains open.
 
@@ -871,14 +882,15 @@ revocation alongside SSH, cross-key/image-key rejection, workload and artifacts.
   Fresh native Monterey acceptance passed on the corrected guest code.
   Node conversion privacy and overall preparation corrections are installed;
   factory roundtrip and controller-binary rollback/forward passed.
-- Investigate the retained inherited-desktop SSH command timeout; the next private
-  transport trace distinguishes channel, exec and exit waits. Complete the HTPC
+- Investigate the retained inherited-desktop SSH command timeout; the installed
+  private transport trace distinguishes channel, exec and exit waits. Complete the HTPC
   matrix after a verified correction, without extending deadlines blindly.
 - Reconnect the actual owning MCP clients after installation and verify their
   version, runbooks and workflow; a fresh adapter alone cannot attest old sessions.
-- Finish native browser visual acceptance after the long-address layout fix.
-  GUI launch/URL handoff/real Apple sign-in-page loading passed; authenticated
-  cookie handoff/download completion has not been exercised by this GUI smoke.
+- Preserve the passed installed browser layout, URL-handoff and real Apple
+  sign-in-page GUI receipt. Authenticated cookie handoff/download completion
+  has not been exercised by this synthetic-link smoke; it requires a real pending
+  download and an operator's Apple sign-in.
 - Complete permission migration for existing HTPC secured goldens after approval;
   separate authorization is still pending, and read-only inspection confirmed mode 0444.
 - Preserve the accepted private GHCR roundtrip receipt above; repeat this gate
