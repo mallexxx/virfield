@@ -80,8 +80,13 @@ Per-lease password, management key, caller key and SSH host-key rotation apply
 before VM readiness. Inherited image and cross-lease keys must be rejected.
 Physical host leases add only one caller key to the configured shared account.
 
-VM qualification and lease preparation also install a private per-image/per-lease
-default keychain and an Aqua login LaunchAgent. It preserves and rekeys the inherited login keychain to the current private VM password, verifies native access with that new password, and keeps it searchable for OS services such as ScopedBookmarkAgent. It unlocks before applying the
+VM qualification and lease preparation install an additional private keychain
+named for the image/lease and an Aqua login LaunchAgent. They preserve/rekey the
+inherited login keychain to the current private VM password and keep login as the
+default and first search entry across boots. This lets loginwindow unlock it
+before Spotlight and other early OS clients, which can otherwise queue password
+dialogs for a custom default before the owned agent starts. The agent verifies
+native access with the current password and unlocks before applying the
 no-sleep/no-timeout-lock settings, and repeats at each GUI login. Passwords travel
 on encrypted SSH stdin and live only in owner-only guest files; inherited keychain
 files are preserved. A fresh native `WhenUnlocked` generic-password add/read/data
@@ -93,6 +98,10 @@ SSH has a separate Security audit session. A fixed VM-only `sshd` ForceCommand
 bridge unlocks that same private keychain immediately before each original client
 command. It preserves command arguments/stdin, interactive shells and SFTP/SCP.
 Readiness independently requires native key access from an SSH command session.
+Full GUI readiness additionally requires a logged-in, unlocked console and an
+available window snapshot without Keyboard Setup Assistant or SecurityAgent.
+General/per-host screensaver idle is disabled; autologin preparation clears and
+verifies the persisted lock flag. Existing login items are never deleted.
 Failure is `guest_keychain_failed`; the image/lease does not become ready. This
 policy applies to VMs, including node VM qualification, and does not alter shared
 physical-host keychains. Existing ready images are historical evidence: new

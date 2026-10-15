@@ -43,10 +43,16 @@ chmod 700 "$dir"
 
 if [[ "$mode" == ensure ]]; then
   [[ -n "$password" ]] || exit 64
+  # Display sleep and screen-saver idle are independent. An idle saver can lock
+  # the GUI and persist autoLoginUserScreenLocked across the next reboot.
+  /usr/bin/defaults write com.apple.screensaver idleTime -int 0
+  /usr/bin/defaults -currentHost write com.apple.screensaver idleTime -int 0
   # The lab's QEMU USB keyboard has no learned layout in the source golden.
   # Register only that fixed virtual ANSI device; preserve every other entry.
   if [[ "$(sysctl -n hw.model)" == iMacPro1,1 ]] && /usr/sbin/ioreg -r -c IOHIDDevice -l | grep -F '"Product" = "QEMU USB Keyboard"' >/dev/null; then
-    printf '%s\n' "$password" | sudo -S -p '' /usr/bin/defaults write /Library/Preferences/com.apple.keyboardtype keyboardtype -dict-add '1-1575-0' -int 40
+    for vf_keyboard in 1-1575-0 65535-1452-0; do
+      printf '%s\n' "$password" | sudo -S -p '' /usr/bin/defaults write /Library/Preferences/com.apple.keyboardtype keyboardtype -dict-add "$vf_keyboard" -int 40
+    done
   fi
   # Replace only Virfield's own agent; preserve all existing keychain files.
   launchctl bootout "gui/$uid/$label" 2>/dev/null || true
@@ -85,10 +91,24 @@ function run() {
 }
 DISPLAY
   cat > "$dir/probe.js" <<'JXA'
-ObjC.import('Foundation'); ObjC.import('Security'); ObjC.import('AppKit');
+ObjC.import('Foundation'); ObjC.import('Security');
 // Override JXA's opaque CFTypeRef output metadata with an object reference.
 ObjC.bindFunction('SecItemCopyMatching', ['int', ['id', 'id*']]);
+// ai.virfield.console-state begin
+function virfieldConsoleState(session) {
+  var lock = session && session.CGSSessionScreenIsLocked;
+  var available = !!session && session.kCGSSessionOnConsoleKey === true && session.kCGSessionLoginDoneKey === true &&
+    (typeof lock === 'undefined' || typeof lock === 'boolean');
+  return {ready:available && lock !== true, screen_locked:available ? lock === true : null};
+}
+// ai.virfield.console-state end
 function run(argv) {
+  var loginOnly = argv[3] === 'login';
+  if (!loginOnly) {
+    ObjC.import('AppKit'); ObjC.import('CoreGraphics');
+    ObjC.bindFunction('CGWindowListCopyWindowInfo', ['id', ['unsigned int', 'unsigned int']]);
+    ObjC.bindFunction('CGSessionCopyCurrentDictionary', ['id', []]);
+  }
   $.SecKeychainSetUserInteractionAllowed(false);
   var sid = Ref(), attributes = Ref(), flags = Ref();
   var session = Number($.SessionGetInfo(4294967295, sid, attributes));
@@ -119,20 +139,44 @@ function run(argv) {
     // Delete only this request's unique probe, never an application item.
     remove = Number($.SecItemDelete(query));
   }
-  var size = $.NSScreen.mainScreen.frame.size;
+  var size = {width:0, height:0};
   var displayManaged = ObjC.unwrap($.NSProcessInfo.processInfo.environment.objectForKey('VIRFIELD_DISPLAY_MANAGED')) === '1';
-  var keyboardSetup = false, apps = $.NSWorkspace.sharedWorkspace.runningApplications;
-  for (var i = 0; i < Number(apps.count); i++) {
-    if (ObjC.unwrap(apps.objectAtIndex(i).bundleIdentifier) === 'com.apple.KeyboardSetupAssistant') keyboardSetup = true;
+  var keyboardSetup = false, securityDialog = false, snapshotAvailable = false;
+  var consoleReady = false, screenLocked = null;
+  if (!loginOnly) {
+    size = $.NSScreen.mainScreen.frame.size;
+    if (aqua) {
+      var console = virfieldConsoleState(ObjC.deepUnwrap($.CGSessionCopyCurrentDictionary()));
+      screenLocked = console.screen_locked; consoleReady = console.ready;
+      var apps = $.NSWorkspace.sharedWorkspace.runningApplications, keyboardPIDs = {}, securityPIDs = {};
+      for (var i = 0; i < Number(apps.count); i++) {
+        var app = apps.objectAtIndex(i), bundle = String(ObjC.unwrap(app.bundleIdentifier)).toLowerCase();
+        if (bundle === 'com.apple.keyboardsetupassistant') keyboardPIDs[String(Number(app.processIdentifier))] = true;
+        if (bundle === 'com.apple.securityagent') securityPIDs[String(Number(app.processIdentifier))] = true;
+      }
+      var windows = ObjC.deepUnwrap($.CGWindowListCopyWindowInfo(17, 0));
+      snapshotAvailable = Array.isArray(windows);
+      if (snapshotAvailable) {
+        for (var i = 0; i < windows.length; i++) {
+          var window = windows[i], pid = String(window.kCGWindowOwnerPID), owner = String(window.kCGWindowOwnerName);
+          if (Number(window.kCGWindowAlpha) <= 0) continue;
+          if (keyboardPIDs[pid] || owner === 'KeyboardSetupAssistant' || owner === 'Keyboard Setup Assistant') keyboardSetup = true;
+          if (securityPIDs[pid] || owner === 'SecurityAgent') securityDialog = true;
+        }
+      }
+    }
   }
+  var keychainReady = (aqua || argv[3] === 'ssh') && unlocked && add === 0 && read === 0 && remove === 0 && equal;
   return JSON.stringify({version:1, scope:argv[0], nonce:argv[1], boot:argv[2],
     display_width:size.width, display_height:size.height, display_managed:displayManaged,
-    keyboard_setup_visible:keyboardSetup,
+    keyboard_setup_visible:keyboardSetup, security_dialog_visible:securityDialog,
+    desktop_snapshot_available:snapshotAvailable, keychain_ready:keychainReady,
+    console_ready:consoleReady, screen_locked:screenLocked,
     session_id:Number(sid[0]), aqua:aqua, unlocked:unlocked,
     add_status:add, read_status:read, delete_status:remove, value_equal:equal,
     // SSH may report a synthetic screen for its separate WindowServer session.
     // UI geometry is certified in Aqua; SSH only certifies keychain access.
-    ready:(aqua || argv[3] === 'ssh') && unlocked && add === 0 && read === 0 && remove === 0 && equal && (!aqua || !keyboardSetup) && (!displayManaged || !aqua || size.width === 1920 && size.height === 1080)});
+    ready:!loginOnly && keychainReady && (!aqua || consoleReady && snapshotAvailable && !keyboardSetup && !securityDialog) && (!displayManaged || !aqua || size.width === 1920 && size.height === 1080)});
 }
 JXA
   cat > "$dir/session.sh" <<'AGENT'
@@ -198,24 +242,19 @@ if [[ "$mode" == ensure ]]; then
     for candidate in "$password" "$previous" "$(id -un)"; do
       [[ -n "$candidate" ]] || continue
       attempt=$((attempt+1))
-      /usr/bin/security lock-keychain "$login"
-      /usr/bin/security unlock-keychain -p "$candidate" "$login" 2>/dev/null || continue
+      # Changing the password authenticates the old secret even when unlocked.
+      # Never lock the real login keychain just to test a candidate: OS clients
+      # can leave a persistent modal unlock request during that artificial gap.
+      phase login-rekey
+      /usr/bin/security set-keychain-password -o "$candidate" -p "$password" "$login" 2>/dev/null || continue
+      /usr/bin/security unlock-keychain -p "$password" "$login"
       /usr/bin/security default-keychain -d user -s "$login"
       /usr/bin/security list-keychains -d user -s "$login" /Library/Keychains/System.keychain
-      phase login-native-io
-      /usr/bin/osascript -l JavaScript "$dir/probe.js" "$scope" "$nonce-login-$attempt" "$boot" > "$dir/login-result"
-      grep -q '"ready":true' "$dir/login-result" || continue
-      if [[ "$candidate" != "$password" ]]; then
-        phase login-rekey
-        /usr/bin/security set-keychain-password -o "$candidate" -p "$password" "$login"
-      fi
-      # A wrong-password unlock may report success on newer macOS. Lock again,
-      # authenticate with the NEW password, then require application-style I/O.
-      /usr/bin/security lock-keychain "$login"
-      /usr/bin/security unlock-keychain -p "$password" "$login"
       phase login-new-native-io
-      /usr/bin/osascript -l JavaScript "$dir/probe.js" "$scope" "$nonce-login-new" "$boot" > "$dir/login-result"
-      grep -q '"ready":true' "$dir/login-result" || exit 65
+      /usr/bin/osascript -l JavaScript "$dir/probe.js" "$scope" "$nonce-login-new" "$boot" login > "$dir/login-result"
+      # Desktop overlays do not make an authenticated password incorrect.
+      # An I/O failure after successful rekey is held, never a password fallback.
+      grep -q '"keychain_ready":true' "$dir/login-result" || exit 65
       chmod 600 "$login"
       /usr/bin/security set-keychain-settings "$login"
       ready=true; break
@@ -237,18 +276,33 @@ if [[ "$mode" == ensure ]]; then
   # Equivalent to CI's no-sleep/no-timeout-lock policy. The private password
   # belongs to this image/lease, never the public CI password "default".
   /usr/bin/security set-keychain-settings "$keychain"
-  /usr/bin/security default-keychain -d user -s "$keychain"
+  # ai.virfield.default-keychain-policy begin
+  # loginwindow automatically unlocks login, not an arbitrary custom default.
+  # Leaving the scoped keychain as default makes early OS clients (Spotlight)
+  # queue password dialogs before this demand-started Aqua agent can unlock it.
+  # Keep the preserved/rekeyed login default across boots; the scoped keychain
+  # remains private, unlocked and explicitly searchable for scoped consumers.
   if [[ -e "$login" ]]; then
-    /usr/bin/security list-keychains -d user -s "$keychain" "$login" /Library/Keychains/System.keychain
+    /usr/bin/security default-keychain -d user -s "$login"
+    /usr/bin/security list-keychains -d user -s "$login" "$keychain" /Library/Keychains/System.keychain
   else
-    /usr/bin/security list-keychains -d user -s "$keychain" /Library/Keychains/System.keychain
+    # A VM account without a login keychain cannot satisfy automatic GUI access.
+    exit 65
   fi
+  # ai.virfield.default-keychain-policy end
 fi
 default="$(/usr/bin/security default-keychain -d user)"
-[[ "$default" == *\""$keychain"\" ]] || exit 65
+[[ "$default" == *\""$HOME/Library/Keychains/login.keychain-db"\" ]] || exit 65
 [[ "$(stat -f %u:%Lp "$keychain")" == "$(id -u):600" ]] || exit 65
-phase scoped-native-io
+phase default-native-io
 /usr/bin/osascript -l JavaScript "$dir/probe.js" "$scope" "$nonce" "$boot" > "$dir/result.next"
+# A virtual keyboard assistant can appear after the early login dismissal.
+# Retry only a completed, fully cleaned-up I/O probe blocked by that known UI.
+if [[ "$(sysctl -n hw.model)" == iMacPro1,1 ]] && grep -q '"keychain_ready":true' "$dir/result.next" && grep -q '"keyboard_setup_visible":true' "$dir/result.next"; then
+  phase virtual-keyboard-late
+  /usr/bin/killall KeyboardSetupAssistant 2>/dev/null || true
+  /usr/bin/osascript -l JavaScript "$dir/probe.js" "$scope" "$nonce" "$boot" > "$dir/result.next"
+fi
 # ai.virfield.desktop-protocol begin
 if [[ "$scope" == lease-* ]]; then
   # A listening launchd socket does not attest a cold Screen Sharing process.
@@ -337,10 +391,10 @@ if [[ "$scope" == lease-* ]]; then
 fi
 export VIRFIELD_GUI_WAIT_ELAPSED=$((SECONDS-gui_started))
 # ai.virfield.ssh-gui-startup end
-/usr/bin/security unlock-keychain -p "$password" "$keychain" >/dev/null
 if [[ -e "$HOME/Library/Keychains/login.keychain-db" ]]; then
   /usr/bin/security unlock-keychain -p "$password" "$HOME/Library/Keychains/login.keychain-db" >/dev/null
 fi
+/usr/bin/security unlock-keychain -p "$password" "$keychain" >/dev/null
 unset password
 export VIRFIELD_DISPLAY_MANAGED=0
 [[ "$(/usr/sbin/sysctl -n hw.model)" != VirtualMac* ]] || export VIRFIELD_DISPLAY_MANAGED=1

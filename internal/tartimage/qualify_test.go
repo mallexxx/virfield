@@ -67,7 +67,7 @@ func (s fakeSession) RunReader(ctx context.Context, _ time.Duration, command str
 		if len(fields) > 3 {
 			scope, nonce = fields[2], fields[4]
 		}
-		out, _ := json.Marshal(guestkeychain.Proof{Version: 1, Scope: scope, Nonce: nonce, Boot: "boot-fixture", SessionID: 123, Aqua: true, Unlocked: !s.keychainLocked, ValueEqual: true, Ready: true})
+		out, _ := json.Marshal(guestkeychain.Proof{Version: 1, Scope: scope, Nonce: nonce, Boot: "boot-fixture", SessionID: 123, Aqua: true, Unlocked: !s.keychainLocked, ValueEqual: true, Ready: true, DesktopSnapshotAvailable: true, ConsoleReady: true})
 		return string(out), nil
 	}
 	return s.Run(ctx, command, "")

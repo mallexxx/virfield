@@ -17,24 +17,28 @@ type Guest interface {
 }
 
 type Proof struct {
-	Version              int    `json:"version"`
-	Scope                string `json:"scope"`
-	Nonce                string `json:"nonce"`
-	Boot                 string `json:"boot"`
-	SessionID            int    `json:"session_id"`
-	Aqua                 bool   `json:"aqua"`
-	Unlocked             bool   `json:"unlocked"`
-	AddStatus            int    `json:"add_status"`
-	ReadStatus           int    `json:"read_status"`
-	DeleteStatus         int    `json:"delete_status"`
-	ValueEqual           bool   `json:"value_equal"`
-	Ready                bool   `json:"ready"`
-	SSHSessionID         int    `json:"ssh_session_id,omitempty"`
-	SSHVerified          bool   `json:"ssh_verified"`
-	DisplayWidth         int    `json:"display_width,omitempty"`
-	DisplayHeight        int    `json:"display_height,omitempty"`
-	DisplayManaged       bool   `json:"display_managed"`
-	KeyboardSetupVisible bool   `json:"keyboard_setup_visible"`
+	Version                  int    `json:"version"`
+	Scope                    string `json:"scope"`
+	Nonce                    string `json:"nonce"`
+	Boot                     string `json:"boot"`
+	SessionID                int    `json:"session_id"`
+	Aqua                     bool   `json:"aqua"`
+	Unlocked                 bool   `json:"unlocked"`
+	AddStatus                int    `json:"add_status"`
+	ReadStatus               int    `json:"read_status"`
+	DeleteStatus             int    `json:"delete_status"`
+	ValueEqual               bool   `json:"value_equal"`
+	Ready                    bool   `json:"ready"`
+	SSHSessionID             int    `json:"ssh_session_id,omitempty"`
+	SSHVerified              bool   `json:"ssh_verified"`
+	DisplayWidth             int    `json:"display_width,omitempty"`
+	DisplayHeight            int    `json:"display_height,omitempty"`
+	DisplayManaged           bool   `json:"display_managed"`
+	KeyboardSetupVisible     bool   `json:"keyboard_setup_visible"`
+	SecurityDialogVisible    bool   `json:"security_dialog_visible"`
+	DesktopSnapshotAvailable bool   `json:"desktop_snapshot_available"`
+	ConsoleReady             bool   `json:"console_ready"`
+	ScreenLocked             bool   `json:"screen_locked"`
 }
 
 // Ensure installs the private per-image/lease keychain and GUI login agent.
@@ -80,7 +84,7 @@ func run(ctx context.Context, g Guest, mode, user, scope, password, previous str
 		budget = 10 * time.Minute
 	}
 	out, err := g.RunReader(ctx, budget, command, strings.NewReader(input))
-	if err != nil || json.Unmarshal([]byte(out), &proof) != nil || proof.Version != 1 || proof.Scope != scope || proof.Nonce != nonce || !domain.ValidName(proof.Boot) || proof.SessionID < 1 || !proof.Aqua || !proof.Unlocked || !proof.ValueEqual || !proof.Ready || proof.AddStatus != 0 || proof.ReadStatus != 0 || proof.DeleteStatus != 0 || proof.KeyboardSetupVisible || proof.DisplayManaged && (proof.DisplayWidth != 1920 || proof.DisplayHeight != 1080) {
+	if err != nil || json.Unmarshal([]byte(out), &proof) != nil || proof.Version != 1 || proof.Scope != scope || proof.Nonce != nonce || !domain.ValidName(proof.Boot) || proof.SessionID < 1 || !proof.Aqua || !proof.Unlocked || !proof.ValueEqual || !proof.Ready || proof.AddStatus != 0 || proof.ReadStatus != 0 || proof.DeleteStatus != 0 || proof.KeyboardSetupVisible || proof.SecurityDialogVisible || !proof.DesktopSnapshotAvailable || !proof.ConsoleReady || proof.ScreenLocked || proof.DisplayManaged && (proof.DisplayWidth != 1920 || proof.DisplayHeight != 1080) {
 		return reject(ctx, g, "gui", out)
 	}
 	// A GUI unlock does not unlock a new SSH Security audit session. The fixed
@@ -116,5 +120,5 @@ func reject(ctx context.Context, g Guest, stage, output string) (Proof, error) {
 }
 
 func failure() error {
-	return domain.Err("guest_keychain_failed", "VM GUI or SSH keychain is unavailable, locked or cannot store/read an application key; image/lease will not be ready")
+	return domain.Err("guest_keychain_failed", "VM native GUI/SSH keychain I/O or an unlocked, unobstructed console could not be verified; image/lease will not be ready")
 }

@@ -9,7 +9,16 @@ import (
 )
 
 // DesktopProbe reports assistant, desktop or waiting.
-const DesktopProbe = "if /usr/bin/pgrep -x 'Setup Assistant' >/dev/null; then echo assistant; elif test -f /var/db/.AppleSetupDone && /usr/bin/pgrep -x Finder >/dev/null; then echo desktop; else echo waiting; fi"
+const DesktopProbe = `if /usr/bin/pgrep -x 'Setup Assistant' >/dev/null; then echo assistant; elif test -f /var/db/.AppleSetupDone && /usr/bin/pgrep -x Finder >/dev/null; then /usr/bin/osascript -l JavaScript -e 'ObjC.import("CoreGraphics"); ObjC.bindFunction("CGSessionCopyCurrentDictionary", ["id", []]);
+// ai.virfield.console-state begin
+function virfieldConsoleState(session) {
+  var lock = session && session.CGSSessionScreenIsLocked;
+  var available = !!session && session.kCGSSessionOnConsoleKey === true && session.kCGSessionLoginDoneKey === true &&
+    (typeof lock === "undefined" || typeof lock === "boolean");
+  return {ready:available && lock !== true, screen_locked:available ? lock === true : null};
+}
+// ai.virfield.console-state end
+function run() { return virfieldConsoleState(ObjC.deepUnwrap($.CGSessionCopyCurrentDictionary())).ready ? "desktop" : "waiting"; }'; else echo waiting; fi`
 
 // WaitDesktop polls until Setup Assistant appears or Finder stays up for settle.
 func WaitDesktop(ctx context.Context, poll, settle time.Duration, observe func(context.Context) (string, error)) (string, error) {
@@ -40,7 +49,7 @@ func WaitDesktop(ctx context.Context, poll, settle time.Duration, observe func(c
 	}
 }
 
-// Desktop requires a settled Finder desktop within two minutes. Setup
+// Desktop requires a settled, unlocked console Finder within two minutes. Setup
 // Assistant is a failure here: adopted images never automate it.
 func Desktop(ctx context.Context, g Guest) error {
 	wait, cancel := context.WithTimeout(ctx, 2*time.Minute)

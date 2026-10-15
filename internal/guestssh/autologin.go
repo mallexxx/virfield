@@ -31,6 +31,7 @@ printf '%s' "$kcpassword" | /usr/bin/base64 -D > ~/.ssh/virfield-kcpassword
 printf '%s\n' "$new" | sudo -S -p '' /usr/bin/install -o root -g wheel -m 600 ~/.ssh/virfield-kcpassword /etc/kcpassword
 /bin/rm ~/.ssh/virfield-kcpassword
 printf '%s\n' "$new" | sudo -S -p '' /usr/bin/defaults write /Library/Preferences/com.apple.loginwindow autoLoginUser -string "$user"
+printf '%s\n' "$new" | sudo -S -p '' /usr/bin/defaults write /Library/Preferences/com.apple.loginwindow autoLoginUserScreenLocked -bool false
 
 `
 
@@ -42,7 +43,7 @@ func VerifyAutoLogin(ctx context.Context, g *Client, user, password string) erro
 	if !domain.ValidName(user) {
 		return failure
 	}
-	out, err := g.Run(ctx, `test "$(/usr/bin/defaults read /Library/Preferences/com.apple.loginwindow autoLoginUser)" = '`+user+`' && sudo -S -p '' /bin/sh -c 'test "$(/usr/bin/stat -f %u:%g:%Lp /etc/kcpassword)" = 0:0:600 && /usr/bin/base64 -i /etc/kcpassword'`, password+"\n")
+	out, err := g.Run(ctx, `test "$(/usr/bin/defaults read /Library/Preferences/com.apple.loginwindow autoLoginUser)" = '`+user+`' && test "$(/usr/bin/defaults read /Library/Preferences/com.apple.loginwindow autoLoginUserScreenLocked)" = 0 && sudo -S -p '' /bin/sh -c 'test "$(/usr/bin/stat -f %u:%g:%Lp /etc/kcpassword)" = 0:0:600 && /usr/bin/base64 -i /etc/kcpassword'`, password+"\n")
 	if err != nil || !matchesLoginPassword(out, password) {
 		return failure
 	}

@@ -145,10 +145,12 @@ an active lease's key for another lease. No generic workload, artifact uploader,
 Xcode project scheme or repository checkout is inferred by the VM manager.
 
 New VM preparation verifies GUI and SSH keychain access. The VM unlocks its own
-private default keychain in the Aqua login session and before each SSH command;
+login default, rekeyed to the VM's private password, in Aqua and before each SSH command;
 ordinary `ssh`, `scp` and `xcodebuild` commands need no public CI password or
 manual Terminal/AppleScript unlock. Old installed goldens/leases can lack this
 mechanism; inspect [Verification](VERIFICATION.md) before assuming it is deployed.
+Readiness also requires an unlocked console and no visible keychain password
+dialog. A running Finder or successful native I/O alone does not prove this.
 
 Tart workers use a fixed 1920×1080 logical desktop. Workspace sharing is not
 configured: copy the selected checkout and DerivedData over pinned SSH. For the

@@ -428,7 +428,8 @@ expiry and verified identity/state changes still revoke the tunnels. Two verifie
 stopped VM or a changed known endpoint still require release. Never repair a real
 drift by rewriting stored addresses or disabling SSH pins.
 
-The candidate prepares an owner-only default keychain named for each image/lease,
+The candidate preserves/rekeys the login default and prepares an additional
+owner-only keychain named for each image/lease,
 an Aqua LaunchAgent (`ai.virfield.guest-keychain`) and a VM-only SSH command bridge
 (`/etc/ssh/sshd_config.d/001-virfield-keychain.conf`). Guest state is private under
 `~/.virfield-keychain`. Worker preparation first requires the inherited Finder
@@ -446,7 +447,32 @@ its own Security audit session. This wait is bounded and does not consume the
 original command's stdin. Image bootstrap SSH is exempt so it can prepare the GUI.
 Only a completed automatic startup in the same scope, boot and Aqua audit session
 can be reused; explicit nonce-bearing native requests always run again.
-The inherited login keychain's items are retained and its password is rotated to match the VM; this prevents OS services from leaving old login-keychain password dialogs on screen. Its native access is verified after lock/unlock with the new password. Tart clones and factory recipes request `1920x1080px` (72 PPI), independent of the host Retina scale. Point units, including an omitted unit, can leave Monterey at 3840×2160 without a 1920×1080 mode. The actual 1920×1080 desktop is selected and verified inside Aqua before native keychain acceptance. Shared physical nodes are not
+The inherited login keychain's items are retained and its password is rotated to
+match the VM. It remains the default and first in the search list across boots:
+loginwindow unlocks it during automatic login, before early OS clients start.
+A custom scoped default can leave Spotlight password dialogs queued before the
+owned Aqua agent starts, even if that agent subsequently unlocks it.
+The password-change API authenticates each old-password candidate
+without deliberately locking the login keychain; an artificial lock can leave an
+OS client's password dialog open even after a successful unlock. Successful rekey
+is followed by native WhenUnlocked add/read/delete with the new password. A
+desktop overlay cannot select another password, and failed I/O after successful
+authentication fails preparation without trying another secret. Full readiness
+separately requires an available Aqua window snapshot with no visible Keyboard
+Setup Assistant or SecurityAgent window. An already queued OS password dialog is
+not dismissed by native I/O success; preserve diagnostics and fail readiness.
+It also requires the current, logged-in console to be unlocked; Finder and an
+Aqua audit session can remain alive behind the lock screen. Automation disables
+both general and per-host screensaver idle time. Account/autologin preparation
+clears and verifies `autoLoginUserScreenLocked`; this flag otherwise restores an
+earlier idle lock after reboot even when system/display sleep are disabled.
+The read-only inherited desktop preflight requires an unlocked console before
+credential rotation. It never types a password into an existing lock screen.
+The fixed QEMU USB and Apple PS/2 ANSI keyboard mappings preserve other devices.
+Only the virtual Keyboard Setup Assistant may be closed; SecurityAgent is never
+killed or answered by this agent.
+
+Tart clones and factory recipes request `1920x1080px` (72 PPI), independent of the host Retina scale. Point units, including an omitted unit, can leave Monterey at 3840×2160 without a 1920×1080 mode. The actual 1920×1080 desktop is selected and verified inside Aqua before native keychain acceptance. Shared physical nodes are not
 modified by this VM preparation policy.
 
 Console, automatic startup and fresh native-result observations share one

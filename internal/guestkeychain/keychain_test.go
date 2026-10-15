@@ -61,7 +61,7 @@ func (g *fakeGuest) RunReader(ctx context.Context, timeout time.Duration, comman
 	if len(fields) > 3 {
 		scope, nonce = fields[2], fields[4]
 	}
-	p := Proof{Version: 1, Scope: scope, Nonce: nonce, Boot: "11111111-1111-1111-1111-111111111111", SessionID: 100001, Aqua: true, Unlocked: true, ValueEqual: true, Ready: true}
+	p := Proof{Version: 1, Scope: scope, Nonce: nonce, Boot: "11111111-1111-1111-1111-111111111111", SessionID: 100001, Aqua: true, Unlocked: true, ValueEqual: true, Ready: true, DesktopSnapshotAvailable: true, ConsoleReady: true}
 	if g.change != nil {
 		g.change(&p)
 	}
@@ -116,17 +116,21 @@ func TestGUIUnlockDoesNotSubstituteForSSHSessionAccess(t *testing.T) {
 
 func TestKeychainReadinessRejectsMisleadingSuccess(t *testing.T) {
 	for name, change := range map[string]func(*Proof){
-		"ssh session":       func(p *Proof) { p.Aqua = false },
-		"locked":            func(p *Proof) { p.Unlocked = false },
-		"write auth failed": func(p *Proof) { p.AddStatus = -25293 },
-		"read denied":       func(p *Proof) { p.ReadStatus = -25308 },
-		"different data":    func(p *Proof) { p.ValueEqual = false },
-		"cleanup denied":    func(p *Proof) { p.DeleteStatus = -25308 },
-		"old request":       func(p *Proof) { p.Nonce = "keychain-old" },
-		"different lease":   func(p *Proof) { p.Scope = "lease-other" },
-		"no audit session":  func(p *Proof) { p.SessionID = 0 },
-		"clipped desktop":   func(p *Proof) { p.DisplayManaged = true; p.DisplayWidth = 1024; p.DisplayHeight = 768 },
-		"keyboard setup":    func(p *Proof) { p.KeyboardSetupVisible = true },
+		"ssh session":         func(p *Proof) { p.Aqua = false },
+		"locked":              func(p *Proof) { p.Unlocked = false },
+		"write auth failed":   func(p *Proof) { p.AddStatus = -25293 },
+		"read denied":         func(p *Proof) { p.ReadStatus = -25308 },
+		"different data":      func(p *Proof) { p.ValueEqual = false },
+		"cleanup denied":      func(p *Proof) { p.DeleteStatus = -25308 },
+		"old request":         func(p *Proof) { p.Nonce = "keychain-old" },
+		"different lease":     func(p *Proof) { p.Scope = "lease-other" },
+		"no audit session":    func(p *Proof) { p.SessionID = 0 },
+		"clipped desktop":     func(p *Proof) { p.DisplayManaged = true; p.DisplayWidth = 1024; p.DisplayHeight = 768 },
+		"keyboard setup":      func(p *Proof) { p.KeyboardSetupVisible = true },
+		"password dialog":     func(p *Proof) { p.SecurityDialogVisible = true },
+		"desktop unavailable": func(p *Proof) { p.DesktopSnapshotAvailable = false },
+		"console unavailable": func(p *Proof) { p.ConsoleReady = false },
+		"locked screen":       func(p *Proof) { p.ScreenLocked = true },
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := Verify(context.Background(), &fakeGuest{change: change}, "admin", "lease-fixture")

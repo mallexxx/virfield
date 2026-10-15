@@ -10,6 +10,17 @@ are distinct artifacts.
 
 ## Acceptance checkpoint (2026-10-15)
 
+Current deployment remains `750a896` / `0.0.0-observation-recovery`.
+Source `636967b` adds the demand-start/worker SSH gate; the subsequent correction
+separate login-password authentication from desktop readiness and detect visible
+SecurityAgent dialogs. These changes are not yet an accepted installed matrix.
+Both retained Sequoia fixtures from this run have been released with their
+original durable cleanup keys and SSH revocation verified. A new foreign macOS 27
+lease `lease-8bec7ed8310ad4045c78a04a07174045` became ready at the next checkpoint;
+installation/restart waits for the entire pool to become idle. No foreign VM
+is changed. The owning MCP process still serves `2724f94`; exact fresh
+stdio acceptance does not upgrade that already-connected process.
+
 Deployment snapshot at 09:47 UTC: `558a6cb` / `0.0.0-cold-reboot-checkpoint`
 is installed with its original signing/FDA identity, private backup and all seven
 image manifests preserved. The unrelated MacBook lease was released by its owner
@@ -108,8 +119,8 @@ repeat is storage-blocked: its internal container had about 100 GB available,
 below the approximately 150 GB full-growth-plus-reserve admission requirement.
 No reserve was lowered and no cross-container workaround or foreign cleanup was
 attempted. Earlier accepted iPad receipts retain their dated scope. A new
-concurrent HTPC matrix on `750a896` is still running; the first Sonoma passed
-native I/O before its reboot. Private journals:
+concurrent HTPC matrix on `750a896` subsequently exposed the startup and Sequoia
+UI/authentication defects below. Private journals:
 `/private/tmp/virfield-installed-samsung-monterey-750a896-20261015` and
 `/private/tmp/virfield-installed-htpc-native-750a896-20261015`.
 
@@ -154,6 +165,78 @@ installed worker-bridge repeat remains required. Private
 evidence: `first-sonoma-agent-registration.log`,
 `first-sonoma-agent-demand-start.log`, `first-sonoma-agent-demand-intervention.json`
 under the HTPC journal above.
+
+The first Sequoia reboot reproduced a separate authentication/desktop coupling
+bug. At `11:05:45 UTC` its GUI agent failed in `login-native-io`. The retained
+native receipt had all three SecItem statuses zero, an unlocked keychain, matching
+data and an Aqua session, but Keyboard Setup Assistant made overall `ready`
+false. The old password loop treated that desktop failure as a bad password,
+locked the working login keychain again and tried the public fallback. The
+framebuffer then showed both Keyboard Setup Assistant and a CommCenter request
+for the login-keychain password. The actual HID inventory contained both QEMU
+USB (`1-1575-0`) and Apple PS/2 (`65535-1452-0`); only the first had a learned ANSI
+mapping. Adding the second mapping and demanding the owned agent recovered
+native I/O and removed the keyboard assistant, but the existing CommCenter
+password dialog remained. Mapping absence alone is not established as the cause.
+
+A separate disposable empty-keychain experiment verified that password change
+rejects an incorrect old password even while unlocked, preserves an existing
+item, and makes the new secret usable after locking that fixture. The real login
+keychain therefore need not be deliberately locked to authenticate a candidate.
+The source correction uses that API, separates native authentication from UI
+readiness, and never tries another candidate after an authenticated rekey's I/O
+failure. Real-shell regressions cover current/previous/public-base migration,
+blocked desktop, unknown passwords and failed native I/O, with zero login locks.
+Native desktop verification now rejects visible SecurityAgent windows, including
+the observed layer-1000 password dialog, and fails if the window snapshot is
+unavailable. No window titles or keychain contents are collected.
+
+Staging this correction on the exact retained Sequoia with unchanged account
+credentials returned `keychain_ready:true`, all SecItem statuses zero, and
+`security_dialog_visible:true, ready:false`, correctly retaining the old modal
+as a failure. Its distinct regression reboot then passed fresh native Aqua/new
+SSH I/O with no Keyboard Setup Assistant or SecurityAgent windows. However,
+framebuffer acceptance showed the macOS lock screen: that receipt is not a full
+desktop PASS. The old original reboot was not replayed. Read-only loginwindow
+history established screensaver idle lock at `11:26:33 UTC`, which persisted
+`autoLoginUserScreenLocked=1`; the next boot restored it through
+`kLWLockFromCookieFile` at `11:42:35 UTC`. Both system and display sleep were
+already disabled. This independently demonstrates why Finder/Aqua/I/O alone
+cannot certify a usable desktop.
+
+The additional correction disables general/per-host screensaver idle time,
+clears and verifies the autologin lock flag when preparing account credentials,
+and checks the native Quartz console/login/lock state in both the read-only
+desktop preflight and full Aqua readiness. The exact two owned Sequoia fixtures
+correctly returned locked-console failures after staging this check. Their
+first unshipped console implementation incorrectly required an explicit false
+lock flag. Quartz omits that key on an unlocked console; a read-only native
+controller probe confirmed the omission. The corrected predicate accepts absent
+or false only with a valid on-console, completed login; true, malformed values,
+missing session, switched-out console and incomplete login remain failures.
+Actual JXA regressions run both production predicates against these cases.
+The strict-check reboot was not replayed: its exact first fixture was released
+with its original durable cleanup key and SSH revocation passed. The old owner
+harness was terminated without resuming its cleanup logic. The second fixture's
+corrected reboot reached an unlocked desktop, but its framebuffer showed a new
+Spotlight password dialog explicitly naming the `virfield-lease-...` scoped
+keychain. A persistent custom default is locked before the owned Aqua agent
+runs; its later unlock does not dismiss the queued dialog. Full readiness
+correctly remained closed. Source now keeps the preserved/rekeyed login keychain
+as default and first search entry across boots; the scoped keychain remains
+supplemental, private and unlocked. A real-shell regression checks default/search
+order and missing-login failure. This final policy requires fresh installed clones
+and real reboot acceptance. The second exact fixture was also released and SSH
+revocation passed. Neither failure was answered by a GUI password or relabelled
+a desktop PASS.
+Full local CI (seventeen Python tests and Go vet/race), targeted actual-shell/JXA
+regressions and pinned Staticcheck passed for the final login-default source.
+This is guest-source staging, not installation of a new controller package.
+Evidence lives under
+`/private/tmp/virfield-installed-htpc-native-750a896-20261015`, especially
+`login-auth-regression-stage.json`, `login-auth-regression-reboot`,
+`console-policy-regression-r2`, and the dated Sequoia framebuffer images. Lock
+origin logs are retained as `virfield-sequoia-lock-origin-allboots-20261015.log`.
 
 An earlier code checkpoint installed `8c521fe`, version
 `0.0.0-desktop-preflight`. Subsequent runbook/acceptance-tool packages retain this
@@ -561,12 +644,15 @@ reads it by service/account. An SSH unlock does not establish GUI audit-session
 access, and a GUI unlock does not establish access for each new SSH session.
 The old preparer rotated account/autologin credentials without a keychain gate.
 
-The candidate adds an Aqua login agent, private per-image/lease default keychain,
+The current source uses an Aqua login agent, a private scoped supplemental keychain,
 content-preserving login-keychain rekey, and an SSH ForceCommand bridge that
 unlocks immediately before each command. Native add/read/data comparison/delete
 must pass in both contexts; qualification checks a fresh post-reboot proof.
-The login keychain remains searchable so ScopedBookmarkAgent cannot leave an old
-password dialog over the browser. Passwords are not made blank or public.
+Login remains the persistent default and first search entry, so OS clients can
+use its automatic-login unlock before the owned agent starts. Earlier scoped
+default receipts below retain their historical scope; the latest Spotlight
+regression above supersedes their general desktop-readiness claim. Passwords are
+not made blank or public.
 
 Tart recipes/clones use explicit `1920x1080px`, independent of host Retina scale.
 Default/point units reproduced a 3840x2160 Monterey display without a 1920x1080
