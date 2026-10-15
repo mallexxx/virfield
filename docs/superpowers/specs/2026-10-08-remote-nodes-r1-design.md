@@ -3,11 +3,14 @@
 > [current delivery state](../../VIRFIELD-3-PLAN.md) and
 > [current acceptance](../../VERIFICATION.md); old paths/statuses and unchecked
 > example steps below describe their original execution context.
+> **2026-10-15 decision:** automatic VM account-password rotation is rejected;
+> standard `admin/admin` is the approved target, still pending implementation.
+> Historical rotation steps below are superseded by the [maintained plan](../../VIRFIELD-3-PLAN.md#decisions-and-current-boundary).
 
 # Remote nodes R1 — bare-metal SSH provider — design
 
 Date: 2026-10-08. Status: approved. Implements the first slice of Phase 2 in
-[Virfield 3.0 implementation plan](../../VIRFIELD-3-PLAN.md#phase-2--node-agent-physical-hosts-and-access).
+[Virfield 3.0 implementation plan](../../VIRFIELD-3-PLAN.md#remaining-30-architecture).
 
 ## Goal
 

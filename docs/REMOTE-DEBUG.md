@@ -66,7 +66,13 @@ For another SwiftPM package, Virfield creates `launch.json`, `tasks.json`,
 `settings.json`, and the same two helpers. Select **Virfield: Debug SwiftPM
 product**, press F5, and enter the executable product name.
 
-The verified DuckDuckGo baseline on macOS 27.0/Xcode 27.0 connects LLDB-DAP in
+The historical 2026-10-07 Lume DuckDuckGo baseline on macOS 27.0/Xcode 27.0 connected LLDB-DAP in
 0.14–0.15 seconds and reaches `DuckDuckGoBrowserMain` in a median 7.56 seconds
 after the cached prepare step. A missing or incomplete DeviceSupport extraction
 blocks golden verification instead of publishing a slow debugging image.
+
+This does not establish current Tart debug acceptance. Its pending acceptance
+must use the corrected installed guest policy, including the operator-required
+standard `admin/admin`, pinned key-only SSH and verified native key storage;
+automatic random password rotation is still present in current `f60efe3` and is
+scheduled for removal in the [maintained plan](VIRFIELD-3-PLAN.md).

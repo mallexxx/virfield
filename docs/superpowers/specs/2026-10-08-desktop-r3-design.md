@@ -3,6 +3,9 @@
 > [current delivery state](../../VIRFIELD-3-PLAN.md) and
 > [current acceptance](../../VERIFICATION.md); old paths/statuses and unchecked
 > example steps below describe their original execution context.
+> **2026-10-15 decision:** automatic VM account-password rotation is rejected;
+> standard `admin/admin` is the approved target, still pending implementation.
+> Historical rotation steps below are superseded by the [maintained plan](../../VIRFIELD-3-PLAN.md#decisions-and-current-boundary).
 
 # R3: Desktop access to VM leases
 

@@ -6,6 +6,21 @@ separate old LaunchDaemon was disabled and booted out on 2026-10-14, its rollbac
 are archived. Current defects and acceptance limits are in
 [Verification](VERIFICATION.md). Orchard is not deployment-ready.
 
+## Approved VM account policy — implementation pending
+
+The operator requires standard **`admin/admin`**, with no automatic random account
+password rotation. Current source and installed `f60efe3` still rotate image and
+worker passwords; removing that behavior is approved work, not a deployed fix.
+Existing secured images may retain generated credentials. Preserve their items,
+workspace and image identities while defining an inspected compatibility path.
+Do not reset a login keychain or overwrite a golden to force the standard password.
+Per-image/lease management and caller keys, fresh VM host keys, pinning and
+key-only SSH remain required. Physical shared accounts are unaffected.
+
+Later rotation/rekey descriptions in this runbook explain the installed candidate
+only; they are not instructions to add account rotation to the next implementation.
+Native GUI/new SSH I/O and actual reboot still need acceptance after that change.
+
 ## Paths
 
 A deployment directory owns installed binaries, `config.json`, the operator
@@ -149,7 +164,8 @@ and `/dev/net/tun`.
   `{"node": {"golden": "<bootstrap name>"}, "macos": …, "build": …,
   "disable_sip": true}` (`POST /api/v1/images/<template>/build`). The job
   clones the bootstrap golden into `<VM storage root>/images/<template>`, publishes
-  its SSH on the node loopback only, rotates the password, installs the
+  its SSH on the node loopback only, still rotates the password in installed
+  `f60efe3` (pending removal under the approved policy above), installs the
   management key, turns password SSH off and sets auto-login, verifies
   version, SIP, desktop and password after a reboot, and commits the clone as
   `<goldens_dir>/<template>.qcow2` (owner-only read mode 0400). Rebuilding needs a new
@@ -366,11 +382,16 @@ Inspect the exact job/target and confirm no operation is in flight. Never edit
 SQLite, manually mark an image ready or manipulate runtime files to evade the
 journal. A lost response uses the same body and idempotency key.
 
+The following `resolve` command queues cleanup of a `needs_attention` or
+quarantined lease and can delete its VM. It does **not** revalidate that machine
+and return it to ready. Preserve needed workspace first and obtain deletion
+authorization; recovery without deletion is planned and not available yet.
+
 ```sh
 virfield -token-file "$VIRFIELD_HOME/token" -key inspected-resolution-001 resolve LEASE_ID EXACT_VM_NAME CONFIRM-NO-OPERATION-IN-FLIGHT
 ```
 
-Operator recovery is absent from MCP. Image recovery uses its separate contract
+This operator cleanup resolution is absent from MCP. Image recovery uses its separate contract
 in [Image pipeline](IMAGE-PIPELINE.md#recovery). Destructive cleanup needs explicit
 operator/user authorization and exact-name confirmation.
 
@@ -390,6 +411,12 @@ space on both golden and overlay storage; unavailable metrics refuse admission.
 Clone/start/commit recheck after wake. Status exposes separate `node_resources`.
 Existing probe records need a successful new observation before VM admission.
 These are VM reservations; physical-account workloads are not CPU/RAM sandboxed.
+Status exposes limits, reserved resources and per-storage free bytes, but disk
+and node/cache refusal messages do not yet report every admission term. The
+planned explanation must include free, reserved growth, requested full size,
+safety reserve and remaining headroom for each eligible storage. Visible free
+space alone is insufficient to diagnose an older refusal. Do not reduce reserve
+or assume copy-on-write physical allocation is the maximum VM growth.
 Node QEMU disks use `cache=writeback` with threaded I/O so concurrent cold boots
 can share the host page cache on HDD storage. Guest cache flushes remain enabled;
 this is the standard QEMU writeback mode ([QEMU cache options](https://www.qemu.org/docs/master/system/invocation.html)).
@@ -425,10 +452,15 @@ to their verified peer. Cached listeners reject new connections while the host,
 address or inventory freshness is unverified; they resume on the same port after
 recovery. Endpoints are checked before and after each new upstream dial. Release,
 expiry and verified identity/state changes still revoke the tunnels. Two verified observations of an absent or
-stopped VM or a changed known endpoint still require release. Never repair a real
-drift by rewriting stored addresses or disabling SSH pins.
+stopped VM or a changed known endpoint move the lease to `needs_attention`.
+There is currently no supported return-to-ready revalidation operation: operator
+resolve queues cleanup and can delete the VM. Non-destructive recovery is planned;
+preserve/export needed workspace before any authorized cleanup. Never repair a
+real drift by rewriting stored addresses or disabling SSH pins. Drift warnings
+contain some expected/observed fields, but durable events and tunnel-close reasons
+remain incomplete; do not infer the historical cause from a later running VM.
 
-The candidate preserves/rekeys the login default and prepares an additional
+Installed `f60efe3` preserves/rekeys the login default and prepares an additional
 owner-only keychain named for each image/lease,
 an Aqua LaunchAgent (`ai.virfield.guest-keychain`) and a VM-only SSH command bridge
 (`/etc/ssh/sshd_config.d/001-virfield-keychain.conf`). Guest state is private under

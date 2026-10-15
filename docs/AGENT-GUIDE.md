@@ -144,13 +144,30 @@ Keep the private key/config available through export and cleanup. Do not reuse
 an active lease's key for another lease. No generic workload, artifact uploader,
 Xcode project scheme or repository checkout is inferred by the VM manager.
 
-New VM preparation verifies GUI and SSH keychain access. The VM unlocks its own
-login default, rekeyed to the VM's private password, in Aqua and before each SSH command;
-ordinary `ssh`, `scp` and `xcodebuild` commands need no public CI password or
-manual Terminal/AppleScript unlock. Old installed goldens/leases can lack this
-mechanism; inspect [Verification](VERIFICATION.md) before assuming it is deployed.
+The approved VM account policy is standard **`admin/admin`**, without automatic
+random password rotation. Implementation is pending: current source and installed
+`f60efe3` still rotate passwords, and old secured goldens can retain generated
+credentials. Do not infer that an existing image already has the standard password
+or reset its keychain. SSH remains pinned/key-only, with separate management and
+caller keys and cross-lease/inherited-key rejection.
+
+VM preparation independently verifies GUI and SSH keychain access. Installed
+`f60efe3` preserves/rekeys the login default to its current generated VM password
+and unlocks in Aqua and before SSH commands; ordinary `ssh`, `scp` and
+`xcodebuild` need no manual keychain unlock. This describes current mechanics, not
+completion of the approved password-policy change. Old goldens/leases can lack
+the bridge; inspect [Verification](VERIFICATION.md) for exact deployment/results.
 Readiness also requires an unlocked console and no visible keychain password
 dialog. A running Finder or successful native I/O alone does not prove this.
+
+Confirmed `vm_drift` cannot currently be restored to `ready` in place. Operator
+resolve queues cleanup; never call it to preserve a workspace. Unverified
+temporary inventory is handled separately and can recover without replacing a
+ready lease. Non-destructive drift revalidation, durable drift/tunnel reasons,
+full resource arithmetic, verified local golden transfer and an optional legacy
+iOS profile are planned, not available MCP tools. Status exposes reservations
+and free bytes, but a generic disk/node refusal does not yet explain every term;
+report that gap instead of guessing from visible disk free space.
 
 Tart workers use a fixed 1920×1080 logical desktop. Workspace sharing is not
 configured: copy the selected checkout and DerivedData over pinned SSH. For the

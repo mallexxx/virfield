@@ -56,9 +56,10 @@ client-controlled quota bypass.
 Tart stages are `resolve → build → qualify → stop`. Resolve downloads the pinned
 upstream into the selected container before any Packer VM build, with automatic
 cache pruning disabled. A failed source download can retry resolve without replaying
-a VM mutation. Qualification rotates private
-credentials, reboots and verifies exact OS/build, SIP, desktop, disk state,
-password persistence and, for Xcode profiles, signature/version/first launch/Swift
+a VM mutation. Installed `f60efe3` qualification still rotates the account
+password as well as installing private SSH keys; the approved replacement policy
+below removes account-password rotation. Qualification reboots and verifies exact
+OS/build, SIP, desktop, disk state, account authentication and, for Xcode profiles, signature/version/first launch/Swift
 and DeviceSupport. Base profiles do not require Xcode or host DeviceSupport.
 UI-test recipes additionally verify their automation tools and permission probes.
 Evidence records upstream and recipe digests in private `verification.json`.
@@ -76,9 +77,18 @@ An upstream with a different SIP state must fail. Tart accepts unlocked APFS
 encryption at rest when FileVault is off because its clone keeps machine identity.
 This is different from the retired Lume portable-disk contract.
 
-Per-lease password, management key, caller key and SSH host-key rotation apply
-before VM readiness. Inherited image and cross-lease keys must be rejected.
-Physical host leases add only one caller key to the configured shared account.
+The operator requires **`admin/admin`**, without automatic random account-password
+rotation. This is approved but **not implemented**: current source and installed
+`f60efe3` still rotate image/worker passwords. Previously secured images may
+therefore retain generated credentials. The next implementation must preserve
+items/workspaces and explicitly handle those older images; do not reset their
+keychain or silently overwrite a golden. The pending policy still requires
+per-image/lease management keys, caller-key isolation, fresh VM host keys and
+pinned key-only SSH; inherited image/cross-lease keys must be rejected. Physical
+host leases add only one caller key to the configured shared account.
+
+The following keychain mechanics describe installed `f60efe3`, not acceptance of
+the pending standard-password implementation.
 
 VM qualification and lease preparation install an additional private keychain
 named for the image/lease and an Aqua login LaunchAgent. They preserve/rekey the
@@ -136,8 +146,13 @@ quarantined and are not blindly retried. There is no atomic GHCR create-if-absen
 operation; reserve publication tags operationally to exclude concurrent writers.
 Node goldens do not support Tart publication.
 
-A real push/pull-back/clone workload is still an acceptance gate for this new
-candidate. Public manifest resolution and unit fixtures do not satisfy it.
+The complete fresh public-base factory/private push/pull-back/clone workload and
+cleanup roundtrip passed on `2f23ae6` on 2026-10-15, preserving seven baseline
+images. Retain that receipt and repeat for relevant export/import pipeline
+changes; public manifest resolution alone is not that acceptance. See Verification
+for digest and scope. A local managed-golden transfer between Tart storages is
+separate planned work: current acquire rejects cross-container clones, and this
+registry workflow must not be used to upload a managed golden.
 
 ## Recovery
 

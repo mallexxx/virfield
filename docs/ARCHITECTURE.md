@@ -1,8 +1,9 @@
 # Architecture
 
 Virfield is one modular Go application. Clients call `/api/v1`; the controller
-and runtime adapters alone perform infrastructure effects. `main` is the
-maintained source. Broker/Runner own execution semantics.
+and runtime adapters alone perform infrastructure effects. The maintained
+candidate is on `codex/retire-lume-release-hardening`; `main` is not promoted.
+Broker/Runner own execution semantics.
 
 ## Modules
 
@@ -47,6 +48,18 @@ one caller key to the configured account and reserve its workspace. They do not
 reset the host or kill workloads under the shared account. A physical host has one exclusive reservation independent of its VM slots.
 Shared sleep holds are reference-counted; foreign holds are retained. VM cleanup
 requires confirmed container removal before deleting overlays or releasing holds.
+
+The approved VM account policy is standard `admin/admin`, without automatic
+random account-password rotation. This change is pending: current source and
+installed `f60efe3` still rotate image/worker passwords. Distinct SSH keys and host
+pins remain required; a standard console password is not a tenant-isolation
+boundary. Existing keychain items, workspaces and goldens must be preserved.
+
+Transient unverified inventory preserves the last verified ready endpoint and
+existing streams. Confirmed `vm_drift` instead moves a lease to `needs_attention`;
+the existing operator resolve only queues cleanup. Recovery-in-place and durable
+drift/tunnel-close evidence are [planned work](VIRFIELD-3-PLAN.md#operator-feedback-backlog),
+along with complete resource refusal arithmetic and verified local golden transfer.
 
 ## API boundary
 

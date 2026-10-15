@@ -1,6 +1,6 @@
 # Compositional platform boundaries
 
-Current inventory reconciled 2026-10-14. This document defines responsibility;
+Current inventory reconciled 2026-10-15. This document defines responsibility;
 [Verification](VERIFICATION.md) owns release evidence and
 [the 3.0 plan](VIRFIELD-3-PLAN.md) owns future delivery. The
 [earlier architecture discussion](history/COMPOSITIONAL-PLATFORM-before-2026-10-14.md)
@@ -23,6 +23,15 @@ A successful lease does not mean a workload succeeded. Workload results and
 `.xcresult` belong to Broker/Runner. Virfield has no generic command-execution
 API, artifact store or workflow engine. Physical hosts are shared-account lab
 resources, not disposable/multi-tenant VM substitutes.
+
+The operator's VM account decision is standard `admin/admin`; removing automatic
+random password rotation is pending in current source/installed `f60efe3`.
+SSH key isolation and native GUI/new SSH acceptance remain part of Virfield.
+Recovery of a confirmed drifted lease without deletion, durable drift/tunnel
+diagnostics, complete resource refusal arithmetic, verified local golden transfer
+and an optional legacy iOS profile are [planned delivery](VIRFIELD-3-PLAN.md#operator-feedback-backlog).
+They must not be advertised as existing client operations. The profile provisions
+and verifies tools; Broker/Runner still own the actual application builds.
 
 ## Target components
 

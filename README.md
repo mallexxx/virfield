@@ -51,3 +51,10 @@ is a historical Lume release, not an archive of the current Tart implementation.
 Use the current source and Operations until a new release passes its gates.
 The [Broker macos27 reacceptance record](docs/VERIFICATION.md#broker-macos27-reacceptance)
 records the current cross-project boundary and the evidence required to close it.
+
+The operator requires the standard VM account `admin/admin`; removing automatic
+random password rotation is approved but not implemented in current source or
+installed `f60efe3`. SSH key isolation and native GUI/SSH key-storage checks remain
+required. The [maintained plan](docs/VIRFIELD-3-PLAN.md) records this first priority,
+the open macOS 27/Sonoma failures and all five requested follow-ups. Historical
+passes do not establish readiness of the pending password-policy change.
