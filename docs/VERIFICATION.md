@@ -10,10 +10,11 @@ are distinct artifacts.
 
 ## Acceptance checkpoint (2026-10-15)
 
-The latest completed installation at this checkpoint is `2724f94`, version
-`0.0.0-node-image-privacy`. The factory capacity and node temporary-file permission
-corrections are installed. Exact-source local `make check`, Staticcheck,
-Govulncheck and Gitleaks (211 commits) passed. HTTP and fresh stdio MCP passed
+The latest completed installation at this checkpoint is `edcb756`, version
+`0.0.0-gui-observation`. Factory capacity, node temporary-file permission and
+longer GUI startup/result observations are installed. Exact-source local
+`make check` and Staticcheck passed; security scan evidence is recorded below.
+HTTP and fresh stdio MCP passed
 exact-version discovery, all four runbooks, resources and authenticated status;
 anonymous MCP was rejected. These checks do not attest already-connected clients.
 The `8e07015` checkpoint introduced native GUI/SSH keychain readiness, explicit
@@ -70,20 +71,47 @@ remain mandatory. The budget correction is installed. The next repeat reached
 SSH after Steam completed its update but exposed a shorter GUI readiness deadline.
 
 On installed `2724f94`, one concurrent Sonoma clone timed out waiting 45 seconds
-for GUI native I/O; the second became ready. After its real reboot, the 60-second
-startup observation failed at `05:18:16.696 UTC`, but the automatic agent wrote
+for GUI native I/O; the second became ready. After its real reboot, verification
+failed at `05:18:16.696 UTC`, but the automatic agent wrote
 valid native GUI proof and this boot's startup marker at `05:18:18 UTC`, 76 seconds
 after boot. A new GUI/SSH native probe subsequently passed with the new boot UUID.
-This is a reproduced false-negative readiness deadline, not evidence of a
-permanently locked keychain. The first clone's incomplete native probe has less
-specific evidence and is not silently classified as the same cause.
-Source now allows a bounded 120 seconds each for the fresh automatic startup and
-requested GUI result, within a five-minute command and the existing preparation
-context. Native I/O, scope/nonce/boot matching and fail-closed readiness are
-unchanged. Private phase timestamps improve diagnostics without recording secrets.
-This additional correction still requires packaging, installation and a complete
-node matrix. Evidence:
+The exact rejecting preflight guard was not retained in that run. The observation
+proves that the guest became natively ready after a failed check; it does not prove
+a permanently locked keychain or identify the shorter console versus startup gate.
+The first clone's incomplete native probe also has less specific evidence.
+Installed `edcb756` allowed 120 seconds each for the automatic startup and requested
+GUI result, within the five-minute command and existing preparation context.
+Both concurrent Sonoma clones then became ready, but a post-reboot check still
+failed before native proof. Source also corrects the separate 30-second console
+login guard: a deterministic execution of the real shell block rejected a valid
+delayed login, then passed after allowing 120 seconds; an absent login still fails
+within its bound. Console/startup errors are now distinct. Native I/O,
+scope/nonce/boot matching and fail-closed readiness remain unchanged.
+Private phase timestamps improve diagnostics without recording secrets. Evidence:
 `/private/tmp/virfield-installed-htpc-native-2724f94-20261015/journal.json`.
+
+A subsequent retained Sonoma clone stalled after the guest reboot command:
+no fresh SSH/boot UUID, a stale pre-reboot desktop frame, active guest CPUs and
+block I/O idle for minutes. The own runner was stopped before cleanup to retain
+diagnostics, then both exact owned fixtures were released through their journal.
+No additional reboot or reset was dispatched. The pinned container's CPU gate
+incorrectly tests VMX TSC scaling before exposing invariant TSC. HTPC has
+`constant_tsc`, `nonstop_tsc`, active Linux clocksource `tsc`, and no VMX scaling;
+the actual QEMU command omitted `invtsc`. This is the upstream capability-detection
+defect corrected in [qemus/qemu #1513](https://github.com/qemus/qemu/pull/1513).
+Source now supplies `+invtsc` only when every CPU has both stability flags and
+Linux uses TSC, otherwise explicitly `-invtsc`. Missing/heterogeneous flags and
+non-TSC clock fixtures fail closed. Whether this resolves this particular warm
+reboot stall still requires live verification. Retained evidence:
+`/private/tmp/virfield-htpc-console-diagnostic-edcb756-20261015`.
+
+The retained desktop also exposed Keyboard Setup Assistant over the UI. The
+QEMU USB keyboard (vendor 1575/product 1/country 0) had no learned layout, while
+the Apple virtual keyboard entry was present. Source registers only this fixed
+virtual ANSI device, preserves other mappings, closes the own VM's assistant,
+and rejects GUI readiness while it is running. Actual `defaults` output was
+checked to contain an integer layout value. This UI correction, the console guard
+and CPU capability correction require a new installed node matrix.
 
 The first factory attempt `image-b3dba0ef5874ab2b2d3e8ee4492e5270` failed before
 publication: APFS resize succeeded to 120 GB, then immediate root `df` still
@@ -273,6 +301,7 @@ Clean local package provenance:
 
 | Source revision | Archive SHA-256 | Deployment |
 |---|---|---|
+| `edcb7563f8aa02a019ff4cb8e575d8daabc2bd2d` | `82b7f7199948ba117a58a4e5067f4b12c56ab7811919038f2eadda7f8a0f80c1` | Installed; exact MCP passed; both node clones initially ready, post-reboot acceptance still failed |
 | `2724f94ed52696e5482ad8431a19d1a62a427e0b` | `7cff304d53dd3a59a1aed59fe25907d88495043a66bbb7c3f64ad07813bbe6d4` | Installed; MCP and controller rollback/forward passed; node repeat exposed short GUI observation deadlines |
 | `2f23ae609a4f650130f5c84835f89931d6e70592` | `9defb127d54a06c722d403e02ce90b2b427b2597613d51145d6eba2b81de60a1` | Installed earlier; complete factory/private GHCR roundtrip passed |
 | `4a53b67ce04fd1adc164750b47e780c4bdde9ea6` | `a71ceaf53dae64c2c91545cdfcff5749c656ba69677411fb154c3a3e6e301f19` | Installed; eight-clone Tart native acceptance passed |
@@ -303,10 +332,11 @@ revocation alongside SSH, cross-key/image-key rejection, workload and artifacts.
 
 - Repeat exact-source local CI and clean packaging for subsequent code changes;
   remote CI is deferred by the operator. Existing package provenance is recorded above.
-- Install the bounded GUI-observation correction in an idle pool and complete HTPC
-  native/resource acceptance with disposable clones. Node conversion privacy and
-  overall preparation corrections are installed; factory roundtrip and
-  controller-binary rollback/forward passed.
+- Install node invariant-TSC, console-observation and virtual-keyboard corrections
+  in an idle pool and complete HTPC native/resource/reboot/UI acceptance with
+  disposable clones. Repeat native Monterey acceptance for the guest changes.
+  Node conversion privacy and overall preparation corrections are installed;
+  factory roundtrip and controller-binary rollback/forward passed.
 - Reconnect the actual owning MCP clients after installation and verify their
   version, runbooks and workflow; a fresh adapter alone cannot attest old sessions.
 - Accept the native Apple browser GUI/URL-scheme flow after the Mac is unlocked;

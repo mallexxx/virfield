@@ -13,6 +13,27 @@ d="$vf_vm_root/$1/$2"
 c="virfield-$2"
 `
 
+// The pinned OCI image confuses VMX TSC scaling with invariant guest TSC.
+// Override that old detection only from actual host stability signals; a
+// missing/unstable clock never receives an invented invariant-TSC capability.
+const vmCPUFunctions = `
+vf_tsc_flags() {
+  if [ -r "$1" ] && [ -r "$2" ] && [ "$(cat "$2")" = tsc ] &&
+    awk '/^flags[[:space:]]*:/ {
+      seen=1; constant=0; nonstop=0
+      for (i=2; i<=NF; i++) {
+        if ($i == "constant_tsc") constant=1
+        if ($i == "nonstop_tsc") nonstop=1
+      }
+      if (!constant || !nonstop) bad=1
+    } END { exit !(seen && !bad) }' "$1"; then
+    printf '%s' '+invtsc'
+  else
+    printf '%s' '-invtsc'
+  fi
+}
+`
+
 // vmCloneScript: $3 golden, $4 goldens dir, $5 image, $6 port base, $7 max.
 // Ports are allocated under a lock so concurrent clones never share one.
 const vmCloneScript = vmDirs + `g="$4/$3.qcow2"
@@ -50,7 +71,7 @@ fi
 // $7 memory GB, $8 disk size, $9 keep-awake file (may be empty), $10 desktop
 // publish address (empty for none). passt forwards guest SSH and Screen
 // Sharing; QEMU's own VNC moves off 5900 and is never published.
-const vmStartScript = sleepHoldFunctions + vmContainerFunctions + vmDirs + `[ -f "$d/port" ]
+const vmStartScript = sleepHoldFunctions + vmContainerFunctions + vmCPUFunctions + vmDirs + `[ -f "$d/port" ]
 g=$(cat "$d/golden")
 p=$(cat "$d/port")
 running=false
@@ -61,9 +82,11 @@ fi
 if [ "$running" != true ]; then
   if vf_container_exists; then podman rm -f "$c" >/dev/null; fi
   vf_hold "$d" "${9:-}"
+  vf_flags=$(vf_tsc_flags /proc/cpuinfo /sys/devices/system/clocksource/clocksource0/current_clocksource)
   podman run -d --name "$c" --device /dev/kvm --device /dev/net/tun --cap-add NET_ADMIN \
     -e DISK_FMT=qcow2 -e "DISK_SIZE=$8" -e "RAM_SIZE=$7G" -e "CPU_CORES=$6" -e USER_PORTS=22,5900 -e VNC_PORT=5950 \
     -e DISK_CACHE=writeback -e DISK_IO=threads \
+    -e "CPU_FLAGS=$vf_flags" \
     -p "$5:$p:22" ${10:+-p "${10}:5900"} -v "$d/storage:/storage:Z" -v "$3:$3:ro,z" -v "$3/$g.opencore.plist:/custom.plist:ro,z" \
     --stop-timeout 30 "$4" >/dev/null
 fi

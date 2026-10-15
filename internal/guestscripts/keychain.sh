@@ -14,11 +14,11 @@ IFS= read -r previous
 [[ "$scope" =~ ^(image|lease)-[a-zA-Z0-9_.-]+$ && "$nonce" =~ ^keychain-[a-f0-9]+$ ]] || exit 64
 [[ "$HOME" == "/Users/$user" ]] || exit 64
 case "$(sysctl -n hw.model)" in VirtualMac*|iMacPro1,1) ;; *) exit 64 ;; esac
-for ((attempt=0; attempt<30; attempt++)); do
+for ((attempt=0; attempt<120; attempt++)); do
   [[ "$(stat -f %Su /dev/console)" == "$user" ]] && break
   sleep 1
 done
-[[ "$(stat -f %Su /dev/console)" == "$user" ]] || exit 65
+[[ "$(stat -f %Su /dev/console)" == "$user" ]] || { echo 'GUI console login did not become ready' >&2; exit 65; }
 uid="$(id -u)"
 dir="$HOME/.virfield-keychain"
 label=ai.virfield.guest-keychain
@@ -31,6 +31,11 @@ chmod 700 "$dir"
 
 if [[ "$mode" == ensure ]]; then
   [[ -n "$password" ]] || exit 64
+  # The lab's QEMU USB keyboard has no learned layout in the source golden.
+  # Register only that fixed virtual ANSI device; preserve every other entry.
+  if [[ "$(sysctl -n hw.model)" == iMacPro1,1 ]] && /usr/sbin/ioreg -r -c IOHIDDevice -l | grep -F '"Product" = "QEMU USB Keyboard"' >/dev/null; then
+    printf '%s\n' "$password" | sudo -S -p '' /usr/bin/defaults write /Library/Preferences/com.apple.keyboardtype keyboardtype -dict-add '1-1575-0' -int 40
+  fi
   # Replace only Virfield's own agent; preserve all existing keychain files.
   launchctl bootout "gui/$uid/$label" 2>/dev/null || true
   printf '%s\n%s\n%s\n' "$scope" "$password" "$previous" > "$dir/identity.next"
@@ -104,13 +109,18 @@ function run(argv) {
   }
   var size = $.NSScreen.mainScreen.frame.size;
   var displayManaged = ObjC.unwrap($.NSProcessInfo.processInfo.environment.objectForKey('VIRFIELD_DISPLAY_MANAGED')) === '1';
+  var keyboardSetup = false, apps = $.NSWorkspace.sharedWorkspace.runningApplications;
+  for (var i = 0; i < Number(apps.count); i++) {
+    if (ObjC.unwrap(apps.objectAtIndex(i).bundleIdentifier) === 'com.apple.KeyboardSetupAssistant') keyboardSetup = true;
+  }
   return JSON.stringify({version:1, scope:argv[0], nonce:argv[1], boot:argv[2],
     display_width:size.width, display_height:size.height, display_managed:displayManaged,
+    keyboard_setup_visible:keyboardSetup,
     session_id:Number(sid[0]), aqua:aqua, unlocked:unlocked,
     add_status:add, read_status:read, delete_status:remove, value_equal:equal,
     // SSH may report a synthetic screen for its separate WindowServer session.
     // UI geometry is certified in Aqua; SSH only certifies keychain access.
-    ready:(aqua || argv[3] === 'ssh') && unlocked && add === 0 && read === 0 && remove === 0 && equal && (!displayManaged || !aqua || size.width === 1920 && size.height === 1080)});
+    ready:(aqua || argv[3] === 'ssh') && unlocked && add === 0 && read === 0 && remove === 0 && equal && (!aqua || !keyboardSetup) && (!displayManaged || !aqua || size.width === 1920 && size.height === 1080)});
 }
 JXA
   cat > "$dir/session.sh" <<'AGENT'
@@ -143,6 +153,10 @@ fi
 keychain="$HOME/Library/Keychains/virfield-$scope.keychain-db"
 [[ ! -L "$keychain" ]] || exit 65
 if [[ "$mode" == ensure ]]; then
+  if [[ "$(sysctl -n hw.model)" == iMacPro1,1 ]]; then
+    phase virtual-keyboard
+    /usr/bin/killall KeyboardSetupAssistant 2>/dev/null || true
+  fi
   if [[ "$VIRFIELD_DISPLAY_MANAGED" == 1 ]]; then
     phase display
     # Tart's display size is a hint; a cached guest mode can remain 1024x768.
@@ -270,14 +284,14 @@ SSH
 else
   # Wait for this boot's automatic agent. Old golden evidence is insufficient.
   expected="$(printf '%s\n%s' "$scope" "$boot")"
-  # Cold Intel/HDD login produced a valid native proof 76 seconds after boot,
-  # just after the former 60-second observation expired. Keep the fresh-boot
-  # requirement and allow a bounded two minutes for the automatic GUI agent.
+  # Cold Intel/HDD login produced a valid native proof 76 seconds after boot.
+  # Keep the fresh-boot requirement and allow a bounded two minutes for the
+  # automatic GUI agent, inside the caller's overall command deadline.
   for ((attempt=0; attempt<120; attempt++)); do
     [[ -f "$dir/startup" && "$(cat "$dir/startup")" == "$expected" ]] && break
     sleep 1
   done
-  [[ -f "$dir/startup" && "$(cat "$dir/startup")" == "$expected" ]] || exit 65
+  [[ -f "$dir/startup" && "$(cat "$dir/startup")" == "$expected" ]] || { echo 'GUI agent did not publish fresh startup proof' >&2; exit 65; }
 fi
 [[ ! -L "$dir/result" && ! -L "$dir/request" && ! -L "$dir/agent.log" ]] || exit 65
 : > "$dir/agent.log"; chmod 600 "$dir/agent.log"

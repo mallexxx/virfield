@@ -121,7 +121,7 @@ func TestVMStartPublishesItsPortAndHoldsTheNode(t *testing.T) {
 	if strings.Count(calls, "run -d --name virfield-"+vm) != 1 {
 		t.Fatal("start is not idempotent:", calls)
 	}
-	for _, want := range []string{"-p 0.0.0.0:22100:22", "-p 127.0.0.1:23100:5900", "-e USER_PORTS=22,5900", "-e VNC_PORT=5950", "--device /dev/kvm", "--device /dev/net/tun", "-e RAM_SIZE=8G", "-e CPU_CORES=4", "-e DISK_SIZE=100G", "-e DISK_CACHE=writeback", "-e DISK_IO=threads", "-v " + goldens + ":" + goldens + ":ro,z", "-v " + goldens + "/sonoma-secure.opencore.plist:/custom.plist:ro,z"} {
+	for _, want := range []string{"-p 0.0.0.0:22100:22", "-p 127.0.0.1:23100:5900", "-e USER_PORTS=22,5900", "-e VNC_PORT=5950", "--device /dev/kvm", "--device /dev/net/tun", "-e RAM_SIZE=8G", "-e CPU_CORES=4", "-e DISK_SIZE=100G", "-e DISK_CACHE=writeback", "-e DISK_IO=threads", "-e CPU_FLAGS=", "-v " + goldens + ":" + goldens + ":ro,z", "-v " + goldens + "/sonoma-secure.opencore.plist:/custom.plist:ro,z"} {
 		if !strings.Contains(calls, want) {
 			t.Fatal("missing", want, calls)
 		}

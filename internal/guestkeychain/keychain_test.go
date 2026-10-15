@@ -101,6 +101,7 @@ func TestKeychainReadinessRejectsMisleadingSuccess(t *testing.T) {
 		"different lease":   func(p *Proof) { p.Scope = "lease-other" },
 		"no audit session":  func(p *Proof) { p.SessionID = 0 },
 		"clipped desktop":   func(p *Proof) { p.DisplayManaged = true; p.DisplayWidth = 1024; p.DisplayHeight = 768 },
+		"keyboard setup":    func(p *Proof) { p.KeyboardSetupVisible = true },
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := Verify(context.Background(), &fakeGuest{change: change}, "admin", "lease-fixture")
