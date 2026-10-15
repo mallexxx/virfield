@@ -128,7 +128,8 @@ func New(config Config) (*Client, error) {
 		credentials[credential.Host] = credential
 	}
 	r := &execRunner{binary: config.Binary, credentials: credentials}
-	return &Client{config: config, runner: r, probe: r.probeVolume, now: func() time.Time { return time.Now().UTC() }, capacity: capacity}, nil
+	volumes := &volumeProbe{stat: statVolume, lookup: r.probeVolume}
+	return &Client{config: config, runner: r, probe: volumes.read, now: func() time.Time { return time.Now().UTC() }, capacity: capacity}, nil
 }
 
 func (c *Client) ProviderName() string { return "tart" }

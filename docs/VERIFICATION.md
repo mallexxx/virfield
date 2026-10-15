@@ -10,18 +10,36 @@ are distinct artifacts.
 
 ## Acceptance checkpoint (2026-10-15)
 
-Deployment snapshot at 09:14 UTC: `6779b6f` / `0.0.0-native-protocol` remains
-installed. Code candidate `a6cd900` / `0.0.0-cold-reboot` is clean, pushed and
-packaged; full local CI, Staticcheck and Gitleaks (219 commits) passed. Its
-fresh archive stdio passed exact version, all four runbooks/resources and
-read-only status against the existing daemon. This does not attest installation,
-new HTTP version or the owning client. Installation stopped before deployment
-changes because a new unrelated ready physical MacBook lease was present:
-`lease-de909d6e7f47b802c3d4939954805f87`, `mbp2014-monterey`, expiry
-10:01:12 UTC. The operator's wait policy remains in force; VM-slot usage 0/2
-alone does not mean the shared controller is idle. No foreign release/recovery
-or restart was performed. A later runbook-only package must keep this dated code
-provenance distinct from its own exact `release.json` revision.
+Deployment snapshot at 09:47 UTC: `558a6cb` / `0.0.0-cold-reboot-checkpoint`
+is installed with its original signing/FDA identity, private backup and all seven
+image manifests preserved. The unrelated MacBook lease was released by its owner
+before the idle installation; no foreign lease was changed. Exact HTTP and fresh
+stdio version, all four runbooks/resources, discovery, status and anonymous 401
+passed in 1.29 seconds on a repeat. An earlier HTTP runbook request timed out at
+ten seconds and inventory repeatedly became stale. Neither empty HTPC acceptance
+journal dispatched a mutation: both stopped at the healthy-idle guard.
+
+The controller Mac was under extreme unrelated load (observed one-minute load
+up to 455 and about 38 GiB swap in use). A stale-inventory sample and process
+inspection caught the daemon waiting for a `diskutil` volume lookup. The old
+runtime starts that lookup for each container on every refresh. This identifies
+a costly refresh dependency; it does not establish every timeout's cause. Source
+now caches only the UUID against the kernel fsid, device and mount point, checks
+the directory and fresh allocatable bytes with `statfs` on every call, and checks
+the mount again after a cold lookup. Missing storage, replacement mounts, failed
+lookups, lookup races and cancellation fail closed in regression tests. Real
+read-only probes of both configured storage directories returned the exact pinned
+UUIDs: twenty subsequent fresh capacity reads took 0.12–0.22 milliseconds per
+directory with only one `diskutil` call. This new correction still needs its own
+clean package, installation and full native provider repeat. Evidence:
+`/private/tmp/virfield-inventory-watch-558a6cb-20261015` and
+`/private/tmp/virfield-volume-live-20261015.log`.
+
+The ten-minute post-reboot verification correction is installed; a full current
+HTPC matrix is not yet accepted. The owning MCP client last served `2724f94`
+runbooks, and native browser GUI acceptance and existing HTPC golden permission
+migration still await their separate human gates. A later runbook-only package
+must keep dated code-test provenance distinct from its exact `release.json`.
 
 An earlier code checkpoint installed `8c521fe`, version
 `0.0.0-desktop-preflight`. Subsequent runbook/acceptance-tool packages retain this
@@ -480,7 +498,8 @@ Clean local package provenance:
 
 | Source revision | Archive SHA-256 | Deployment |
 |---|---|---|
-| `a6cd900bc9e6dfae071fca65a96920622fe4ce41` | `b979a7aa7ced7a0ef58c5b97cdbf5aab738ed7fcfe76d3422c7a3e60f733d0ed` | Prepared, not installed; fresh archive stdio/all four runbooks/resources/status passed; waiting for unrelated MacBook lease |
+| `558a6cb3d33f0be28e460da15af7696cfaf92ad3` | `cda25f64735340ed8c0de815346c58e1ff4240cd26fbb36ebc32f79e7cddd568` | Installed after idle check; exact HTTP/fresh stdio passed on repeat; intermittent inventory staleness blocked VM dispatch |
+| `a6cd900bc9e6dfae071fca65a96920622fe4ce41` | `b979a7aa7ced7a0ef58c5b97cdbf5aab738ed7fcfe76d3422c7a3e60f733d0ed` | Prepared earlier, not installed separately; fresh archive stdio passed; superseded by the runbook checkpoint above |
 | `6779b6faa1983a20fbc831fa1b415c110c087c67` | `3ee01fe145444c7da23bef19aa349c8ce007b772c85b3149ffcba73fd2af569d` | Installed; exact MCP, two Monterey cycles and one full Sequoia cycle passed; second Sequoia exposed the five-minute post-reboot verification bound |
 | `8c521fe1a6c25656368810c0c8fb820b6927e5a0` | `282064aa6829d4b6c33600bc7e541d2ddc7956a89799ecc2a2a3615d74cd44db` | Installed; exact MCP and two fresh iPad Monterey native/reboot/workload cycles plus Xcode/Swift passed |
 | `c85a89974a4d2e707e732cfd3c15eaf92a5b4e7e` | `75dea2278095f682706acb5eb67aa9d933a53b2a79e00e6c9d119786112d373a` | Installed earlier; SSH bounds and physical HTPC lease passed; two staggered native Sonoma cycles passed after a failed simultaneous boot |

@@ -31,6 +31,10 @@ verified Xcode XIP cache unless the approved base already provides that Xcode.
 `runtime.provider` selects Tart; `runtime.nodes` adds pinned SSH nodes.
 Containers have stable IDs, absolute paths, local/external kind and, for removable
 storage, a pinned volume UUID. CPU/RAM/disk reserve and VM slots are explicit.
+Tart checks directory availability and fresh allocatable capacity with `statfs`
+on every refresh. It reuses the verified volume UUID only for the same kernel
+filesystem ID, device and mount point; a changed mount needs a new lookup. A
+failed or interrupted lookup never substitutes an older identity.
 Physical-node and node-VM resource safety limitations are recorded in Verification.
 
 Config/token/state must belong to the daemon account. Tokens and credential files
