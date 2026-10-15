@@ -189,10 +189,22 @@ suspended VMs, unknown resources and existing destination IDs/names are refused.
 The journal pins source identity, profile and destination before dispatch. The
 copy holds Tart's runtime config lock, preserves UUID/MAC/NVRAM, copies private
 SSH identity and qualification evidence, and verifies source/copied file hashes
-and storage identities. Registration is atomic only after a fresh stopped
+and storage identities. After all writes, the corrected copier enumerates source
+holes with `SEEK_HOLE`/`SEEK_DATA` and deallocates the corresponding whole
+destination filesystem blocks before full source/destination hash verification.
+This is required on APFS: skipped zero buffers alone can allocate small sparse
+gaps, and a 1 MiB buffer may span many holes. Unsupported sparse observation or
+deallocation fails the operation and leaves the destination unregistered.
+Registration is atomic only after a fresh stopped
 runtime observation matches OS/resources. Source qualification remains dated
 source evidence; an actual destination worker/native/reboot/workload acceptance
-is a separate gate. The feature is not yet installed or live accepted.
+is a separate gate. The first installed implementation (`3d667d2`) is not live
+accepted because a 44.8 GB allocated source became a 106.4 GB copy. That owned
+test copy was deleted through its durable image-delete job after preserving the
+receipt; all eight previous images and the source remain intact. The sparse
+correction has a real red/green APFS regression (512 KiB allocated data in a
+128 MiB logical file); packaging/installation and native destination acceptance
+of the correction remain pending.
 
 Interrupted/failed copies stay quarantined and reserve the source. Reusing the
 same request key returns the same operation; it never repeats the copy. Inspect

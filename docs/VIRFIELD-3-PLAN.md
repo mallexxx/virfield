@@ -157,8 +157,12 @@ Current Tart acquire refuses cross-container clones before reservation. Registry
 pull/publication is not a local managed-golden transfer and must not upload one.
 The operator had to rebuild Monterey/Xcode in another container (~39 minutes).
 
-A source implementation is under test; installation and live acceptance remain
-open. Add an explicit journaled copy/transfer to a new destination/name, preserving the
+The first implementation is installed but not accepted: actual copy expanded
+44.8 GB allocated data to 106.4 GB. The owned failed-acceptance copy was removed
+through its durable image-delete job, preserving the source and eight baseline
+images. A source correction restores real holes before hash verification and
+passes a genuine APFS red/green allocation regression; corrected installation
+and live acceptance remain open. Add an explicit journaled copy/transfer to a new destination/name, preserving the
 source by default. Check full destination capacity and source-not-in-use rules;
 preserve image/recipe provenance, OS/build/security/toolchain verification and
 private identity mapping. Verify copied contents/hashes and destination runtime

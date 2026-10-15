@@ -27,10 +27,31 @@ acceptance driver was stopped before worker creation; inspect the original
 durable transfer job before any cleanup or retry. The source golden is retained.
 Receipt: `virfield-local-golden-transfer-live-20261015/journal.json`.
 
+The owned first copy was subsequently inspected and deleted with durable
+`job-c118887cc056917a94363a9126a684d4`; all eight baseline manifests and source
+metadata/private hashes were preserved. Source correction now restores actual
+source holes in the destination after copying and before full hash verification.
+A non-skipping APFS regression fails on the old code (524,288 to 134,217,728
+allocated bytes) and passes after correction, alongside all-hole/unaligned-tail
+content and source-position checks. Complete local `make check`, affected race
+tests, Linux cross-build, Staticcheck 0.7.0, Govulncheck 1.6.0 (zero reachable)
+and Gitleaks 8.30.1 working-tree checks passed. Darwin uses the supported
+libSystem `fcntl` wrapper with a pinned request, not a deprecated direct syscall.
+This is source evidence only; the corrected package/native transfer is
+not yet accepted. Receipts: `virfield-sparse-copy-red-20261016.log`,
+`virfield-sparse-copy-green-20261016.log`,
+`virfield-sparse-copy-affected-20261016.log`,
+`virfield-sparse-copy-cleanup-20261016/journal.json`.
+
 The operator confirmed an owning MCP Restart, but the actual connected adapter
 still serves four runbooks different from this installed package and exposes no
 `image_transfer`. Receipt: `virfield-owning-mcp-3d667d2-20261016.json`.
 Another fresh stdio process does not accept that connected client.
+The exact owner was identified from its unique new TCP connection immediately
+after an actual tool request: PID 66295, started at 22:18, still has the older
+executable inode 643828906 loaded. The installed 23:50 binary has inode
+644036119. Configuration points at the correct installed path; this is an old
+running adapter, not a different configured pathname. No adapters were killed.
 
 **HTPC speech-log cause and fix: PASS.** Speech Dispatcher
 `0.12.1-6.fc44` contains the upstream `output_get_voices` debug statement that

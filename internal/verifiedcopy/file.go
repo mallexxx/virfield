@@ -65,6 +65,9 @@ func File(ctx context.Context, source *os.File, destination string) (string, err
 	if err := out.Truncate(before.Size()); err != nil {
 		return "", err
 	}
+	if err := preserveHoles(ctx, source, out, before.Size()); err != nil {
+		return "", err
+	}
 	if err := out.Sync(); err != nil {
 		return "", err
 	}
