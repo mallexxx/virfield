@@ -210,7 +210,7 @@ func TestMCPAppleAuthIssuesLinkForExactJob(t *testing.T) {
 			t.Error(r.Method, r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"url":"http://127.0.0.1:7780/apple-auth/one-time","expires_at":"2026-10-02T12:00:00Z"}`)
+		fmt.Fprint(w, `{"url":"http://127.0.0.1:7780/apple-auth/one-time","expires_at":"2030-01-01T12:00:00Z"}`)
 	}))
 	defer api.Close()
 	c, err := client.New(api.URL, "secret")

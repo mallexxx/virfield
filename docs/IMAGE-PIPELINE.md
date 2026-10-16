@@ -1,290 +1,155 @@
 # Image pipeline
 
-Current image construction adopts digest-pinned Cirrus Tart images or secures a
-Linux node's operator-installed bootstrap qcow2 golden. It does not install macOS
-from IPSW in the live deployment. Old Lume/Recovery/OCR instructions are preserved
-only in [history](history/IMAGE-PIPELINE-before-2026-10-14.md).
+Build golden images from approved digest-pinned Tart bases or a Linux node's
+operator-installed qcow2 bootstrap. Keep runtime disks and private build journals
+outside the checkout. Build a new image instead of overwriting a golden.
 
-## Choose macOS and Xcode versions
+## Choose versions and profiles
 
-`image_catalog` reports public macOS/Xcode metadata and configured image inventory.
-`inventory.verified` refers to provider observation; `configured_images[].ready`
-requires a present VM and matching durable `image_ready` fingerprint. Catalog
-availability does not establish buildability, architecture or live acceptance.
+`image_catalog` lists public macOS/Xcode metadata and configured inventory.
+`inventory.verified` describes provider observation; a ready configured image also
+needs a matching durable `image_ready` fingerprint. Check your workload separately
+on a disposable clone.
 
-`image_create` resolves only operator-approved Tart bases from `runtime.tart.bases`
-plus configured Tart templates. `tart_bases` exposes their exact OS/build, digest
-and SIP. Version/build/codename selects a matching base; default security requires
-SIP enabled, while `sip-disabled`/`automation` require a disabled-SIP base. An
-unsupported OS or policy is refused before VM creation. Xcode is optional and
-pinned by exact stable version, build and SHA-1 from validated public metadata.
-The configured default clone location is also the default image location; select
-an explicit location when there is no unique default.
+`image_create` selects from `runtime.tart.bases` and configured Tart templates.
+Pin exact OS/build, upstream SHA-256 and SIP policy. Default security needs SIP
+enabled; `sip-disabled` and `automation` need a disabled-SIP base. Unsupported
+combinations fail before VM creation. Optional Xcode uses an exact stable version,
+build and metadata checksum. Public metadata failure leaves configured inventory
+visible with `metadata_error`, but Xcode selection needs metadata recovery.
 
-Configured bases and installed inventory remain available if public metadata is
-offline (`metadata_error`); Xcode selection then requires metadata recovery.
-Node profiles remain operator-configured and are not derived from Apple Silicon
-restore metadata.
+A Tart profile has `image.tart.upstream`, `macos`, `build` and expected SIP state.
+Use `base-v1` without Xcode, `security-v1` for automation without Xcode,
+`developer-v1` for exact Xcode, or `uitest-27-v1` for build `26A428`. The guest is
+`admin` with `/Users/admin` home; `location` names an allowed Tart container.
+Node profiles declare `image.node.golden`, exact OS/build and SIP; they do not
+accept Xcode/provisioning fields.
 
-## Profile and dependencies
+## Build and qualify
 
-A Tart profile declares `image.tart.upstream` as an exact GHCR SHA-256 reference,
-`macos`, `build`, the expected SIP state and `base-v1` without Xcode, `security-v1` for automation without Xcode,
-`developer-v1` with exact Xcode, or `uitest-27-v1` for build `26A428`. The configured guest is `admin`,
-with `/Users/admin` home. Templates name an allowed Tart container as `location`.
+Tart stages are `resolve → build → qualify → stop`; node stages are
+`build → qualify → stop → commit`. Submit a stable request key and poll the job.
+Require job `succeeded` and image record `image_ready` before acquiring.
 
-Packer and Tart are operator-owned executables. The embedded recipe pins the
-Cirrus Tart plugin to 1.21.0; explicit plugin/runtime binary digest verification
-is not yet implemented. Developer profiles download/resume and checksum-verify a XIP into
-`runtime.tart.image.xcode_archives`. Existing valid archives are reused; corrupt
-ones are quarantined. A failed Apple-authorized download in `resolve` supports
-the native sign-in flow and resumes that exact job before any VM build. Install
-the browser alongside virfieldd to enable this flow. UI-test profiles adopt
-upstream Xcode. macOS 27 recipes keep the upstream disk and explicitly set `recovery_partition = "keep"`. Omitting it selects Packer's default deletion, which opens an ASIF file and can retain a lock that prevents Virtualization.framework startup. They do not resize or relocate Recovery. All Tart recipes use `1920x1080px` to avoid host Retina scaling; worker clones repeat this before boot and disable display refitting. The VM's Aqua agent selects and verifies the actual CoreGraphics 1920×1080 logical desktop on every login/preparation.
+Packer/Tart binaries are operator-owned. The recipe pins the Tart plugin to
+1.21.0; the operator must verify installed executable provenance. Resolve pulls
+the pinned source with cache pruning disabled. Developer recipes verify and reuse
+XIPs in `runtime.tart.image.xcode_archives`; corrupt archives are quarantined.
 
-Older base/developer recipes grow the raw disk to 120 GB and require at least
-40 GiB free on the writable `/System/Volumes/Data` filesystem. Capacity is checked
-for up to 30 seconds after one resize; a sealed root snapshot's statistics alone
-are not used for installation admission. Real shortage or invalid statistics fail
-the build rather than accepting an undersized guest.
-Image builds and portable exports reserve CPU/RAM/disk before dispatch and share
-the worker quota. A new macOS 27 base requires an operator `disk_bytes` bound in
-`runtime.tart.bases` (pinned profile: `build_disk_bytes`) or an observed golden of
-that exact upstream. Unknown disk size is rejected before building; there is no
-client-controlled quota bypass.
+macOS 27 recipes retain the Recovery partition and upstream disk. Other
+base/developer recipes grow the disk to 120 GB and require 40 GiB free on writable
+Data, allowing up to 30 seconds for filesystem statistics after resize. Image
+builds and exports reserve CPU/RAM/full disk growth before dispatch. macOS 27
+bases need a configured `disk_bytes` bound (`build_disk_bytes` in a pinned profile)
+or an observed golden of that upstream. Unknown size blocks admission.
 
-Tart stages are `resolve → build → qualify → stop`. Resolve downloads the pinned
-upstream into the selected container before any Packer VM build, with automatic
-cache pruning disabled. A failed source download can retry resolve without replaying
-a VM mutation. Standard-account qualification retains `admin/admin` and installs
-private SSH keys; legacy golden data is preserved under the policy below. Qualification reboots and verifies exact
-OS/build, SIP, desktop, disk state, account authentication and, for Xcode profiles, signature/version/first launch/Swift
-and DeviceSupport. Base profiles do not require Xcode or host DeviceSupport.
-UI-test recipes additionally verify their automation tools and permission probes.
-Evidence records upstream and recipe digests in private `verification.json`.
+Qualification reboots and checks OS/build, SIP, disk state, account authentication,
+unlocked desktop and native GUI/SSH key storage. Developer profiles also check
+Xcode signature/version/first launch, Swift and DeviceSupport; UI-test recipes
+check automation tools/permissions. Display preparation requires a real
+1920×1080 desktop. Private `verification.json` binds upstream and recipe digests.
+Node qualification commits a new read-only qcow2 golden plus OpenCore config.
 
-Node profiles declare `image.node.golden`, exact macOS/build and SIP. They do not
-accept Xcode/provisioning fields today. `build → qualify → stop → commit` secures
-an overlay, checks it after reboot and commits a new read-only qcow2 golden.
-Its bootstrap OS installation is an operator task. The node uses a digest-pinned
-Podman image and stores goldens outside the source checkout.
+## Guest account and security
 
-## Guest security policy
+VMs use `admin/admin`, separate management and caller keys, fresh host keys and
+pinned key-only SSH. A new clone can migrate a known inherited account/keychain
+without discarding items. Unknown credentials fail readiness. Existing goldens
+are preserved; in-place conversion from an older account policy is refused.
+Physical leases add one caller key to the shared account and leave its keychain
+unchanged.
 
-SIP is an expected upstream policy for Tart, not an automatic Recovery mutation.
-An upstream with a different SIP state must fail. Tart accepts unlocked APFS
-encryption at rest when FileVault is off because its clone keeps machine identity.
-This is different from the retired Lume portable-disk contract.
+SIP must match the approved upstream; the pipeline does not guess Recovery key
+presses. Tart accepts unlocked APFS encryption at rest with FileVault off.
+`security: automation` applies and verifies the recipe's Gatekeeper, AMFI, TCC and
+boot-argument policy. See [keychain diagnosis](OPERATIONS.md#vm-keychain-readiness)
+for native GUI/SSH checks and private failure logs.
 
-The operator requires **`admin/admin`**, without automatic random account-password
-rotation. Standard-account candidates (`0f8bc20` and later) implement this. Previously secured images retain their recorded credentials.
-Only a new journaled disposable clone converts its known inherited account to
-the standard password, verifies it and migrates the keychain while preserving
-items. Already-standard accounts are authenticated without password change.
-In-place securing of a legacy golden is refused before mutation; build a new
-image instead. Unknown keychain credentials fail readiness. Never reset their
-keychain or silently overwrite a golden. The policy still requires
-per-image/lease management keys, caller-key isolation, fresh VM host keys and
-pinned key-only SSH; inherited image/cross-lease keys must be rejected. Physical
-host leases add only one caller key to the configured shared account.
+## Apple sign-in
 
-The following keychain mechanics are retained with the standard account policy;
-profile-specific live acceptance remains required.
+If a Tart Xcode resolve job fails because the archive needs Apple authorization,
+request `image_apple_auth` for that exact job. Open its short-lived local browser
+link and complete sign-in. The browser authorizes the daemon to resume that
+job’s download/resolve stage; poll the same job ID. The native
+browser sends scoped authorization to the loopback daemon. Never put Apple IDs,
+passwords or cookies in tool arguments. A catalog entry does not grant download
+access. The browser is unnecessary for valid cached/public artifacts.
 
-VM qualification and lease preparation install an additional private keychain
-named for the image/lease and an Aqua login LaunchAgent. They preserve/rekey the
-inherited login keychain to the configured standard VM password and keep login as the
-default and first search entry across boots. This lets loginwindow unlock it
-before Spotlight and other early OS clients, which can otherwise queue password
-dialogs for a custom default before the owned agent starts. The agent verifies
-native access with the current password and unlocks before applying the
-no-sleep/no-timeout-lock settings, and repeats at each GUI login. Passwords travel
-on encrypted SSH stdin and live only in owner-only guest files; inherited keychain
-files are preserved. A fresh native `WhenUnlocked` generic-password add/read/data
-comparison/delete probe must succeed in the current GUI audit session and boot.
-A successful `security unlock-keychain` or an unlocked status flag alone is not
-proof that an application can store its encryption key.
+## Registry import and publication
 
-SSH has a separate Security audit session. A fixed VM-only `sshd` ForceCommand
-bridge unlocks that same private keychain immediately before each original client
-command. It preserves command arguments/stdin, interactive shells and SFTP/SCP.
-Readiness independently requires native key access from an SSH command session.
-Full GUI readiness additionally requires a logged-in, unlocked console and an
-available window snapshot without Keyboard Setup Assistant or SecurityAgent.
-General/per-host screensaver idle is disabled; autologin preparation clears and
-verifies the persisted lock flag. Existing login items are never deleted.
-Failure is `guest_keychain_failed`; the image/lease does not become ready. This
-policy applies to VMs, including node VM qualification, and does not alter shared
-physical-host keychains. Existing ready images are historical evidence: new
-qualification or new lease preparation is needed to obtain these gates.
-The [Broker macos27 reacceptance record](VERIFICATION.md#broker-macos27-reacceptance)
-tracks the exact failed versions, confirmed cleanup and newer deployment that
-still needs its own production-path evidence.
+Configure allowlisted GHCR namespaces and private credential files.
+`registry_sources` reports permissions without credentials. `registry_resolve`
+checks the Tart manifest digest, ordered config/disk/NVRAM descriptors and chunk
+metadata. Unsupported formats fail before import.
 
-`security: automation` applies the version-aware Gatekeeper, AMFI and TCC
-policy inside the guest, then verifies its signed identities, grants, canonical
-SIP, Gatekeeper and active boot arguments after reboot. `uitest-27-v1` additionally
-checks its tools and UI automation permissions. New generic automation recipes
-require live acceptance independently of the earlier UI-test acceptance.
+`image_pull` pins that manifest and qualifies the expected OS/build/policy through
+the same pipeline. `image_publish` needs an idle pool, verified stopped source,
+push-enabled namespace and unused tag. It builds a fresh portable `vf-export-*`
+VM from the pinned recipe, verifies public bootstrap credentials, sanitizes,
+stops, pushes once and checks the manifest digest. It never uploads the private
+managed golden. Success includes confirmed temporary VM/file cleanup.
 
-## Registry
+Reserve tags operationally: GHCR has no atomic create-if-absent operation.
+Interrupted uploads remain quarantined for inspection. Node goldens cannot use
+Tart publication.
 
-`registry_resolve` validates a Tart OCI manifest: digest, bounded descriptors,
-canonical config → disk chunks → NVRAM order, chunk size/digest metadata and ASIF
-file-group metadata. Lume/container/index formats are rejected. Tart handles blob
-transport and reconstruction. Sources, organizations and credentials are
-operator-configured; callers cannot choose an arbitrary registry or token.
+## Transfer a local golden
 
-`image_pull` pins the resolved manifest as the Tart upstream, retains provenance,
-and builds/qualifies the expected OS/build/policy with the same pipeline.
-`image_publish` requires an idle pool, verified stopped source, push-enabled
-source and absent tag. It freshly rebuilds from the upstream recipe under a new
-`vf-export-*` identity, verifies the public `admin`/`admin` account without adding
-private image credentials, sanitizes, stops, pushes once and verifies the manifest
-digest. It never uploads the private managed golden. Success waits for confirmed
-removal of the temporary VM and private host files. Interrupted uploads stay
-quarantined and are not blindly retried. There is no atomic GHCR create-if-absent
-operation; reserve publication tags operationally to exclude concurrent writers.
-Node goldens do not support Tart publication.
-
-The complete fresh public-base factory/private push/pull-back/clone workload and
-cleanup roundtrip passed on `2f23ae6` on 2026-10-15, preserving seven baseline
-images. Retain that receipt and repeat for relevant export/import pipeline
-changes; public manifest resolution alone is not that acceptance. See Verification
-for digest and scope. The explicit local managed-golden transfer below avoids
-registry publication; acquire itself still rejects cross-container clones.
-
-## Recovery
-
-Any ambiguous dispatched mutation stays reserved and requires exact-target
-inspection. After confirming no process is in flight, use operator
-`image-recover IMAGE_RECORD_ID EXACT_VM_NAME retry|delete CONFIRM-NO-OPERATION-IN-FLIGHT`
-with a new stable recovery key. Tart `resolve` and `qualify` may be retried after
-inspection; an interrupted Packer `build` cannot be blindly replayed. Node
-`qualify` may be retried; `commit` is not replayable. Node deletion retains its provider and guest identity, protects backing goldens
-with overlays and confirms Podman container absence before deleting files. No runtime-directory or SQLite bypass is a recovery.
-
-`image-delete TEMPLATE_ID EXACT_VM_NAME` deletes a stopped unused image only after
-explicit authorization. Images in use are protected. Rebuilds never overwrite.
-
-## Acceptance
-
-Only [Verification](VERIFICATION.md) owns accepted combinations and release gates.
-An `image_ready` build is not a clone/workload acceptance run. Require a disposable
-clone, pinned SSH, exact guest checks, artifact export and confirmed release.
-
-## Verified local golden transfer
-
-`image_transfer` / `POST /api/v1/images/transfer` accepts
-`{"template":"SOURCE_TEMPLATE","id":"NEW_ID_AND_NAME","location":"DESTINATION_CONTAINER"}`
-with a stable `Idempotency-Key`. CLI:
-`virfield -token-file /PRIVATE/TOKEN -key STABLE_KEY image-transfer SOURCE_TEMPLATE NEW_ID DESTINATION_CONTAINER`.
-The source implementation requires an idle pool, a stopped verified managed
-standalone Tart image, another configured local storage and the full potential
-disk size plus existing growth reservations and safety reserve. It does not
-upload a managed golden or delete its source. Other providers, disk stacks,
-suspended VMs, unknown resources and existing destination IDs/names are refused.
-
-The journal pins source identity, profile and destination before dispatch. The
-copy holds Tart's runtime config lock, preserves UUID/MAC/NVRAM, copies private
-SSH identity and qualification evidence, and verifies source/copied file hashes
-and storage identities. After all writes, the corrected copier enumerates source
-holes with `SEEK_HOLE`/`SEEK_DATA` and deallocates the corresponding whole
-destination filesystem blocks before full source/destination hash verification.
-This is required on APFS: skipped zero buffers alone can allocate small sparse
-gaps, and a 1 MiB buffer may span many holes. Unsupported sparse observation or
-deallocation fails the operation and leaves the destination unregistered.
-Registration is atomic only after a fresh stopped
-runtime observation matches OS/resources. Source qualification remains dated
-source evidence; an actual destination worker/native/reboot/workload acceptance
-is a separate gate. The first installed implementation (`3d667d2`) is not live
-accepted because a 44.8 GB allocated source became a 106.4 GB copy. That owned
-test copy was deleted through its durable image-delete job after preserving the
-receipt; all eight previous images and the source remain intact. The sparse
-correction has a real red/green APFS regression (512 KiB allocated data in a
-128 MiB logical file). Installed `a45655f` passed actual Monterey/Xcode transfer:
-120 GB logical, 44.79 GB allocated destination, all source/destination hashes and
-private identity equal. Two fresh complete native GUI/new SSH/reboot/Xcode/Swift/
-workspace/artifact/RFB/release cycles passed; source and eight baseline manifests
-remain unchanged. The accepted ninth image is retained. See Verification for the
-exact durable job, image and receipts.
-
-Interrupted/failed copies stay quarantined and reserve the source. Reusing the
-same request key returns the same operation; it never repeats the copy. Inspect
-the exact source, destination and job, and confirm no process remains in flight
-before `image-recover IMAGE_RECORD_ID EXACT_VM_NAME delete CONFIRM-NO-OPERATION-IN-FLIGHT`.
-Cleanup requires the matching destination ownership marker, including when a
-partial disk has no runtime config. A collision or missing marker is not adopted
-or deleted. Choose a new ID after confirmed cleanup; retry cannot skip copying
-or promote a partial destination. SQLite schema 8 prevents an older executor
-from treating a queued transfer as a normal worker clone. The pre-migration
-schema-7 snapshot is private and integrity checked; old-binary rollback requires
-that snapshot, not opening a schema-8 journal.
-
-## Optional legacy iOS toolchain
-
-`toolchain: "legacy-ios-v1"` is an explicit opt-in on `image_create` / CLI
-`-toolchain legacy-ios-v1`. It requires an approved Tart macOS **12.7.6** base and
-pinned **Xcode 13.4.1 / 13F100** with `developer-v1`. Other OS/toolchain/provider
-combinations are refused before image mutation. Ordinary profiles omit the two
-new manifest fields; their fingerprints and ordinary Packer recipe stay unchanged.
-Existing goldens are never provisioned in place. Installed schema 10 prevents an
-older executor from silently ignoring the new toolchain fields. The approved
-upgrade verified and retained its private schema 8-to-10 snapshot and the earlier
-schema 7 snapshot. A fresh factory and actual worker passed qualification and
-armv7 builds before/after real reboot on `e80c194`; see
-[Verification](VERIFICATION.md) for scope and receipts.
+`image_transfer` copies a verified standalone stopped Tart image to another
+configured local container under a new ID/name. The pool must be idle and the
+full potential disk growth plus reservations/reserve must fit.
 
 ```sh
-virfield -token-file "$VIRFIELD_HOME/token" -key legacy-image-001 -location CONTAINER_ID -toolchain legacy-ios-v1 image-create NEW_IMAGE_ID 12.7.6 13.4.1
+virfield -token-file "$VIRFIELD_HOME/token" -key transfer-001 image-transfer SOURCE_TEMPLATE NEW_ID DESTINATION_CONTAINER
 virfield -token-file "$VIRFIELD_HOME/token" job JOB_ID
 ```
 
-The fixed recipe builds native Ruby **3.3.12**, OpenSSL **3.5.9 LTS** and LibYAML
-**0.2.5**, then installs CocoaPods **1.16.2**, Xcodeproj **1.27.0**, FFI **1.17.4**
-and Ethon **0.18.0** under `/opt/virfield/toolchains/legacy-ios-v1`. Bundler
-**2.5.22**, all 44 source gems and every source archive are pinned by lockfile and
-SHA-256. Downloads are checked before execution; gems install from the local
-verified cache with frozen resolution and the `ruby` source platform. Native
-extensions compile for the guest's native architecture. Host Ruby/Homebrew and
-ordinary guest profiles are not changed. Rosetta is checked/installed only in an
-Apple Silicon guest; native Ruby and gems still run as arm64. Intel skips Rosetta.
+The copy preserves UUID/MAC/NVRAM, private identity, qualification evidence and
+sparse allocation, then verifies file hashes and storage/runtime identity before
+atomic registration. The source remains intact. Unsupported sparse observation
+or deallocation fails safely. Test a worker on the destination for your workload.
 
-The toolchain manifest includes a separate SHA-256 covering the installer, pins,
-checks and local fixture. Existing/partial installations are preserved on failure;
-setup never overwrites them to pass qualification. Root-owned public toolchain
-files are guest-readable/executable with no guest write access; setup uses its own
-umask and commits the completion marker only after permissions succeed. Compiler
-output stays in a root-private guest `build.log`; SSH returns short stage messages
-and a bounded failure tail, avoiding its 64 KiB output limit. The image stage writes private
-`legacy-ios-install.log` and, after actual reboot, `legacy-ios-verify.log`. Readiness
-requires native Ruby/FFI Mach-O architecture, actual FFI/Ethon/libcurl loading and
-matching Ruby/OpenSSL/LibYAML/gem versions. The representative Objective-C app uses
-a local CocoaPods dependency, immutable `Gemfile.lock`/`Podfile.lock` and a real
-Xcode armv7 compile/link; lipo and the linked dependency symbol are checked. No
-signing or 32-bit device execution is claimed. Evidence records versions,
-architecture, recipe/log digests and build artifact/lockfile hashes. Source the profile environment in a subshell
-when building a caller checkout; it selects native Ruby, frozen tools and the
-UTF-8 locale required by CocoaPods under noninteractive SSH:
+An interrupted copy remains quarantined and reserves its source. Same-key replay
+returns the original operation. Inspect before cleanup; only the owned destination
+with its matching ownership marker can be removed. A new attempt needs a new ID
+after confirmed cleanup. Partial copies cannot be promoted or adopted.
+
+## Optional legacy iOS toolchain
+
+`image_create.toolchain: "legacy-ios-v1"` requires Tart macOS 12.7.6 and
+Xcode 13.4.1/13F100 with `developer-v1`. Ordinary profiles omit it; existing
+goldens are not provisioned in place.
+
+```sh
+virfield -token-file "$VIRFIELD_HOME/token" -key legacy-image-001 -location CONTAINER_ID -toolchain legacy-ios-v1 image-create NEW_ID 12.7.6 13.4.1
+```
+
+The [manifest](../internal/legacyios/assets/manifest.json) pins Ruby, OpenSSL,
+LibYAML, Bundler and every source gem/archive by checksum. The root-owned native
+toolchain lives under `/opt/virfield/toolchains/legacy-ios-v1`. Qualification
+checks native Ruby/FFI/Ethon loading and an Objective-C armv7 compile/link with a
+local CocoaPods dependency before/after reboot. It does not run a 32-bit device.
+Source the profile environment in a subshell for caller builds:
 
 ```sh
 ( . /opt/virfield/toolchains/legacy-ios-v1/env.sh; bundle exec pod install --deployment )
 ```
 
-No global shell startup files or system Ruby are changed.
+Keep project lockfiles frozen. Partial installations are preserved for diagnosis;
+setup does not overwrite them to pass. Private installer/verification logs retain
+bounded failure output. System Ruby and global shell startup files stay unchanged.
 
-The installed `legacy-ios-v1` profile passed a fresh Monterey Packer factory
-build/qualification and worker with actual armv7 compile/link before/after native
-reboot, pinned SSH/isolation, hashed artifacts and official cleanup. Only its
-extra temporary golden was deleted; all nine baseline images remain. See
-[Verification](VERIFICATION.md) for exact versions and receipts. This does not
-claim on-device armv7 execution.
+## Recovery
 
-Primary compatibility/pin sources: [Apple Xcode 13.4.1](https://developer.apple.com/documentation/xcode-release-notes/xcode-13_4_1-release-notes),
-[Apple Xcode 14 armv7 removal](https://developer.apple.com/documentation/Xcode-Release-Notes/xcode-14-release-notes),
-[Ruby 3.3.12 source/checksums](https://www.ruby-lang.org/en/news/2026/07/16/ruby-3-3-12-released/),
-[OpenSSL supported downloads](https://openssl-library.org/source/),
-[LibYAML source](https://github.com/yaml/libyaml/releases/tag/0.2.5) and
-[CocoaPods version locking](https://guides.cocoapods.org/using/a-gemfile.html).
-The checked-in [manifest](../internal/legacyios/assets/manifest.json) records the
-primary RubyGems metadata URL and source SHA for each exact gem version.
+Unknown dispatched mutations retain reservations. Confirm that no operation is in
+flight, inspect the exact image/VM and preserve diagnostics before recovery:
+
+```sh
+virfield -token-file "$VIRFIELD_HOME/token" -key inspected-image-001 image-recover IMAGE_RECORD_ID EXACT_VM_NAME retry CONFIRM-NO-OPERATION-IN-FLIGHT
+```
+
+Tart `resolve`/`qualify` and node `qualify` can retry after inspection. Interrupted
+Packer builds and node commits cannot be blindly replayed. For authorized cleanup,
+use `delete` instead of `retry`. `image-delete TEMPLATE_ID EXACT_VM_NAME` deletes
+only a stopped unused image; backing overlays and active operations block it.
+Never bypass these checks by editing SQLite or deleting runtime directories.

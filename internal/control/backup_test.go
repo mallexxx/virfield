@@ -69,7 +69,7 @@ func TestBackupUsesConfiguredExternalPaths(t *testing.T) {
 func TestBackupPreservesNodeIdentitiesAndRejectsSymlinks(t *testing.T) {
 	c, _, _ := setup(t)
 	dir := t.TempDir()
-	for path, body := range map[string]string{"config.json": "settings", "token": "secret", "nodes/management/id_ed25519": "private-key", "nodes/htpc.probe.json": "cached-probe"} {
+	for path, body := range map[string]string{"config.json": "settings", "token": "secret", "nodes/management/id_ed25519": "private-key", "nodes/linux-node.probe.json": "cached-probe"} {
 		target := filepath.Join(dir, path)
 		if err := os.MkdirAll(filepath.Dir(target), 0700); err != nil {
 			t.Fatal(err)
@@ -82,7 +82,7 @@ func TestBackupPreservesNodeIdentitiesAndRejectsSymlinks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for path, want := range map[string]string{"nodes/management/id_ed25519": "private-key", "nodes/htpc.probe.json": "cached-probe"} {
+	for path, want := range map[string]string{"nodes/management/id_ed25519": "private-key", "nodes/linux-node.probe.json": "cached-probe"} {
 		raw, err := os.ReadFile(filepath.Join(dir, "backups", id, path))
 		if err != nil || string(raw) != want {
 			t.Fatal(path, err)

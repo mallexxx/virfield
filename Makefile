@@ -2,7 +2,7 @@
 # A stable signing identity keeps macOS privacy grants (Full Disk Access for
 # Tart storage on external volumes) valid across rebuilds; ad-hoc signatures
 # change with every build.
-SIGN_IDENTITY ?= Apple Development: mallexxx@gmail.com (D46EWG5VWN)
+SIGN_IDENTITY ?=
 
 build:
 	go build -trimpath -o bin/ ./cmd/...

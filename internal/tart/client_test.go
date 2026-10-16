@@ -104,7 +104,7 @@ func TestObserveRejectsInterruptedContainerProbe(t *testing.T) {
 	defer cancel()
 	local := tartHome(t)
 	client := &Client{
-		config: Config{HostID: "macbook", MaxVMs: 2, Containers: []ContainerConfig{
+		config: Config{HostID: "primary", MaxVMs: 2, Containers: []ContainerConfig{
 			{ID: "local", Path: local, Kind: "local"},
 			{ID: "external", Path: "/external", Kind: "external"},
 		}},
@@ -145,13 +145,13 @@ func TestObserveKeepsUnmountedExternalContainer(t *testing.T) {
 		local + "|get golden --format json": `{"OS":"darwin","CPU":4,"Memory":8192,"Disk":80,"Running":false,"State":"stopped"}`,
 	}}
 	client := &Client{
-		config: Config{HostID: "macbook", HostName: "MacBook", MaxVMs: 2, Containers: []ContainerConfig{
+		config: Config{HostID: "primary", HostName: "MacBook", MaxVMs: 2, Containers: []ContainerConfig{
 			{ID: "local", Path: local, Kind: "local"},
-			{ID: "samsung", Path: "/samsung", Kind: "external", VolumeUUID: "123e4567-e89b-12d3-a456-426614174000"},
+			{ID: "external", Path: "/external", Kind: "external", VolumeUUID: "123e4567-e89b-12d3-a456-426614174000"},
 		}},
 		runner: runner,
 		probe: func(_ context.Context, path string) (volume, error) {
-			if path == "/samsung" {
+			if path == "/external" {
 				return volume{}, os.ErrNotExist
 			}
 			return volume{Identity: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", Total: 1 << 40, Free: 500 << 30}, nil
@@ -164,7 +164,7 @@ func TestObserveKeepsUnmountedExternalContainer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(observation.StorageContainers) != 2 || observation.StorageContainers[1].ID != "samsung" || observation.StorageContainers[1].Availability != "unavailable" || observation.StorageContainers[1].UnavailableReason != "volume_unmounted" {
+	if len(observation.StorageContainers) != 2 || observation.StorageContainers[1].ID != "external" || observation.StorageContainers[1].Availability != "unavailable" || observation.StorageContainers[1].UnavailableReason != "volume_unmounted" {
 		t.Fatalf("external container disappeared: %#v", observation.StorageContainers)
 	}
 	if len(observation.VMs) != 1 || observation.VMs[0].ContainerID != "local" || observation.VMs[0].OS != "macOS" {
@@ -176,10 +176,10 @@ func TestObserveKeepsUnmountedExternalContainer(t *testing.T) {
 }
 
 func TestCommandsUseSelectedTartHome(t *testing.T) {
-	runner := &fakeRunner{responses: map[string]string{"/samsung|clone ghcr.io/cirrus/image@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa vf-test": "", "/samsung|set vf-test --display 1920x1080px --no-display-refit": ""}}
-	client := &Client{config: Config{Containers: []ContainerConfig{{ID: "samsung", Path: "/samsung", Kind: "external"}}}, runner: runner}
+	runner := &fakeRunner{responses: map[string]string{"/external|clone ghcr.io/cirrus/image@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa vf-test": "", "/external|set vf-test --display 1920x1080px --no-display-refit": ""}}
+	client := &Client{config: Config{Containers: []ContainerConfig{{ID: "external", Path: "/external", Kind: "external"}}}, runner: runner}
 	template := domain.Template{Source: "ghcr.io/cirrus/image@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
-	lease := domain.Lease{VMName: "vf-test", Location: "samsung"}
+	lease := domain.Lease{VMName: "vf-test", Location: "external"}
 	if err := client.Clone(context.Background(), template, lease); err != nil {
 		t.Fatal(err)
 	}
@@ -187,9 +187,9 @@ func TestCommandsUseSelectedTartHome(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{
-		"/samsung|clone ghcr.io/cirrus/image@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa vf-test",
-		"/samsung|set vf-test --display 1920x1080px --no-display-refit",
-		"/samsung|run --no-graphics vf-test",
+		"/external|clone ghcr.io/cirrus/image@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa vf-test",
+		"/external|set vf-test --display 1920x1080px --no-display-refit",
+		"/external|run --no-graphics vf-test",
 	}
 	if !reflect.DeepEqual(runner.calls, want) {
 		t.Fatalf("calls = %#v", runner.calls)
@@ -290,7 +290,7 @@ func (r *slowGetRunner) StartDetached(string, []string) error { return nil }
 func TestObserveInspectsVMsConcurrentlyInListOrder(t *testing.T) {
 	names := []string{"a", "b", "c", "d", "e", "f"}
 	client := &Client{
-		config: Config{HostID: "macbook", MaxVMs: 2, Containers: []ContainerConfig{{ID: "local", Path: tartHome(t, names...), Kind: "local"}}},
+		config: Config{HostID: "primary", MaxVMs: 2, Containers: []ContainerConfig{{ID: "local", Path: tartHome(t, names...), Kind: "local"}}},
 		runner: &slowGetRunner{names: names, delay: 200 * time.Millisecond},
 		probe: func(context.Context, string) (volume, error) {
 			return volume{Identity: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", Total: 1 << 40, Free: 500 << 30}, nil
@@ -348,7 +348,7 @@ func TestObserveReusesVMSpecsUntilConfigChanges(t *testing.T) {
 	}
 	runner := &countingRunner{}
 	client := &Client{
-		config: Config{HostID: "macbook", MaxVMs: 2, Containers: []ContainerConfig{{ID: "local", Path: home, Kind: "local"}}},
+		config: Config{HostID: "primary", MaxVMs: 2, Containers: []ContainerConfig{{ID: "local", Path: home, Kind: "local"}}},
 		runner: runner,
 		probe: func(context.Context, string) (volume, error) {
 			return volume{Identity: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", Total: 1 << 40, Free: 500 << 30}, nil

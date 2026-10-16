@@ -1,87 +1,39 @@
-# VS Code remote debugging
+# Remote debugging
 
-Virfield generates a host-build/remote-run workflow for a ready macOS lease.
-Install the official LLDB-DAP VS Code extension before opening the generated
-workspace.
-
-The 2026-10-07 timing baseline below belongs to the retired Lume lease.
-On 2026-10-16 an actual Monterey12.7.6/Xcode13.4.1 Tart lease passed generated
-build/sync/prepare, LLDB-DAP breakpoint/stack/evaluation, output and exit checks.
-The original helper exposed a listener-startup race. The correction is installed
-in `8bfff9f`; actual installed generated build/sync/prepare and full LLDB-DAP
-breakpoint/stack/evaluate41/output42/exit0 passed. No VS Code editor UI or real
-DuckDuckGo application debug was driven. Exact receipts and remaining scope are
-in [Verification](VERIFICATION.md).
-Do not treat the old timings as a Tart release result.
-
-## Data path
-
-| Operation | Location and protocol |
-|---|---|
-| Swift build and tests | Host, using the repository's existing commands |
-| App and debug products | Incremental `rsync` over pinned SSH |
-| Process launch | Apple `debugserver` bound to guest loopback |
-| Debug connection | Host `lldb-dap` and gdb-remote through an SSH tunnel |
-| macOS system images | Xcode `macOS DeviceSupport`, prepared from read-only NFS during golden verification |
-
-The debug port is never exposed on the VM network. Golden verification extracts
-the guest cache into `~/Library/Developer/Xcode/macOS DeviceSupport/<version>
-(<build>)/Symbols`. The generated helper validates that cache, mounts NFS only
-as a recovery fallback, starts `debugserver`, and creates the local SSH tunnel.
-The checked listener correction waits for that exact child's loopback LISTEN
-socket using `lsof`, without opening a TCP readiness connection: debugserver's
-first connection belongs to LLDB. Merely finding its process is insufficient.
-LLDB loads application symbols on demand and uses minimal remote module loading.
-
-Golden developer images enable `DevToolsSecurity`, add their configured guest user to `_developer`,
-and export only the immutable dyld cache to the private `192.168.64.0/24`
-network. Ad-hoc signed apps therefore launch under `debugserver` without an
-interactive authorization prompt.
-
-## Create the workspace
-
-Acquire a lease, wait for `ready`, and create its pinned SSH config. Then run:
+Virfield generates a host-build/remote-run workspace for a ready macOS VM lease.
+Install the official LLDB-DAP VS Code extension and a host Xcode with `lldb-dap`.
+Use a developer image matching the guest OS and generate its pinned SSH config.
 
 ```sh
-VIRFIELD_HOME="$HOME/Library/Application Support/Virfield"
-VIRFIELD_URL="http://127.0.0.1:7780"
-"$VIRFIELD_HOME/bin/virfield" -url "$VIRFIELD_URL" -token-file "$VIRFIELD_HOME/token" \
-  vscode-config LEASE_A /absolute/private/IDENTITY_A /absolute/path/to/SWIFTPM_WORKTREE \
-  LEASE_B /absolute/private/IDENTITY_B
+virfield -url "$VIRFIELD_URL" -token-file "$VIRFIELD_HOME/token" \
+  vscode-config LEASE_ID /absolute/private/identity /absolute/path/to/SWIFTPM_WORKTREE
 ```
 
-Existing files are never overwritten. A DuckDuckGo worktree containing
-`DuckDuckGo-macOS.code-workspace` gets:
+Open the generated configuration, select **Virfield: Debug SwiftPM product**,
+press F5 and enter the executable product name. The tasks build on the host,
+sync products with `rsync` over pinned SSH and launch guest-loopback `debugserver`.
+Host `lldb-dap` connects through an SSH tunnel. The debug port stays off the VM
+network. The helper waits for the exact debugserver process to listen without
+consuming its first debugger connection.
 
-- `.vscode/DuckDuckGo-macOS.virfield-remote-SET_ID.code-workspace`
-- one LLDB prepare helper per supplied ready VM
-- a host `lldb-dap` adapter
+The guest developer image prepares its immutable dyld cache in Xcode DeviceSupport.
+The helper validates those symbols and uses read-only NFS only as a recovery
+fallback. Missing/incomplete symbols block preparation. Developer qualification
+also enables the permissions needed to launch ad-hoc signed apps.
 
-The Run/Debug dropdown contains one entry per supplied VM, named with both its
-VM and lease ID. **Terminal → Run Task → Virfield: Open console** opens the
-Virfield web console; each VM also has an **Open VM terminal** task. Files are
-lease-set-specific, so creating the next session cannot silently retarget an
-open debugging session or overwrite a teammate's configuration.
+## DuckDuckGo workspace
 
-Open the generated workspace, select **DuckDuckGo — Virfield VM: VM [LEASE]**,
-set the desired breakpoint, and press F5. That single action uses
-the repository's host-side
-`make-host-app.sh`, SwiftBuild `DuckDuckGoBrowserDynamic` product, ad-hoc
-signing, and `sign-dylib.sh`; only the resulting app and Debug products are
-copied to the VM. **Virfield: Test** runs the existing SwiftPM test command on
-the host.
+A checkout containing `DuckDuckGo-macOS.code-workspace` gets a separate
+`.vscode/DuckDuckGo-macOS.virfield-remote-SET_ID.code-workspace`. Supply additional
+`LEASE_ID IDENTITY_DIRECTORY` pairs to include multiple VMs. Each Run/Debug entry
+names its VM and lease. Generated files are lease-specific and never overwritten.
 
-For another SwiftPM package, Virfield creates `launch.json`, `tasks.json`,
-`settings.json`, and the same two helpers. Select **Virfield: Debug SwiftPM
-product**, press F5, and enter the executable product name.
+Select **DuckDuckGo — Virfield VM: VM [LEASE]** and press F5. The generated tasks
+use the checkout's `make-host-app.sh`, `DuckDuckGoBrowserDynamic` product and
+`sign-dylib.sh`, then copy app/debug products to the VM. **Virfield: Test** runs
+the existing host SwiftPM test command. **Virfield: Open console** and **Open VM
+terminal** open the control plane and pinned VM shell.
 
-The historical 2026-10-07 Lume DuckDuckGo baseline on macOS 27.0/Xcode 27.0 connected LLDB-DAP in
-0.14–0.15 seconds and reaches `DuckDuckGoBrowserMain` in a median 7.56 seconds
-after the cached prepare step. A missing or incomplete DeviceSupport extraction
-blocks golden verification instead of publishing a slow debugging image.
-
-The actual Tart protocol checks used the operator-required
-standard `admin/admin`, pinned key-only SSH and verified native key storage;
-automatic random password rotation was removed in `0f8bc20`, with exact
-per-profile installed acceptance tracked in the
-[maintained plan](VIRFIELD-3-PLAN.md).
+Check a breakpoint, stack, evaluation and application output for your project.
+A protocol connection alone does not establish editor UI or application behavior.
+Export needed artifacts before releasing the lease.

@@ -127,7 +127,7 @@ func TestInstalledRunbookRejectsStaleClient(t *testing.T) {
 			}
 			server := mcp.NewServer(&mcp.Implementation{Name: "virfield", Version: version}, nil)
 			mcp.AddTool(server, &mcp.Tool{Name: "virfield_help"}, func(context.Context, *mcp.CallToolRequest, helpArgs) (*mcp.CallToolResult, any, error) {
-				return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "historical Lume runbook"}}}, nil, nil
+				return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "outdated embedded runbook"}}}, nil, nil
 			})
 			st, ct := mcp.NewInMemoryTransports()
 			ss, err := server.Connect(ctx, st, nil)

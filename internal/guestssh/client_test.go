@@ -255,16 +255,16 @@ func TestConnectUsesLeasePortAndDialer(t *testing.T) {
 		dialed = address
 		return (&net.Dialer{}).DialContext(ctx, "tcp", "127.0.0.1:"+port)
 	}}
-	l := domain.Lease{ID: "image-test", VMName: "golden", Location: "htpc", Purpose: "image", GuestUser: "admin", SSHPort: 22101}
+	l := domain.Lease{ID: "image-test", VMName: "golden", Location: "linux-node", Purpose: "image", GuestUser: "admin", SSHPort: 22101}
 	if err := os.MkdirAll(filepath.Join(dir, "images", l.ID), 0700); err != nil {
 		t.Fatal(err)
 	}
-	g, err := e.Connect(context.Background(), l, "192.168.1.86", true)
+	g, err := e.Connect(context.Background(), l, "192.0.2.20", true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	g.Close()
-	if dialed != "192.168.1.86:22101" {
+	if dialed != "192.0.2.20:22101" {
 		t.Fatal(dialed)
 	}
 }

@@ -32,11 +32,11 @@ func TestCanonicalPublicKey(t *testing.T) {
 }
 
 func TestLeaseAndVMCarrySSHPort(t *testing.T) {
-	b, _ := json.Marshal(VM{Name: "vf-a", IP: "192.168.1.86", SSHPort: 22101})
+	b, _ := json.Marshal(VM{Name: "vf-a", IP: "192.0.2.20", SSHPort: 22101})
 	if !strings.Contains(string(b), `"ssh_port":22101`) {
 		t.Fatal(string(b))
 	}
-	b, _ = json.Marshal(Lease{ID: "lease-a", IP: "192.168.1.86", SSHPort: 22101})
+	b, _ = json.Marshal(Lease{ID: "lease-a", IP: "192.0.2.20", SSHPort: 22101})
 	if !strings.Contains(string(b), `"ssh_port":22101`) {
 		t.Fatal(string(b))
 	}

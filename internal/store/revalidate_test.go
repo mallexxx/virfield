@@ -61,7 +61,7 @@ func TestSchemaEightSnapshotProtectsRevalidationFromOlderExecutors(t *testing.T)
 	if err := copy.QueryRow(`SELECT body FROM leases WHERE id=?`, l.ID).Scan(&body); err != nil || !strings.Contains(body, l.VMName) {
 		t.Fatal("Compatible snapshot lost owned VM", err)
 	}
-	// The last installed executors reject every schema >8 before job dispatch.
+	// Executors limited to schema 8 must reject newer journals before dispatch.
 	if SchemaVersion <= 8 {
 		t.Fatal("Old executor could interpret revalidation as clone")
 	}

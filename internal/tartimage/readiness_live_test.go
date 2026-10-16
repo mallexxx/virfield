@@ -19,7 +19,10 @@ func TestLiveIsolatedMacOS27ReadinessFactory(t *testing.T) {
 	if os.Getenv("VIRFIELD_LIVE_FACTORY") != "I_APPROVE_ISOLATED_PUBLIC_BASE_FACTORY" {
 		t.Skip("requires isolated factory approval")
 	}
-	root := "/private/tmp/virfield-keychain-macos27-standalone-20261014"
+	root := os.Getenv("VIRFIELD_LIVE_FIXTURE_DIR")
+	if !filepath.IsAbs(root) || filepath.Clean(root) == "/" {
+		t.Fatal("VIRFIELD_LIVE_FIXTURE_DIR must name a private isolated fixture directory")
+	}
 	var journal struct{ Home, Upstream string }
 	b, err := os.ReadFile(root + "/journal.json")
 	if err != nil || json.Unmarshal(b, &journal) != nil || journal.Home != root+"/tart" || journal.Upstream != "ghcr.io/cirruslabs/macos-golden-gate-xcode@sha256:324ea5656dee8ab9b0a0df70fda2cfed8912051ad0eca3b1b883bf6ddac88fab" {

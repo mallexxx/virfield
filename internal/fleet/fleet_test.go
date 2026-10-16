@@ -55,7 +55,7 @@ func observation(provider, host string, used, max int, vms ...string) domain.Obs
 
 func TestObserveMergesInventoriesUnderThePrimaryName(t *testing.T) {
 	tart := &fakeRuntime{name: "tart", obs: observation("tart", "local", 1, 2, "golden")}
-	nodes := &fakeRuntime{name: "baremetal", obs: observation("baremetal", "mbp-2014", 1, 2, "Monterey", "vf-1")}
+	nodes := &fakeRuntime{name: "baremetal", obs: observation("baremetal", "mac-node", 1, 2, "Monterey", "vf-1")}
 	f := New(tart, nodes)
 	o, err := f.Observe(context.Background())
 	if err != nil {
@@ -72,7 +72,7 @@ func TestObserveMergesInventoriesUnderThePrimaryName(t *testing.T) {
 
 func TestLifecycleAndWakeRouteToTheOwningRuntime(t *testing.T) {
 	tart := &fakeRuntime{name: "tart", obs: observation("tart", "local", 0, 2)}
-	nodes := &fakeRuntime{name: "baremetal", obs: observation("baremetal", "htpc", 0, 1)}
+	nodes := &fakeRuntime{name: "baremetal", obs: observation("baremetal", "linux-node", 0, 1)}
 	f := New(tart, nodes)
 	ctx := context.Background()
 	if _, err := f.Observe(ctx); err != nil {
@@ -94,7 +94,7 @@ func TestLifecycleAndWakeRouteToTheOwningRuntime(t *testing.T) {
 	if err := f.Start(ctx, domain.Lease{Provider: "orchard"}); err == nil {
 		t.Fatal("routed to an unknown provider")
 	}
-	if err := f.WakeHost(ctx, "htpc"); err != nil || len(nodes.woken) != 1 || len(tart.woken) != 0 {
+	if err := f.WakeHost(ctx, "linux-node"); err != nil || len(nodes.woken) != 1 || len(tart.woken) != 0 {
 		t.Fatal(err, nodes.woken, tart.woken)
 	}
 }
@@ -126,7 +126,7 @@ func (s *slowRuntime) Observe(ctx context.Context) (domain.Observation, error) {
 // inventory older than ten seconds as stale.
 func TestObserveRunsRuntimesConcurrently(t *testing.T) {
 	a := &slowRuntime{fakeRuntime{name: "tart", obs: observation("tart", "local", 0, 2)}}
-	b := &slowRuntime{fakeRuntime{name: "baremetal", obs: observation("baremetal", "htpc", 0, 1)}}
+	b := &slowRuntime{fakeRuntime{name: "baremetal", obs: observation("baremetal", "linux-node", 0, 1)}}
 	started := time.Now()
 	o, err := New(a, b).Observe(context.Background())
 	if err != nil || len(o.Hosts) != 2 || o.Hosts[0].ID != "local" {

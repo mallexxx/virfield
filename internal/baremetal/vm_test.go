@@ -43,7 +43,7 @@ func TestObserveDuringCloneCannotCacheAbsentVMForNextObservation(t *testing.T) {
 		s, err := local.dial(ctx, n)
 		return blockedCloneSession{session: s, entered: entered, proceed: proceed}, err
 	}
-	l := domain.Lease{VMName: "vf-observed-during-clone", Location: "htpc", ImageID: "image-ready"}
+	l := domain.Lease{VMName: "vf-observed-during-clone", Location: "linux-node", ImageID: "image-ready"}
 	completed := make(chan error, 1)
 	go func() { completed <- r.Clone(ctx, domain.Template{Name: "secured"}, l) }()
 	select {
@@ -66,7 +66,7 @@ func TestObserveDuringCloneCannotCacheAbsentVMForNextObservation(t *testing.T) {
 }
 
 func vmNode(goldens string) Node {
-	return Node{ID: "htpc", Address: "127.0.0.1", User: "bazzite", HostKeys: []string{testHostKey}, OS: "linux", Arch: "amd64",
+	return Node{ID: "linux-node", Address: "127.0.0.1", User: "operator", HostKeys: []string{testHostKey}, OS: "linux", Arch: "amd64",
 		VMs: &VMConfig{Image: testVMImage, GoldensDir: goldens, DiskSize: "100G", PortBase: 22100, Max: 2, CPU: 4, MemoryGB: 8}}
 }
 
@@ -79,13 +79,13 @@ func vmRuntime(t *testing.T, goldens ...string) (*Runtime, *localNodes, string) 
 }
 
 func TestNodeVMGoldensAreObserved(t *testing.T) {
-	r, _, _ := vmRuntime(t, "htpc-sonoma-14")
+	r, _, _ := vmRuntime(t, "linux-node-sonoma-14")
 	o, err := r.Observe(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	vm, ok := vmNamed(o, "htpc-sonoma-14")
-	if !ok || vm.State != "stopped" || vm.Location != "htpc" || vm.OS != "macOS" || vm.Provider != providerName {
+	vm, ok := vmNamed(o, "linux-node-sonoma-14")
+	if !ok || vm.State != "stopped" || vm.Location != "linux-node" || vm.OS != "macOS" || vm.Provider != providerName {
 		t.Fatalf("golden = %#v", o.VMs)
 	}
 	if o.Hosts[0].Capacity.MaxVMs != 3 {
@@ -94,13 +94,13 @@ func TestNodeVMGoldensAreObserved(t *testing.T) {
 }
 
 func TestNodeVMLeaseLifecycle(t *testing.T) {
-	r, local, _ := vmRuntime(t, "htpc-sonoma-14")
+	r, local, _ := vmRuntime(t, "linux-node-sonoma-14")
 	ctx := context.Background()
 	if _, err := r.Observe(ctx); err != nil {
 		t.Fatal(err)
 	}
-	l := domain.Lease{ID: "lease-0123456789abcdef", VMName: "vf-0123456789abcdef", Location: "htpc", ImageID: "image-0123"}
-	if err := r.Clone(ctx, domain.Template{Name: "htpc-sonoma-14"}, l); err != nil {
+	l := domain.Lease{ID: "lease-0123456789abcdef", VMName: "vf-0123456789abcdef", Location: "linux-node", ImageID: "image-0123"}
+	if err := r.Clone(ctx, domain.Template{Name: "linux-node-sonoma-14"}, l); err != nil {
 		t.Fatal(err)
 	}
 	o, _ := r.Observe(ctx)
@@ -114,7 +114,7 @@ func TestNodeVMLeaseLifecycle(t *testing.T) {
 	if vm, _ := vmNamed(o, l.VMName); vm.State != "running" || vm.SSHAvailable {
 		t.Fatalf("booting guest reported SSH = %#v", vm)
 	}
-	if err := os.WriteFile(filepath.Join(local.homes["htpc"], "sshd"), []byte("22100\n"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(local.homes["linux-node"], "sshd"), []byte("22100\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	r.reached(r.nodes[0])
@@ -145,25 +145,25 @@ func TestNodeVMCloneRequiresAVerifiedImage(t *testing.T) {
 	if _, err := r.Observe(ctx); err != nil {
 		t.Fatal(err)
 	}
-	l := domain.Lease{VMName: "vf-0123456789abcdef", Location: "htpc"}
+	l := domain.Lease{VMName: "vf-0123456789abcdef", Location: "linux-node"}
 	err := r.Clone(ctx, domain.Template{Name: "sonoma-bootstrap"}, l)
 	var e *domain.Error
 	if !errors.As(err, &e) || e.Code != "invalid_request" {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(local.homes["htpc"], "virfield", "leases", l.VMName)); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(local.homes["linux-node"], "virfield", "leases", l.VMName)); !os.IsNotExist(err) {
 		t.Fatal("refused clone touched the node")
 	}
 }
 
 func TestNodeVMStopFallsBackWhenTheProbeIsStale(t *testing.T) {
-	r, _, _ := vmRuntime(t, "htpc-sonoma-14")
+	r, _, _ := vmRuntime(t, "linux-node-sonoma-14")
 	ctx := context.Background()
 	if _, err := r.Observe(ctx); err != nil {
 		t.Fatal(err)
 	}
-	l := domain.Lease{VMName: "vf-0123456789abcdef", Location: "htpc", ImageID: "image-0123"}
-	if err := r.Clone(ctx, domain.Template{Name: "htpc-sonoma-14"}, l); err != nil {
+	l := domain.Lease{VMName: "vf-0123456789abcdef", Location: "linux-node", ImageID: "image-0123"}
+	if err := r.Clone(ctx, domain.Template{Name: "linux-node-sonoma-14"}, l); err != nil {
 		t.Fatal(err)
 	}
 	// No Observe since the clone: the runtime does not know it is a VM yet.
@@ -177,7 +177,7 @@ func TestNodeVMStopFallsBackWhenTheProbeIsStale(t *testing.T) {
 }
 
 func TestHostLeaseStillWorksBesideVMs(t *testing.T) {
-	r, _, _ := vmRuntime(t, "htpc-sonoma-14")
+	r, _, _ := vmRuntime(t, "linux-node-sonoma-14")
 	ctx := context.Background()
 	o, err := r.Observe(ctx)
 	if err != nil {
@@ -185,11 +185,11 @@ func TestHostLeaseStillWorksBesideVMs(t *testing.T) {
 	}
 	pseudo := ""
 	for _, vm := range o.VMs {
-		if vm.Name != "htpc-sonoma-14" {
+		if vm.Name != "linux-node-sonoma-14" {
 			pseudo = vm.Name
 		}
 	}
-	l := domain.Lease{VMName: "vf-0123456789abcdef", Location: "htpc"}
+	l := domain.Lease{VMName: "vf-0123456789abcdef", Location: "linux-node"}
 	if err := r.Clone(ctx, domain.Template{Name: pseudo}, l); err != nil {
 		t.Fatal(err)
 	}
@@ -206,9 +206,9 @@ func TestHostLeaseStillWorksBesideVMs(t *testing.T) {
 }
 
 func TestNodeVMsSurviveRestartWhileNodeSleeps(t *testing.T) {
-	r, local, goldens := vmRuntime(t, "htpc-sonoma-14")
+	r, local, goldens := vmRuntime(t, "linux-node-sonoma-14")
 	n := vmNode(goldens)
-	n.WakeMAC, n.WakeBroadcast = "B0:6E:BF:60:6D:64", "127.0.0.1:9"
+	n.WakeMAC, n.WakeBroadcast = "02:00:00:00:00:01", "127.0.0.1:9"
 	r.nodes = []Node{n}
 	dir := t.TempDir()
 	if err := r.Persist(dir); err != nil {
@@ -218,8 +218,8 @@ func TestNodeVMsSurviveRestartWhileNodeSleeps(t *testing.T) {
 	if _, err := r.Observe(ctx); err != nil {
 		t.Fatal(err)
 	}
-	l := domain.Lease{VMName: "vf-0123456789abcdef", Location: "htpc", ImageID: "image-0123"}
-	if err := r.Clone(ctx, domain.Template{Name: "htpc-sonoma-14"}, l); err != nil {
+	l := domain.Lease{VMName: "vf-0123456789abcdef", Location: "linux-node", ImageID: "image-0123"}
+	if err := r.Clone(ctx, domain.Template{Name: "linux-node-sonoma-14"}, l); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := r.Observe(ctx); err != nil {
@@ -229,9 +229,9 @@ func TestNodeVMsSurviveRestartWhileNodeSleeps(t *testing.T) {
 	if err := restarted.Persist(dir); err != nil {
 		t.Fatal(err)
 	}
-	local.setOffline("htpc", true)
+	local.setOffline("linux-node", true)
 	o, _ := restarted.Observe(ctx)
-	if _, ok := vmNamed(o, "htpc-sonoma-14"); !ok {
+	if _, ok := vmNamed(o, "linux-node-sonoma-14"); !ok {
 		t.Fatalf("golden forgotten: %#v", o.VMs)
 	}
 	if vm, ok := vmNamed(o, l.VMName); !ok || vm.SSHPort != 22100 {
@@ -254,10 +254,10 @@ func (g *fakeGuests) Forget(l domain.Lease) error {
 }
 
 func TestPrepareDelegatesVMLeasesToGuests(t *testing.T) {
-	r, _, _ := vmRuntime(t, "htpc-sonoma-14")
+	r, _, _ := vmRuntime(t, "linux-node-sonoma-14")
 	g := &fakeGuests{}
 	r.SetGuests(g)
-	l := domain.Lease{VMName: "vf-0123456789abcdef", Location: "htpc", ImageID: "image-0123", SSHPort: 22100, SSHPublicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC9D6mucoloj9cxdHV3tI03FWab3N3RsSl8Va/gXFvyQ"}
+	l := domain.Lease{VMName: "vf-0123456789abcdef", Location: "linux-node", ImageID: "image-0123", SSHPort: 22100, SSHPublicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC9D6mucoloj9cxdHV3tI03FWab3N3RsSl8Va/gXFvyQ"}
 	c, err := r.Prepare(context.Background(), l)
 	if err != nil || c.Port != 22100 || len(g.prepared) != 1 {
 		t.Fatal(c, err, g.prepared)
@@ -268,10 +268,10 @@ func TestPrepareDelegatesVMLeasesToGuests(t *testing.T) {
 	if pw, err := r.LeasePassword(l); err != nil || pw != "pw-"+l.VMName {
 		t.Fatal(pw, err)
 	}
-	if _, err := r.LeasePassword(domain.Lease{VMName: "vf-fedcba9876543210", Location: "htpc"}); err == nil {
+	if _, err := r.LeasePassword(domain.Lease{VMName: "vf-fedcba9876543210", Location: "linux-node"}); err == nil {
 		t.Fatal("host lease has a guest password")
 	}
-	host := domain.Lease{VMName: "vf-fedcba9876543210", Location: "htpc"}
+	host := domain.Lease{VMName: "vf-fedcba9876543210", Location: "linux-node"}
 	if err := r.Forget(host); err != nil || len(g.forgotten) != 1 {
 		t.Fatal("host lease reached the guests manager")
 	}
@@ -283,7 +283,7 @@ func TestNodeImageVMLifecycle(t *testing.T) {
 	if _, err := r.Observe(ctx); err != nil {
 		t.Fatal(err)
 	}
-	l := domain.Lease{ID: "image-0123", VMName: "htpc-sonoma", Location: "htpc", Purpose: "image"}
+	l := domain.Lease{ID: "image-0123", VMName: "linux-node-sonoma", Location: "linux-node", Purpose: "image"}
 	if err := r.CloneImage(ctx, l, "sonoma-bootstrap"); err != nil {
 		t.Fatal(err)
 	}
@@ -291,7 +291,7 @@ func TestNodeImageVMLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	o, _ := r.Observe(ctx)
-	vm, ok := vmNamed(o, "htpc-sonoma")
+	vm, ok := vmNamed(o, "linux-node-sonoma")
 	if !ok || vm.State != "running" || vm.SSHPort != 22102 {
 		t.Fatalf("image VM = %#v", vm)
 	}
@@ -303,7 +303,7 @@ func TestNodeImageVMLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The fake qemu-img writes nothing; stand in for the overlay.
-	disk := filepath.Join(local.homes["htpc"], "virfield", "images", "htpc-sonoma", "storage", "data.qcow2")
+	disk := filepath.Join(local.homes["linux-node"], "virfield", "images", "linux-node-sonoma", "storage", "data.qcow2")
 	if err := os.WriteFile(disk, []byte("overlay"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -313,11 +313,11 @@ func TestNodeImageVMLifecycle(t *testing.T) {
 	if err := r.CommitImage(ctx, l); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(goldens, "htpc-sonoma.opencore.plist")); err != nil {
+	if _, err := os.Stat(filepath.Join(goldens, "linux-node-sonoma.opencore.plist")); err != nil {
 		t.Fatal("commit did not publish the golden's OpenCore config", err)
 	}
 	for _, bad := range []string{"vf-0123456789abcdef", "../x"} {
-		if err := r.CloneImage(ctx, domain.Lease{VMName: bad, Location: "htpc"}, "sonoma-bootstrap"); err == nil {
+		if err := r.CloneImage(ctx, domain.Lease{VMName: bad, Location: "linux-node"}, "sonoma-bootstrap"); err == nil {
 			t.Fatal("accepted image name", bad)
 		}
 	}
@@ -331,16 +331,16 @@ func TestNodeVMLeaseIgnoresAStaleProbe(t *testing.T) {
 	if _, err := r.Observe(ctx); err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range []string{"htpc-sequoia-15.qcow2", "htpc-sequoia-15.opencore.plist"} {
+	for _, f := range []string{"linux-node-sequoia-15.qcow2", "linux-node-sequoia-15.opencore.plist"} {
 		if err := os.WriteFile(filepath.Join(goldens, f), nil, 0444); err != nil {
 			t.Fatal(err)
 		}
 	}
-	l := domain.Lease{VMName: "vf-0123456789abcdef", Location: "htpc", ImageID: "image-0123"}
-	if err := r.Clone(ctx, domain.Template{Name: "htpc-sequoia-15"}, l); err != nil {
+	l := domain.Lease{VMName: "vf-0123456789abcdef", Location: "linux-node", ImageID: "image-0123"}
+	if err := r.Clone(ctx, domain.Template{Name: "linux-node-sequoia-15"}, l); err != nil {
 		t.Fatal(err)
 	}
-	dir := filepath.Join(local.homes["htpc"], "virfield", "leases", l.VMName)
+	dir := filepath.Join(local.homes["linux-node"], "virfield", "leases", l.VMName)
 	if read(t, filepath.Join(dir, "kind")) != "vm" {
 		t.Fatal("verified image cloned as a host lease")
 	}
@@ -356,7 +356,7 @@ func TestNodeVMLeaseIgnoresAStaleProbe(t *testing.T) {
 	if _, err := os.Stat(dir); !os.IsNotExist(err) {
 		t.Fatal("delete kept the clone")
 	}
-	missing := domain.Lease{VMName: "vf-fedcba9876543210", Location: "htpc", ImageID: "image-0123"}
+	missing := domain.Lease{VMName: "vf-fedcba9876543210", Location: "linux-node", ImageID: "image-0123"}
 	err := r.Clone(ctx, domain.Template{Name: "absent"}, missing)
 	var e *domain.Error
 	if !errors.As(err, &e) || e.Code != "template_unavailable" {

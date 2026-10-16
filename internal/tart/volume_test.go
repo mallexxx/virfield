@@ -11,7 +11,7 @@ import (
 
 func TestVolumeRefreshReadsFreeSpaceAndRejectsReplacedOrMissingMount(t *testing.T) {
 	mounted := mountedVolume{mount: volumeMount{point: "/external", device: "/dev/disk5s1"}, total: 1000, free: 900}
-	mounted.mount.fsid.Val[0] = 1
+	mounted.mount.fsid[0] = 1
 	var unavailable error
 	lookups := 0
 	p := &volumeProbe{
@@ -19,7 +19,7 @@ func TestVolumeRefreshReadsFreeSpaceAndRejectsReplacedOrMissingMount(t *testing.
 		lookup: func(context.Context, string) (volume, error) {
 			lookups++
 			id := "original"
-			if mounted.mount.fsid.Val[0] == 2 {
+			if mounted.mount.fsid[0] == 2 {
 				id = "replacement"
 			}
 			return volume{Identity: id, Total: 1, Free: 1}, nil
@@ -40,7 +40,7 @@ func TestVolumeRefreshReadsFreeSpaceAndRejectsReplacedOrMissingMount(t *testing.
 		t.Fatal("missing storage reused its cached identity", err)
 	}
 	unavailable = nil
-	mounted.mount.fsid.Val[0] = 2 // Another volume mounted at the same path/device.
+	mounted.mount.fsid[0] = 2 // Another volume mounted at the same path/device.
 	replaced, err := p.read(ctx, "/external/vms")
 	if err != nil || replaced.Identity != "replacement" || lookups != 2 {
 		t.Fatal("replacement volume reused the original UUID", replaced, lookups, err)
@@ -55,7 +55,7 @@ func TestVolumeRefreshCannotCacheIdentityAcrossMountChangeOrFailedLookup(t *test
 		stat: func(string) (mountedVolume, error) { return mounted, nil },
 		lookup: func(context.Context, string) (volume, error) {
 			lookups++
-			mounted.mount.fsid.Val[0]++ // Unmount/remount while diskutil was running.
+			mounted.mount.fsid[0]++ // Unmount/remount while diskutil was running.
 			return volume{Identity: "old-volume"}, lookupErr
 		},
 	}
@@ -73,24 +73,6 @@ func TestVolumeRefreshCannotCacheIdentityAcrossMountChangeOrFailedLookup(t *test
 	cancel()
 	if _, err := p.read(ctx, "/external/vms"); !errors.Is(err, context.Canceled) || lookups != 2 {
 		t.Fatal("canceled refresh performed I/O", err, lookups)
-	}
-}
-
-func TestStatVolumeUsesActualDirectoryAndAllocatableBytes(t *testing.T) {
-	dir := t.TempDir()
-	v, err := statVolume(dir)
-	if err != nil || v.mount.point == "" || v.mount.point == dir || v.total <= 0 || v.free < 0 || v.free > v.total {
-		t.Fatal(v, err)
-	}
-	file := filepath.Join(dir, "file")
-	if err := os.WriteFile(file, nil, 0600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := statVolume(file); err == nil {
-		t.Fatal("file accepted as storage directory")
-	}
-	if _, err := statVolume(filepath.Join(dir, "missing")); !errors.Is(err, os.ErrNotExist) {
-		t.Fatal("absent directory accepted", err)
 	}
 }
 

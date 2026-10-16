@@ -34,9 +34,9 @@ func (r *fakeRuntime) Observe(context.Context) (domain.Observation, error) {
 	defer r.mu.Unlock()
 	state, ip := "stopped", ""
 	if r.running {
-		state, ip = "running", "192.168.1.86"
+		state, ip = "running", "192.0.2.20"
 	}
-	return domain.Observation{VMs: []domain.VM{{Name: "htpc-sonoma", Location: "htpc", State: state, IP: ip, SSHPort: r.port, SSHAvailable: r.running}}}, nil
+	return domain.Observation{VMs: []domain.VM{{Name: "linux-node-sonoma", Location: "linux-node", State: state, IP: ip, SSHPort: r.port, SSHAvailable: r.running}}}, nil
 }
 
 func (r *fakeRuntime) CloneImage(_ context.Context, _ domain.Lease, golden string) error {
@@ -108,7 +108,7 @@ type fakeGuests struct {
 
 func (g *fakeGuests) Connect(_ context.Context, l domain.Lease, ip string, bootstrap bool) (Session, error) {
 	g.ports = append(g.ports, l.SSHPort)
-	if ip != "192.168.1.86" {
+	if ip != "192.0.2.20" {
 		return nil, errors.New("wrong guest address " + ip)
 	}
 	if bootstrap {
@@ -137,7 +137,7 @@ func testBuilder(t *testing.T, sip string) (*Builder, *fakeRuntime, *fakeGuests)
 }
 
 var (
-	imageLease   = domain.Lease{ID: "image-0123456789abcdef", VMName: "htpc-sonoma", Location: "htpc", Purpose: "image", GuestUser: "admin"}
+	imageLease   = domain.Lease{ID: "image-0123456789abcdef", VMName: "linux-node-sonoma", Location: "linux-node", Purpose: "image", GuestUser: "admin"}
 	imageProfile = domain.ImageProfile{Node: &domain.NodeSource{Golden: "sonoma-bootstrap"}, MacOS: "14.8.9", Build: "23J631", DisableSIP: true}
 )
 

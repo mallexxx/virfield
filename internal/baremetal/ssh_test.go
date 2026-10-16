@@ -68,7 +68,7 @@ func TestSSHDialerAcceptsAnyConfiguredHostKey(t *testing.T) {
 	monterey, bigSur, stranger := newSigner(t), newSigner(t), newSigner(t)
 	host, port, _ := net.SplitHostPort(serveSSH(t, bigSur))
 	dial := sshDialer(newSigner(t), port)
-	node := Node{ID: "mbp-2014", Address: host, User: "admin", HostKeys: []string{authorized(monterey), authorized(bigSur)}}
+	node := Node{ID: "mac-node", Address: host, User: "admin", HostKeys: []string{authorized(monterey), authorized(bigSur)}}
 	s, err := dial(context.Background(), node)
 	if err != nil {
 		t.Fatal(err)
@@ -157,11 +157,11 @@ func TestDialGuestTunnelsToNodeLoopbackPort(t *testing.T) {
 	host := newSigner(t)
 	addr, requested := serveForwarding(t, host, echo.Addr().String())
 	address, port, _ := net.SplitHostPort(addr)
-	n := Node{ID: "htpc", Address: address, User: "bazzite", HostKeys: []string{authorized(host)}, OS: "linux", Arch: "amd64"}
+	n := Node{ID: "linux-node", Address: address, User: "operator", HostKeys: []string{authorized(host)}, OS: "linux", Arch: "amd64"}
 	r := New([]Node{n}, sshDialer(newSigner(t), port))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	conn, err := r.DialGuest(ctx, domain.Lease{Location: "htpc", SSHPort: 22100}, "192.168.1.86:22100")
+	conn, err := r.DialGuest(ctx, domain.Lease{Location: "linux-node", SSHPort: 22100}, "192.0.2.20:22100")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,9 +197,9 @@ func TestDialServiceDesktopTunnelsToNodeLoopback(t *testing.T) {
 	host := newSigner(t)
 	addr, requested := serveForwarding(t, host, echo.Addr().String())
 	address, port, _ := net.SplitHostPort(addr)
-	n := Node{ID: "htpc", Address: address, User: "bazzite", HostKeys: []string{authorized(host)}, OS: "linux", Arch: "amd64", VMs: &VMConfig{PortBase: 22100, Max: 2}}
+	n := Node{ID: "linux-node", Address: address, User: "operator", HostKeys: []string{authorized(host)}, OS: "linux", Arch: "amd64", VMs: &VMConfig{PortBase: 22100, Max: 2}}
 	r := New([]Node{n}, sshDialer(newSigner(t), port))
-	l := domain.Lease{Location: "htpc", SSHPort: 22100, ImageID: "image-x"}
+	l := domain.Lease{Location: "linux-node", SSHPort: 22100, ImageID: "image-x"}
 	conn, err := r.DialService(context.Background(), l, "desktop")
 	if err != nil {
 		t.Fatal(err)
@@ -211,7 +211,7 @@ func TestDialServiceDesktopTunnelsToNodeLoopback(t *testing.T) {
 	if _, err := r.DialService(context.Background(), l, "ssh"); err == nil {
 		t.Fatal("dialed a service other than desktop")
 	}
-	if _, err := r.DialService(context.Background(), domain.Lease{Location: "htpc"}, "desktop"); err == nil {
+	if _, err := r.DialService(context.Background(), domain.Lease{Location: "linux-node"}, "desktop"); err == nil {
 		t.Fatal("dialed a desktop for a host lease")
 	}
 }

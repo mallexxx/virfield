@@ -160,7 +160,7 @@ func TestVMProbeReportsGoldensAndVMs(t *testing.T) {
 	if out, err := runVMScript(t, home, bin, vmStartScript, "leases", "vf-aaaaaaaaaaaaaaaa", goldens, testVMImage, "0.0.0.0", "4", "8", "100G", ""); err != nil {
 		t.Fatal(out, err)
 	}
-	if out, err := runVMScript(t, home, bin, vmCloneScript, "images", "htpc-sonoma", "sonoma-secure", goldens, testVMImage, "22102", "2"); err != nil {
+	if out, err := runVMScript(t, home, bin, vmCloneScript, "images", "linux-node-sonoma", "sonoma-secure", goldens, testVMImage, "22102", "2"); err != nil {
 		t.Fatal(out, err)
 	}
 	out, err := runVMScript(t, home, bin, vmProbeLines, goldens)
@@ -174,7 +174,7 @@ func TestVMProbeReportsGoldensAndVMs(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, _ = runVMScript(t, home, bin, vmProbeLines, goldens)
-	for _, want := range []string{"golden=sonoma-secure 0\n", "golden=sequoia-secure 0\n", "vm=leases vf-aaaaaaaaaaaaaaaa running 22100 sonoma-secure 1 4 8589934592 0 unknown\n", "vm=leases vf-bbbbbbbbbbbbbbbb stopped 22101 sonoma-secure 0 0 0 0 unknown\n", "vm=images htpc-sonoma stopped 22102 sonoma-secure 0 0 0 0 unknown\n"} {
+	for _, want := range []string{"golden=sonoma-secure 0\n", "golden=sequoia-secure 0\n", "vm=leases vf-aaaaaaaaaaaaaaaa running 22100 sonoma-secure 1 4 8589934592 0 unknown\n", "vm=leases vf-bbbbbbbbbbbbbbbb stopped 22101 sonoma-secure 0 0 0 0 unknown\n", "vm=images linux-node-sonoma stopped 22102 sonoma-secure 0 0 0 0 unknown\n"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("missing %q in\n%s", want, out)
 		}
@@ -190,7 +190,7 @@ func TestVMCommitWritesAReadOnlyGolden(t *testing.T) {
 	// Observe the permission boundary before the temporary disk becomes visible
 	// at the final golden name, rather than checking only the final chmod.
 	move := `#!/bin/sh
-if [ "$2" = ` + quote(filepath.Join(goldens, "htpc-sonoma.qcow2")) + ` ]; then
+if [ "$2" = ` + quote(filepath.Join(goldens, "linux-node-sonoma.qcow2")) + ` ]; then
   [ "$(ls -ld "$1" | awk '{print substr($1,1,10)}')" = '-r--------' ] || { echo 'disk not private before publication' >&2; exit 125; }
 fi
 exec /bin/mv "$@"
@@ -198,18 +198,18 @@ exec /bin/mv "$@"
 	if err := os.WriteFile(filepath.Join(bin, "mv"), []byte(move), 0755); err != nil {
 		t.Fatal(err)
 	}
-	if out, err := runVMScript(t, home, bin, vmCloneScript, "images", "htpc-sonoma", "sonoma-bootstrap", goldens, testVMImage, "22102", "2"); err != nil {
+	if out, err := runVMScript(t, home, bin, vmCloneScript, "images", "linux-node-sonoma", "sonoma-bootstrap", goldens, testVMImage, "22102", "2"); err != nil {
 		t.Fatal(out, err)
 	}
 	// The fake qemu-img create writes nothing either.
-	if err := os.WriteFile(filepath.Join(home, "virfield", "images", "htpc-sonoma", "storage", "data.qcow2"), []byte("overlay"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(home, "virfield", "images", "linux-node-sonoma", "storage", "data.qcow2"), []byte("overlay"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	staging := filepath.Join(goldens, ".htpc-sonoma.tmp")
+	staging := filepath.Join(goldens, ".linux-node-sonoma.tmp")
 	if err := os.WriteFile(staging, []byte("interrupted conversion"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if out, err := runVMScript(t, home, bin, vmCommitScript, "images", "htpc-sonoma", goldens, testVMImage); err == nil {
+	if out, err := runVMScript(t, home, bin, vmCommitScript, "images", "linux-node-sonoma", goldens, testVMImage); err == nil {
 		t.Fatal("commit overwrote an ambiguous staging file", out)
 	}
 	if read(t, staging) != "interrupted conversion" || strings.Contains(read(t, log), " convert ") {
@@ -218,27 +218,27 @@ exec /bin/mv "$@"
 	if err := os.Remove(staging); err != nil {
 		t.Fatal(err)
 	}
-	if out, err := runVMScript(t, home, bin, vmCommitScript, "images", "htpc-sonoma", goldens, testVMImage); err != nil {
+	if out, err := runVMScript(t, home, bin, vmCommitScript, "images", "linux-node-sonoma", goldens, testVMImage); err != nil {
 		t.Fatal(out, err)
 	}
-	info, err := os.Stat(filepath.Join(goldens, "htpc-sonoma.qcow2"))
-	if err != nil || info.Mode().Perm() != 0400 || read(t, filepath.Join(goldens, "htpc-sonoma.opencore.plist")) != "sonoma-bootstrap" {
+	info, err := os.Stat(filepath.Join(goldens, "linux-node-sonoma.qcow2"))
+	if err != nil || info.Mode().Perm() != 0400 || read(t, filepath.Join(goldens, "linux-node-sonoma.opencore.plist")) != "sonoma-bootstrap" {
 		t.Fatal("secured golden not written read-only with its OpenCore config", err)
 	}
-	if !strings.Contains(read(t, log), "convert -O qcow2 /src/data.qcow2 "+goldens+"/.htpc-sonoma.tmp") {
+	if !strings.Contains(read(t, log), "convert -O qcow2 /src/data.qcow2 "+goldens+"/.linux-node-sonoma.tmp") {
 		t.Fatal(read(t, log))
 	}
 	if !strings.Contains(read(t, log), "run --rm --umask 0077 --entrypoint qemu-img") {
 		t.Fatal("OCI converter must set its own private umask", read(t, log))
 	}
-	plist, err := os.Stat(filepath.Join(goldens, "htpc-sonoma.opencore.plist"))
+	plist, err := os.Stat(filepath.Join(goldens, "linux-node-sonoma.opencore.plist"))
 	if err != nil || plist.Mode().Perm() != 0400 {
 		t.Fatal("OpenCore metadata is not private", err)
 	}
-	if _, err := os.Stat(filepath.Join(home, "virfield", "images", "htpc-sonoma")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(home, "virfield", "images", "linux-node-sonoma")); !os.IsNotExist(err) {
 		t.Fatal("image clone kept after commit")
 	}
-	if out, err := runVMScript(t, home, bin, vmCommitScript, "images", "htpc-sonoma", goldens, testVMImage); err == nil {
+	if out, err := runVMScript(t, home, bin, vmCommitScript, "images", "linux-node-sonoma", goldens, testVMImage); err == nil {
 		t.Fatal("commit overwrote a golden", out)
 	}
 }

@@ -1,396 +1,192 @@
 # Operations
 
-This runbook describes current Tart + SSH nodes. Virfield does not use Lume; the
-separate old LaunchDaemon was disabled and booted out on 2026-10-14, its rollback files preserved.
-[Historical Lume operations](history/OPERATIONS-before-2026-10-14.md)
-are archived. Current defects and acceptance limits are in
-[Verification](VERIFICATION.md). Orchard is not deployment-ready.
+Run one daemon for each managed set of targets. Keep installed binaries,
+configuration, credentials and runtime state outside the checkout.
 
-## Standard VM account policy
+## Install
 
-The operator requires standard **`admin/admin`**, with no automatic random account
-password rotation. Standard-account candidates (`0f8bc20` and later) use the
-configured account name as its password. Samsung Monterey has two complete live
-cycles; other profiles still require their own acceptance. For old images, a new journaled disposable clone authenticates the
-standard password first, and only if needed authenticates the recorded inherited
-password before converting that clone to the standard account. It verifies the
-result and preserves/migrates keychain items. Existing golden disks and credential
-journals remain intact. Securing a legacy image in place is refused with
-`image_account_policy_migration_required`; build a new image instead. Unknown
-keychain credentials fail readiness and require diagnosis, never a reset.
-Do not reset a login keychain or overwrite a golden to force the standard password.
-Per-image/lease management and caller keys, fresh VM host keys, pinning and
-key-only SSH remain required. Physical shared accounts are unaffected.
+Local VM hosts require Apple Silicon macOS and Tart. Install Packer for image
+builds. Use the Go version in `go.mod`; `make build` also builds the native Apple
+sign-in browser on macOS. Set `SIGN_IDENTITY` to a stable signing identity to
+retain Full Disk Access across rebuilds, particularly for external storage.
 
-Older rotation descriptions are dated mechanics of `f60efe3` and earlier.
-New VM accounts retain the standard password; compatible login-keychain migration
-still preserves items. Native GUI/new SSH I/O and actual reboot need per-profile
-acceptance. A successful fresh image does not repair an older unknown keychain.
-
-## Paths
-
-A deployment directory owns installed binaries, `config.json`, the operator
-token and generated service/client configuration. `state_dir` may be a separate
-private directory. Runtime disks stay in configured Tart containers or node
-storage. The checkout is never runtime state.
-
-The existing personal installation uses `~/.virfield-v2` for deployment and
-`~/.virfield-tart` for state; the old directory name is not a runtime/version
-claim. Do not initialize another installation or change its port to upgrade it.
-Generic examples use:
+Initialize a new private deployment; `init` refuses an existing directory:
 
 ```sh
 VIRFIELD_HOME="$HOME/Library/Application Support/Virfield"
 VIRFIELD_URL="http://127.0.0.1:7780"
+./bin/virfield init "$VIRFIELD_HOME" TEMPLATE_ID GOLDEN_NAME local
 ```
 
-## Configuration and prerequisites
+Install `virfield`, `virfieldd` and `virfield-mcp` in its `bin` directory. Install
+`VirfieldAppleBrowser.app` alongside them and register its URL scheme through
+LaunchServices if Apple sign-in is needed. Cached/public artifacts do not require
+that browser. Configure an approved pinned image before building or acquiring.
 
-Local VM hosts require Apple Silicon macOS, Tart and private storage. Image
-construction additionally requires Packer; developer recipes also require a
-verified Xcode XIP cache unless the approved base already provides that Xcode.
-`runtime.provider` selects Tart; `runtime.nodes` adds pinned SSH nodes.
-Containers have stable IDs, absolute paths, local/external kind and, for removable
-storage, a pinned volume UUID. CPU/RAM/disk reserve and VM slots are explicit.
-Tart checks directory availability and fresh allocatable capacity with `statfs`
-on every refresh. It reuses the verified volume UUID only for the same kernel
-filesystem ID, device and mount point; a changed mount needs a new lookup. A
-failed or interrupted lookup never substitutes an older identity.
-Only complete Tart VM specs with a positive virtual disk size are cached.
-A temporary ASIF size zero remains unknown and is reread even if config.json is
-unchanged; never override admission or rebuild a qualified golden to clear it.
-Node Podman also depends on its user runroot filesystem: available VM HDD bytes
-do not establish runroot capacity. The HTPC speech-log/runroot incident and its
-verified correction are recorded in Verification. Speech Dispatcher 0.12.1 logs
-every voice-list entry at level 1; lowering level 3 to 1 does not prevent the
-flood. The node account now has a private user configuration copied from its
-distribution configuration, changing only `LogLevel` to 0 and `LogDir` to
-`~/.local/state/speech-dispatcher/log`, outside Podman tmpfs. The system file,
-speech modules and autospawn remain unchanged. Three real autospawn/idle-exit
-cycles left the new files at zero bytes; the old runtime log and its HDD backup
-were explicitly authorized for deletion and removed. When updating the speech
-package, reconcile its distribution configuration with that user override.
+```sh
+"$VIRFIELD_HOME/bin/virfield" config-check "$VIRFIELD_HOME/config.json"
+python3 deploy/prepare-services.py "$VIRFIELD_HOME"
+```
 
-Physical-node and node-VM resource safety limitations are recorded in Verification.
+The generator writes `launchd/ai.virfield.virfieldd.plist` and `launchd/mcp.json`
+without starting services and refuses an existing `launchd` directory. Review
+and register the service as the VM-owning user. The [service example](../deploy/ai.virfield.virfieldd.plist.example)
+is a template. Use `ProcessType=Standard` so launchd does not throttle API work
+as background maintenance. Start only the registered Virfield service; Tart is
+invoked as a CLI.
 
-Config/token/state must belong to the daemon account. Tokens and credential files
-are owner-only; state is mode 0700. Never copy token values into client config.
+## Configure storage and credentials
 
-### Physical nodes
+`config.json` selects `runtime.provider: "tart"`. `state_dir` may differ from the
+deployment directory. Config, token and state belong to the daemon account;
+private directories are mode 0700 and credential files mode 0600. The native
+browser requires private owner-controlled deployment/config/state, rejects config
+and state symlinks, and pins the configured loopback origin.
 
-`runtime.nodes` adds physical hosts beside the Tart runtime. Virfield controls
-them over pinned SSH as one unprivileged account (no sudo), and a node lease
-uses that node's own slot, never a Mac VM slot or Mac CPU, memory or disk.
+A Tart runtime has an absolute binary path, a host ID and containers with stable
+IDs, absolute paths and `kind: local|external`. Pin `volume_uuid` for removable
+storage. Set `max_vms`, CPU/RAM/disk reserves and the default/fallback clone
+locations for your hardware. A local golden cannot be cloned across `TART_HOME`
+containers; use [image transfer](IMAGE-PIPELINE.md#transfer-a-local-golden) first.
+
+This fragment uses placeholders; replace them with your paths and account:
 
 ```json
-"nodes": [
-  {"id": "mbp-2014", "address": "192.168.1.79", "user": "admin", "host_key": "ssh-ed25519 AAAA…",
-   "host_keys": ["ssh-ed25519 AAAA… (Big Sur)"], "os": "macOS", "arch": "amd64"},
-  {"id": "htpc", "address": "192.168.1.86", "user": "bazzite", "host_key": "ssh-ed25519 AAAA…", "os": "linux", "arch": "amd64",
-   "keep_awake_file": "/tmp/rsync-active", "wake_on_lan": {"mac": "B0:6E:BF:60:6D:64", "broadcast": "192.168.1.255:9"}}
-]
-```
-
-Take `host_key` from a trusted `known_hosts` entry and compare its fingerprint
-with the node. On first start `virfieldd` creates its node management key in
-`state_dir/nodes/management`; append `state_dir/nodes/management.pub` once to
-the node account's `~/.ssh/authorized_keys` (each macOS boot volume has its
-own home and is enrolled when booted).
-
-Each boot volume of a multi-boot Mac also has its own SSH host key, so the
-same address presents a different identity per booted system. List the extra
-identities in `host_keys`: Virfield accepts any configured key and reports the
-one presented in the lease's `ssh.host_key`. For an interactive client, keep
-one `known_hosts` line per identity for the address (OpenSSH accepts any
-matching line); `ssh-keyscan -t ed25519 <address>` while the new volume is
-booted gives the key, which you compare out of band before trusting it.
-
-Node IDs must differ from the primary Tart host ID and all storage-container IDs.
-Ambiguous runtime host ownership blocks admission instead of changing routing.
-
-A node reports its booted environment as a pseudo-golden named after the boot
-volume (`Monterey`, `Big-Sur`, `bazzite`). A template with
-`"provider": "baremetal"`, `"location": "<node id>"`, `"name": "<volume>"` and
-`guest_user` is available only while that volume is booted. An unreachable
-node is `offline` (or `asleep` with Wake-on-LAN, then still admissible and
-woken at start); it is re-probed at most every 30 seconds, and an online node
-at most once a minute so inventory never keeps it awake. Each node's last probe is
-kept in `state_dir/nodes/<id>.probe.json`, so a daemon restart while a node
-sleeps keeps it admissible and keeps its leases in inventory; the first
-observation after a restart still dials every node.
-
-A MacBook node is kept awake on its charger by the node itself, once per
-boot volume (each volume has its own power settings):
-
-```bash
-ssh -t admin@192.168.1.79 'sudo pmset -c sleep 0 disksleep 0 standby 0 autopoweroff 0 powernap 0 displaysleep 10 womp 1 tcpkeepalive 1'
-```
-
-Applied on Ventura (2026-10-08); Monterey, Big Sur and Catalina still need
-it. Closing the lid still sleeps the Mac unless `pmset -a disablesleep 1`.
-On Catalina, if the Sharing pane hangs on "Remote Login starting…", start SSH
-with `sudo launchctl load -w /System/Library/LaunchDaemons/ssh.plist`.
-
-UI tests (XCUITest) on a macOS node need Developer Mode on that boot volume and
-Automation Mode that does not require authentication
-(`automationmodetool enable-automationmode-without-authentication`, present
-from macOS 12.6); otherwise testmanagerd asks for an admin password on the
-node's display and the run fails with "Timed out while enabling automation
-mode". This lets any process of that account drive the UI without a password,
-which is intended for a dedicated test node. Virfield has no sudo on nodes, so
-set both once per boot volume:
-
-```bash
-scp deploy/node-ui-testing.sh admin@192.168.1.79:
-ssh -t admin@192.168.1.79 'bash ~/node-ui-testing.sh'
-```
-
-Copy the script first: piped over stdin, sudo has no terminal to prompt on.
-Each boot volume presents its own host key (see above); a lease's generated
-`ssh-config` already pins the booted volume's key, so `ssh -t -F <config> virfield`
-works without editing `known_hosts`.
-
-The node account must also own the console session (log it in on the display,
-or enable automatic login). The probe reports the result on the node's
-pseudo-golden as `ui_testing`: `ready`, `devtools_disabled`,
-`automation_mode_requires_auth` or `no_console_session`.
-
-A lease authorizes the client key in `authorized_keys` (tagged
-`virfield-lease-<vm>`), creates `~/virfield/leases/<vm>/workspace`, and keeps
-the node awake (`caffeinate` on macOS, the `keep_awake_file` on Linux, removed
-only after the last reference if Virfield created it; pre-existing holds are preserved). Release revokes the key and removes the
-workspace. Physical hosts are not disposable: processes the lease started
-under the shared account are not killed.
-
-### macOS VMs on a Linux node (R2)
-
-A Linux node with `vms` runs disposable macOS VMs as rootless Podman
-containers of a digest-pinned `dockurr/macos` image (QEMU + OpenCore). No sudo
-or libvirt group is needed; the node account must be able to use `/dev/kvm`
-and `/dev/net/tun`.
-
-```json
-"vms": {"image": "docker.io/dockurr/macos@sha256:08d1bcaac74ad44d548b7ce683b3dded083512d2a0d26416f9a620b763f8ea3d",
-        "goldens_dir": "/run/media/system/Data/virfield/goldens",
-        "port_base": 22100, "max": 2, "cpu": 4, "memory_gb": 8, "disk_size": "100G",
-        "storage_dir": "/run/media/system/Data/virfield/runtime"}
-```
-
-- **Bootstrap goldens** are installed once by hand (see the
-  [R2 spec](superpowers/specs/2026-10-08-hackintosh-nodes-r2-design.md)):
-  `admin`/`admin`, Remote Login, passwordless sudo, SIP disabled through
-  `<golden>.opencore.plist` (`csr-active-config` `0x7F`). They are never
-  leased: a clone without a verified image is refused.
-- **Secured goldens** are built by Virfield from a template whose image is
-  `{"node": {"golden": "<bootstrap name>"}, "macos": …, "build": …,
-  "disable_sip": true}` (`POST /api/v1/images/<template>/build`). The job
-  clones the bootstrap golden into `<VM storage root>/images/<template>`, publishes
-  its SSH on the node loopback only, retains the standard account password
-  (converting only a known legacy password inside the new clone), installs the
-  management key, turns password SSH off and sets auto-login, verifies
-  version, SIP, desktop and password after a reboot, and commits the clone as
-  `<goldens_dir>/<template>.qcow2` (owner-only read mode 0400). Rebuilding needs a new
-  template name. Unused node goldens are deleted through the exact-name image operation,
-  retaining provider routing; an existing backing overlay blocks deletion.
-- **Leases** of that template clone a qcow2 overlay into
-  `<VM storage root>/leases/<vm>/storage` (copy-on-write off) and start container
-  `virfield-<vm>` with guest SSH published on `0.0.0.0:<port>` (ports
-  `port_base … port_base+max-1`; image builds use the next `max`). The lease's
-  `ip` is the node address and `ssh.port` its port; `virfield ssh-config`
-  writes the port. Virfield's own guest SSH tunnels through the pinned node
-  connection to `127.0.0.1:<port>`. A running VM reports SSH only once the
-  guest's SSH banner answers, since the port forward accepts TCP earlier.
-- **Stop** asks the container to stop for 30 s, kills it only if stop fails,
-  removes the container and verifies absence: macOS clones
-  can hang at the very end of a shutdown. Release deletes the clone.
-- Capacity: the node admits exactly one host lease plus `max` VMs. A VM cannot consume
-  the physical-host slot. A fresh post-wake probe must match the requested boot volume. Two VMs booting
-  together off a 5400 rpm HDD took about nine minutes before the native keychain
-  checks were added; one boots in about two. Node VM preparation has a bounded
-  20-minute budget for boot plus credential/keychain verification. The caller's
-  lease TTL still includes preparation and is never extended by this budget.
-
-`vms.storage_dir` selects a private root for new VM `leases/` and `images/`; omission
-uses `~/virfield`. Physical-host workspaces and shared sleep holds stay in the
-node account's home. Set or change it only with no active jobs/VM overlays:
-remembered overlays and legacy VM folders block a root change. No files migrate
-automatically. Probes measure this root's filesystem together with golden storage.
-The HTPC home NVMe currently has 99 GiB free, insufficient for a 100 GiB VM plus
-20 GiB reserve; its data HDD has 2.7 TiB free. The new storage-path implementation
-and configured HDD root are undergoing acceptance.
-
-### Tart image adoption
-
-A Tart daemon uses one configured `config.json` and private `state_dir`.
-Do not run a second manager against its targets or reuse a retired journal. Tart pulls from GHCR need
-`runtime.tart.registry_credentials` for `ghcr.io`: Tart always reads
-`~/.docker/config.json`, and a stale GHCR entry there is rejected.
-
-```json
-"runtime": {
-  "provider": "tart",
-  "tart": {
-    "binary": "/opt/homebrew/bin/tart",
-    "host_id": "local",
-    "containers": [{"id": "samsung-tart", "path": "/Volumes/Samsung970EVO/virfield-tart", "kind": "external"}],
-    "registry_credentials": [{"host": "ghcr.io", "username": "mallexxx", "token_file": "/Users/admin/.virfield-v2/registry-credentials/ghcr-mallexxx.token"}],
-    "image": {"packer": "/opt/homebrew/bin/packer", "xcode_archives": "/Users/admin/.virfield-v2/cache/xcode"}
+{
+  "runtime": {
+    "provider": "tart",
+    "tart": {
+      "binary": "/opt/homebrew/bin/tart",
+      "host_id": "primary",
+      "containers": [{"id": "external", "path": "/Volumes/VMStorage/tart", "kind": "external", "volume_uuid": "VOLUME_UUID"}],
+      "registry_credentials": [{"host": "ghcr.io", "username": "REGISTRY_USER", "token_file": "/private/virfield/ghcr.token"}],
+      "image": {"packer": "/opt/homebrew/bin/packer", "xcode_archives": "/private/virfield/cache/xcode"}
+    }
   }
 }
 ```
 
-A Tart template names the container as `location`, `guest_user: "admin"` and
-an `image` with a `tart.upstream` digest, exact `macos`/`build`, `xcode` and
-`developer-v1`. `image-build` then runs `resolve → build → qualify → stop`;
-evidence is `images/<id>/verification.json` with the upstream and recipe
-digests. Retry is available for `resolve` and `qualify`; an interrupted
-`build` needs `delete` and a new build. Cirrus guests report APFS encryption
-at rest with FileVault off; Tart keeps the machine identity on clone, so Tart
-qualification accepts it while still requiring FileVault off and unlocked
-volumes.
+Configure approved bases in `runtime.tart.bases`; a template pins its image profile
+and container. Tart reads `~/.docker/config.json`, so reconcile stale GHCR entries
+with the configured credentials. Tokens stay in private files, never prompts or
+MCP arguments. See [Image pipeline](IMAGE-PIPELINE.md) for profile fields.
 
+## Physical nodes
 
-## New installation
+Add nodes under `runtime.nodes`. Each needs a unique ID, address, user, OS,
+architecture and trusted `host_key` in authorized-key format. Use `host_keys` for
+additional verified identities of a multi-boot machine. Compare fingerprints out
+of band before trusting a new key. Node IDs must differ from primary host and
+storage IDs.
 
-Build from current source, then initialize a NEW private deployment:
+At first start, Virfield creates its node management key under
+`state_dir/nodes/management`. Append `management.pub` once to the configured node
+user's `~/.ssh/authorized_keys` on each boot volume. Nodes use unprivileged SSH;
+Virfield does not acquire sudo access. Optional `wake_on_lan` specifies `mac` and
+`broadcast`; `keep_awake_file` integrates with the node's own Linux sleep guard.
 
-```sh
-virfield init /absolute/new/deployment TEMPLATE VM CONTAINER
-```
+A physical template uses `provider: "baremetal"`, `location: NODE_ID`, its boot
+volume name and `guest_user`. It is available while that environment is booted.
+Offline inventory and cached probes remain visible; Wake-on-LAN is followed by a
+fresh probe. Configure charger sleep settings on each macOS boot volume if it
+must remain reachable. A closed laptop lid can still suspend the node.
 
-`init` emits an explicit Tart runtime with the current user's `.tart` storage;
-it refuses an existing directory and never rotates a live token. Configure pinned
-Tart profiles, approved bases and `runtime.tart.image` (Packer/Xcode cache). The
-config must select `tart` or the unaccepted `orchard` adapter explicitly; no
-implicit Lume fallback or `image_tools` installer exists. A deprecated `lume_url`
-is tolerated in an otherwise valid Tart config solely for migration compatibility.
-
-Install the three binaries `virfield`, `virfieldd`, `virfield-mcp` in deployment
-`bin`. Install the native Apple browser alongside them if Apple sign-in is needed,
-and register its URL scheme through LaunchServices. The browser is optional for
-cached/public artifacts. A stable signing identity and `ai.virfield.virfieldd`
-identifier retain Full Disk Access across rebuilds on external storage.
-
-The native browser reads the private deployment `config.json` to pin its loopback
-origin. A separate private `state_dir` is supported. Deployment/config/state must
-be owned by the VM user, with no group/other access; config/state symlinks are rejected.
+For XCUITest, copy and run the operator setup script on that boot volume:
 
 ```sh
-virfield config-check /absolute/deployment/config.json
-python3 deploy/prepare-services.py /absolute/deployment
+scp deploy/node-ui-testing.sh NODE_USER@NODE_ADDRESS:
+ssh -t NODE_USER@NODE_ADDRESS 'bash ~/node-ui-testing.sh'
 ```
 
-The generator validates private state/config/token paths and executables, then
-writes private `launchd/ai.virfield.virfieldd.plist` and `launchd/mcp.json` without
-starting services. Deployment and state directories may differ. It refuses an
-existing `launchd` directory. Only Virfield is managed; Tart is invoked as a CLI.
-Review/register the generated service as the VM-owning user. Do not install a
-Lume service. The [service example](../deploy/ai.virfield.virfieldd.plist.example)
-is a template, not an installed configuration.
+The script needs a terminal for sudo. Log that user into the console. Require the
+pseudo-golden's `ui_testing` value to be `ready`; other values describe missing
+developer permissions, automation authorization or a console session.
 
-The API daemon uses `ProcessType=Standard`. `Background` applies stronger CPU/I/O
-limits intended for work not requested by a user, and HTTP requests do not give
-it Adaptive XPC priority boosts. See Apple's
-[launchd process classifications](https://github.com/apple-oss-distributions/launchd/blob/main/man/launchd.plist.5).
-Replacing binaries does not change an already registered job's process class.
-An older system LaunchDaemon needs its reviewed plist updated and re-registered
-with administrator rights during a fully idle maintenance window, preserving
-the label, account, paths and environment. A temporary `taskpolicy` adjustment is
-not persistent migration or proof that host contention has been resolved.
+A lease adds its caller key, creates `~/virfield/leases/VM_NAME/workspace` and holds
+sleep prevention. Release removes that key/workspace and releases owned holds.
+It preserves pre-existing holds and does not kill shared-account workloads.
 
-## Service upgrades
+## Linux-hosted macOS lab VMs
 
-Build and verify outside live state. Record the exact source revision, clean/dirty
-metadata and binary hashes. Preserve the installed config, credentials, journal
-and binaries before replacement. Check for active jobs and leases, drain ongoing
-mutations, replace the configured binaries and gracefully restart only the exact
-`ai.virfield.virfieldd` service. Do not use another listener as an upgrade.
-Verify health, runtime inventory, preserved leases and installed hashes after
-restart. New signatures may need privacy grants before external storage works.
-Do not claim the upgrade complete from a successful file copy alone.
-Shutdown stops HTTP admission before draining mutations. Starting with e80c194,
-the daemon keeps an image stage alive for a ten-minute grace, then cancels its
-Packer/SSH context and allows up to five further minutes for interrupt handling,
-VM stop and journal persistence. A confirmed stage result may continue at the
-next stage after restart; an unknown dispatched mutation stays fenced for
-inspection. An interrupted build is never silently repeated. The older 256d18f
-daemon lacks the final image-context cancellation. The installed e80c194 passed
-a real external-process cancellation and persistence drill; consult the current
-installed checkpoint for its exact scope.
-Installed since `466dbb8`, that cancellation context also covers long SSH
-preparation, local golden copy and registry export. Their original deadlines and
-unknown-outcome fences remain intact. Its fixed desktop preflight uses the full
-existing two-minute readiness deadline for cold JXA/CoreGraphics loading; other
-short SSH commands retain their one-minute cap. Neither a command timeout nor a
-daemon restart authorizes another credential mutation attempt.
-Existing stdio MCP processes retain their old version, tool metadata and embedded
-runbooks even after their executable is replaced. Reconnect each owning client
-after the upgrade, preserving unrelated clients and active work. A daemon restart
-does not replace a client's stdio adapter. Verify the MCP initialize version and
-all help topics/resources against the exact packaged source before accepting it.
+Configure `runtime.nodes[].vms` with a digest-pinned Podman image, `goldens_dir`,
+`port_base`, `max`, `cpu`, `memory_gb` and `disk_size` such as `100G`. The node user
+needs rootless Podman, `/dev/kvm` and `/dev/net/tun`. Store disks on a filesystem
+with enough space for full virtual growth. Check Podman's runroot filesystem too.
 
-## CLI and SSH
+`storage_dir` optionally selects a private root for new `leases/` and `images/`;
+it defaults to `~/virfield`. Change it only with no active jobs or overlays.
+Virfield refuses a root change while remembered overlays or old VM folders remain;
+it does not migrate them automatically.
 
-Use `virfield -help` for command syntax and the installed URL/token file for API
-commands. Mutations use one stable idempotency key per logical operation.
+Install a bootstrap qcow2 golden and matching `.opencore.plist` manually. Configure
+`admin/admin`, Remote Login, passwordless sudo and the profile's SIP policy.
+A node image profile declares `image.node.golden`, exact `macos`/`build` and
+`disable_sip`. Build it through Virfield to qualify and commit a new read-only
+secured golden. Bootstrap goldens cannot be leased directly.
+
+Workers use qcow2 overlays. Guest SSH is published on the node's address at
+`port_base` through `port_base+max-1`; image builds use the next `max` ports.
+Node-loopback desktop ports are SSH-port+1000. Management traffic crosses pinned
+node SSH. VM preparation has a 20-minute budget; the caller TTL includes it.
+Release confirms container absence before deleting an overlay.
+
+## Capacity
+
+Read `resource_admission[TEMPLATE]` in status for CPU, RAM, each candidate disk and
+cache arithmetic. Unknown metrics block admission. The controller counts external
+running VMs, durable reservations, full potential disk growth and safety reserves,
+then rechecks before dispatch. An explicit destination never silently falls back.
+A changed budget waits under the original job/key/deadline.
+
+Nodes have separate physical-host and VM slots. VM budgets default to observed
+CPU, RAM minus 4 GiB and a 20 GiB disk reserve. Override bounded positive values
+through `vms.resource_limits`. Optional `cache_limit_bytes` caps allocated golden
+storage plus pending full-size builds; zero leaves it uncapped. Virfield never
+prunes images automatically. Physical-account workloads are not CPU/RAM sandboxed.
+
+## CLI, SSH and desktop
+
+Use `virfield -help` for syntax and the installed URL/token file for API calls.
+Save one stable request key per mutation. Generate a fresh caller identity, acquire
+and wait for both successful job and ready lease:
 
 ```sh
 virfield keygen /absolute/new/private/identity
-virfield -token-file "$VIRFIELD_HOME/token" -key task-acquire-001 acquire TEMPLATE 3600 /absolute/new/private/identity/id_ed25519.pub
-virfield -token-file "$VIRFIELD_HOME/token" job JOB_ID
-virfield -token-file "$VIRFIELD_HOME/token" ssh-config LEASE_ID /absolute/new/private/identity
+virfield -url "$VIRFIELD_URL" -token-file "$VIRFIELD_HOME/token" -key task-acquire-001 acquire TEMPLATE 3600 /absolute/new/private/identity/id_ed25519.pub
+virfield -url "$VIRFIELD_URL" -token-file "$VIRFIELD_HOME/token" job JOB_ID
+virfield -url "$VIRFIELD_URL" -token-file "$VIRFIELD_HOME/token" ssh-config LEASE_ID /absolute/new/private/identity
 ssh -F /absolute/new/private/identity/config virfield
 ```
 
-Wait for the job to succeed and the lease to become `ready`. SSH config verifies
-the caller key, pins the remote host key and disables inherited agents/passwords.
-Never suppress host-key checks. Export artifacts before authorized release.
-TTL is 60–86400 seconds; renewal uses a future absolute RFC3339 timestamp within
-24 hours and never shortens the existing deadline. Queueing belongs to Broker.
+Generated configuration pins the host key and disables agent/password fallback.
+VM workspaces are `~/workspace`. Export results before authorized release.
+TTL is 60–86400 seconds; renewal takes a future RFC3339 timestamp within 24 hours
+and never shortens the deadline.
 
-Physical-node workspaces are `~/virfield/leases/<vm>/workspace`, not `~/workspace`.
-VM workspaces are `~/workspace`. Physical release revokes the caller key, removes
-that workspace and releases sleep holds; it does not reset the shared account or
-kill its workloads. Local Tart cannot clone a local golden across `TART_HOME`
-containers; do not configure a cross-container fallback for such templates.
-
-### Desktop (R3)
-
-`virfield desktop LEASE_ID [--print]`, Console Desktop and MCP `vm_tunnel` with
-`service: desktop` expose a ready VM's Screen Sharing through a loopback tunnel on
-the daemon host. The URL contains its lease password; keep it private. Node VM
-desktop traffic crosses pinned node SSH to loopback SSH-port+1000. Physical host
-leases have no desktop. There is no browser noVNC view.
-SSH/desktop tunnels are ephemeral and close on release, expiry, drift or explicit
-close. A remote client's localhost is not the daemon host's localhost.
-
-See [remote debugging](REMOTE-DEBUG.md) for generated SwiftPM/LLDB workspaces.
-An actual Tart SwiftPM-generated LLDB-DAP workflow passed; the listener-startup
-correction and exact installed/editor scope are recorded in Verification.
+`virfield desktop LEASE_ID [--print]` and MCP `vm_tunnel` with `service: desktop`
+open Screen Sharing for ready VMs through daemon-host loopback. Keep the URL
+private: it contains the console password. Physical hosts have no desktop tunnel.
+Release, expiry, confirmed drift and explicit close revoke tunnels. A remote
+client's localhost differs from the daemon's localhost. See [remote debugging](REMOTE-DEBUG.md)
+for generated LLDB workspaces.
 
 ## MCP and remote access
 
-`virfield-mcp` calls the same authenticated API. Help topics `workflows`, `images`,
-`operations`, `verification` are embedded and are also `virfield://docs/TOPIC`
-resources. Updating source does not update installed help.
+Help topics `workflows`, `images`, `operations`, `verification` are embedded and
+also available at `virfield://docs/TOPIC`.
 
 Tools: `virfield_help`, `virfield_status`, `vm_acquire`, `vm_lease`, `vm_revalidate`, `vm_release`, `vm_renew`,
 `virfield_job`, `virfield_events`, `image_catalog`, `image_create`, `image_apple_auth`,
 `image_build`, `image_transfer`, `image_pull`, `image_publish`, `registry_sources`, `registry_resolve`,
 `vm_tunnel`, `vm_tunnel_close`.
 
-`image_create`, `image_pull` and `image_publish` use Tart contracts described in
-the image topic. Their new implementation has local tests; live factory and
-publication acceptance remain recorded separately in Verification.
-
-API binds to loopback. Remote clients need an authenticated TLS proxy, Host
-allowlist and separately accepted routing. Scoped REST principals are implemented;
-HTTP MCP is operator-only. Neither configuration nor tool discovery proves a
-remote workload works.
+The API binds to loopback and enforces a Host allowlist. Remote access requires an
+authenticated TLS proxy. Scoped REST principals support `lease:own` and
+`image:build`; HTTP MCP uses the operator principal.
 
 ### Register Codex and Claude Code
 
-Use the actual existing deployment and preserve unrelated server entries:
+Preserve unrelated server entries when registering the installed adapter:
 
 ```sh
 codex mcp get virfield
@@ -399,46 +195,53 @@ codex mcp add virfield -- "$VIRFIELD_HOME/bin/virfield-mcp" -url "$VIRFIELD_URL"
 claude mcp add --transport stdio --scope user virfield -- "$VIRFIELD_HOME/bin/virfield-mcp" -url "$VIRFIELD_URL" -token-file "$VIRFIELD_HOME/token"
 ```
 
-Register an accepted installed candidate; reconnect after upgrades. Each client
-needs help/status discovery plus an authorized acquire → ready → pinned SSH
-workload → artifact export → release run. Registration alone is not acceptance.
-Claude Desktop configuration is separate from Claude Code.
+Claude Desktop has separate configuration. Reconnect each owning client after an
+adapter upgrade, then read help/status in that client. A new test process cannot
+verify which adapter an existing chat still uses.
 
-The read-only installed smoke runs from the exact candidate source. Set
-`VIRFIELD_LIVE_MCP=1`, `VIRFIELD_LIVE_TOKEN_FILE` to the existing private API token
-file, `VIRFIELD_LIVE_MCP_BINARY` to the installed adapter, and
-`VIRFIELD_LIVE_MCP_VERSION` to `release.json.version` without its leading `v`, then
-run `go test ./internal/mcpadapter -run '^TestLiveInstalledMCP$' -count=1 -v`.
-It checks both HTTP and a newly started stdio adapter. Separately inspect
-help/status in the actual already-connected client: a fresh process passing does
-not attest an older process still serving a different session.
+## Upgrade and restore
 
-## Recovery
+Build outside live state. Preserve configuration, credentials, journal and installed
+binaries; record binary hashes. Wait for active leases/jobs to drain, replace the
+configured binaries and gracefully restart the exact registered service. Verify
+health, inventory, hashes and preserved image identities. Reconnect MCP clients.
 
-Inspect the exact job/target and confirm no operation is in flight. Never edit
-SQLite, manually mark an image ready or manipulate runtime files to evade the
-journal. A lost response uses the same body and idempotency key.
+Shutdown closes admission, allows an image stage ten minutes to drain, then cancels
+its Packer/SSH context and allows five more minutes for interruption, stop and
+persistence. Unknown dispatched mutations remain reserved for inspection.
 
-The following `resolve` command queues cleanup of a `needs_attention` or
-quarantined lease and can delete its VM. It does **not** revalidate that machine
-and return it to ready. Preserve needed workspace first and obtain deletion
-authorization. Read-only F1 revalidation below is installed since `256d18f`.
+The CLI `backup` command snapshots SQLite, configuration, owner-token hash, image
+credentials, node management keys and cached probes into an owner-only directory;
+five complete snapshots are retained. It excludes VM disks. Back up separately
+any external credential files referenced by config. Use `virfield -help` for backup syntax. To restore, stop the
+service and retain the current state, then restore the snapshot’s database, image
+identities and node directory to the configured private state path. Restore config
+and external credentials separately, preserving ownership and modes. Create a new
+operator token and start exactly one manager.
+A binary rollback needs a state snapshot compatible with that binary's schema;
+pre-migration snapshots are private and integrity checked.
+
+For full disk recovery, stop the exact owned VM, copy disk/config/NVRAM to
+independent storage and compare hashes before disturbing the source. Retain the
+original outside `TART_HOME/vms` until restored identity, pinned SSH, native
+readiness and workspace data are verified. Tart enumerates dot directories too.
+Delete recovery fixtures only after their data is safe and cleanup is authorized.
+
+## Recovery and diagnostics
+
+A lost response must reuse its original body and request key. Inspect the exact
+target and confirm no operation is in flight before recovery. Never edit SQLite,
+mark an image ready manually or bypass the journal through runtime directories.
+
+`resolve` queues cleanup and can delete the VM. Export needed data and obtain
+cleanup authorization before running:
 
 ```sh
-virfield -token-file "$VIRFIELD_HOME/token" -key inspected-resolution-001 resolve LEASE_ID EXACT_VM_NAME CONFIRM-NO-OPERATION-IN-FLIGHT
+virfield -token-file "$VIRFIELD_HOME/token" -key inspected-cleanup-001 resolve LEASE_ID EXACT_VM_NAME CONFIRM-NO-OPERATION-IN-FLIGHT
 ```
 
-This operator cleanup resolution is absent from MCP. Image recovery uses its separate contract
-in [Image pipeline](IMAGE-PIPELINE.md#recovery). Destructive cleanup needs explicit
-operator/user authorization and exact-name confirmation.
-
-F1 adds read-only recovery for an unexpired owned VM in
-`needs_attention` with `vm_drift`. It requires the original complete runtime
-baseline and verified source-image manifest, a fresh running observation, the
-original pinned host key, existing management credentials and caller-key proof.
-It also checks unchanged guest keys/policy, OS/SIP and unlocked desktop. It never
-calls normal guest preparation, creates credentials, repairs policy, clones or
-deletes. Legacy leases without the baseline and physical hosts are unsupported.
+For read-only recovery of an owned unexpired VM with `vm_drift`, use its original
+identity and complete verified baseline:
 
 ```sh
 virfield -token-file "$VIRFIELD_HOME/token" -key inspected-revalidation-001 revalidate LEASE_ID EXACT_VM_NAME EXISTING_IDENTITY_DIRECTORY
@@ -446,246 +249,36 @@ virfield -token-file "$VIRFIELD_HOME/token" job JOB_ID
 virfield -token-file "$VIRFIELD_HOME/token" lease LEASE_ID
 ```
 
-`revalidate-proof` with the same arguments only prints the public signed request
-for `POST /api/v1/leases/ID/revalidate` or MCP `vm_revalidate`. The signature binds
-the exact lease, VM and idempotency key. Only the existing owner-only Ed25519
-private file is read locally; no private key is sent or generated. Replay the
-same body/key after a lost response. Revalidation reserves the same lease while
-checking, and survives restart under its original deadline (at most two minutes,
-never beyond lease expiry). Wait for job `succeeded` and lease `ready` before
-opening a new tunnel; old listeners stay revoked. Failure preserves the VM and
-records a terminal job error; inspect/fix the cause before a new request key.
-Lease/VM identity, workspace, keys and expiry stay unchanged. Connection files
-are not overwritten: use the ready endpoint with the existing key and host pin.
-Actual Tart and HTPC original-overlay recovery passed; see Verification for the
-exact installed package, preserved identities and receipts.
+`revalidate-proof` prints the public signed request for REST/MCP. Its signature
+binds lease, VM and request key; the private key stays local. Revalidation checks
+existing runtime/image identity, host pin, management/caller keys, policy and
+native readiness. It preserves workspace, keys and expiry. Physical hosts and
+records without a verified baseline are unsupported. Wait for job success and
+lease readiness; existing connection files are not overwritten.
 
-F1 introduced schema 9 for revalidation; the installed F5 package uses
-schema 10 so an older executor cannot silently skip a pinned toolchain either.
-The approved upgrade created and verified a private snapshot of schema 8
-before migration to 10; the earlier schema 7 snapshot is also retained. Rollback
-requires the snapshot matching that binary; older binaries must reject newer
-state before any job dispatch. No schema 9 candidate has been installed here.
-
-F2 adds typed `diagnostic` objects to the existing events
-API/CLI/`virfield_events`, filtered by `lease_id`. `lease.drift` atomically retains
-expected/observed identity, address, SSH port, resources, state and observation
-times before clearing the live endpoint. New readiness also saves its verified
-runtime identity. `tunnel.listener` records opened/paused/resumed/closed;
-`tunnel.stream` separately records rejection or termination, transport direction
-and byte counts. Reasons distinguish explicit close, release, expiry, verified
-endpoint/immutable identity change, daemon shutdown, upstream dial/I/O, client I/O and normal EOF.
-An I/O error induced by our own cleanup is not an upstream-failure diagnosis.
-
-`backend.observation` records failure/recovery. Known errno/context reasons and
-typed error codes are retained; unstructured original errors retain only type
-and SHA-256 fingerprint for private-log correlation. Their raw text can contain
-arguments or payloads and is never exported as a cause. No SSH credentials,
-desktop URLs or stream contents are recorded. Unknown causes stay unknown.
-Each lease retains the latest 32 records of each of four diagnostic kinds
-(at most 128), independently of VM cleanup; normal 30-day history retention still
-applies. Event IDs/cursors remain monotonic and may have gaps after truncation;
-save `next_cursor` and inspect the retained window. This is installed; real
-backend failure/recovery, listener/stream separation and
-byte-exact diagnostic persistence after release/restart passed. Consult
-[Verification](VERIFICATION.md) for the tested versions and receipts.
-
-## Quotas and backups
-
-Tart resource admission counts external VMs and reservations, including full
-potential disk growth. A strict explicit clone destination never falls back.
-Nodes have separate slots and exclusive host reservations. Node VM budgets reserve
-CPU/RAM and full potential disk growth for workers and unfinished image builds.
-The default budget is the observed CPU count, RAM minus 4 GiB and a 20 GiB disk
-reserve. Override it through `runtime.nodes[].vms.resource_limits` with positive
-`cpu`, `memory_bytes` (allocatable budget), `disk_reserve_bytes`; limits are bounded
-by observed hardware. `vms.cache_limit_bytes` optionally caps the physical golden
-cache plus full potential sizes of pending image builds; zero leaves it uncapped.
-No images are pruned automatically. The probe reads qcow2 virtual sizes and free
-space on both golden and overlay storage; unavailable metrics refuse admission.
-Clone/start/commit recheck after wake. Status exposes separate `node_resources`.
-Existing probe records need a successful new observation before VM admission.
-These are VM reservations; physical-account workloads are not CPU/RAM sandboxed.
-F3 adds `status.resource_admission[TEMPLATE]`: `acquire`,
-strict `destinations[LOCATION]` and, where applicable, `image_build`. Each snapshot
-reports CPU/RAM and every candidate disk, with observed free bytes, reservations
-for full potential growth, requested full size, safety reserve and signed remaining
-headroom. Node snapshots report both overlay and golden filesystems, including
-device identities; both must fit and shared-device reservations are not added
-together. The fresh post-wake node runtime uses the same quota evaluator.
-Image-build cache quotas include observed allocated cache plus pending
-full-size builds. Unknown inputs carry `unknown_reason` and null headroom; zero
-observed free bytes is a known refusal. Errors retain this structured snapshot
-under `error.admission`, with exact bytes and labelled decimal GB/binary GiB in
-the CLI/MCP message. Console's Prepare form shows the selected estimate.
-These are advisory snapshots; `inventory_verified` must be true, and admission
-and mutation dispatch recheck the same calculation under the controller lock.
-A changed budget waits with the original lease/reservation/deadline and persists
-its first refusal without repeated polling events. Limits are unchanged.
-Installed/live checks cover HTTP/CLI/MCP refusal, actual
-Tart dispatch wait/resume with unchanged job/key/deadline/TTL and a one-byte-short
-node image-cache refusal before job creation. See [Verification](VERIFICATION.md).
-Visible free space alone is insufficient to diagnose an older refusal. Do not reduce reserve
-or assume copy-on-write physical allocation is the maximum VM growth.
-Node QEMU disks use `cache=writeback` with threaded I/O so concurrent cold boots
-can share the host page cache on HDD storage. Guest cache flushes remain enabled;
-this is the standard QEMU writeback mode ([QEMU cache options](https://www.qemu.org/docs/master/system/invocation.html)).
-New node image conversion explicitly sets the OCI process umask to `0077`;
-the temporary qcow2 is private from creation and becomes mode `0400` before
-publication. Existing staging files are not overwritten; exact-name image
-deletion also removes that image's interrupted conversion file.
-Quotas and the private HDD root are installed; two concurrent reservations and
-two Sonoma native GUI/SSH reboot cycles passed on the dated candidate in
-[Verification](VERIFICATION.md). Fresh `466dbb8` Sequoia 2/2 concurrent and
-Sonoma 2/2 sequential full cycles
-passed. A separate earlier kernel stall remains unexplained; later passes do
-not establish a causal fix. Consult that record for exact scope.
-
-Backup snapshots SQLite, config, the owner-token hash and image credentials into
-an owner-only directory; five complete snapshots are retained. VM disks are not
-included. Node management keys and cached probes are included; symlinks and oversized
-identity files abort the snapshot. External registry/Orchard/principal credentials
-referenced by the config need separate operator backup. Restore must preserve image identities, use a new
-operator token and start exactly one manager. The 2026-10-14 offline drill and
-2026-10-15 live controller-state restore passed, including a rotated token, exact
-MCP and two native Monterey reboot/lease cycles before return to original state.
-This does not back up or restore VM disks.
-
-For an authorized full VM-disk disaster-recovery drill, stop the exact owned VM,
-record disk/config/NVRAM hashes, copy to independent storage, flush the copy and
-verify all hashes before disturbing the source. Preserve a held original outside
-`TART_HOME/vms`, even if its name starts with a dot: Tart enumerates dot directories
-there too. An unsafe directory name correctly fences inventory; do not weaken
-name validation to accommodate a backup. Keep the original intact until restored
-identity, hardware, pinned SSH, native readiness and workspace data verify. The
-2026-10-16 full off-host drill passed, followed by only its authorized fixture
-cleanup and physical caller-key revocation; see [Verification](VERIFICATION.md).
-
-Journal retention removes completed released history after 30 days; unfinished
-jobs and active leases retain their request keys. Retired idempotency keys may
-become new requests after pruning. Migration snapshots are retained separately.
+Events retain typed drift/backend/listener/stream diagnostics, up to 32 records
+per kind per lease under normal history retention. Save `next_cursor` and allow
+ID gaps. Raw payloads, credentials and desktop URLs are excluded. Use fingerprints
+to correlate private logs; do not infer an unknown cause from a later success.
+See [Image recovery](IMAGE-PIPELINE.md#recovery) for image jobs.
 
 ## VM keychain readiness
 
-A temporarily unavailable host, or a running VM whose address is currently
-unknown, does not prove `vm_drift`. The controller preserves the ready lease's
-verified identity, pauses new tunnels with retryable `backend_unavailable`, and
-re-evaluates after inventory recovers. Established tunnel streams remain connected
-to their verified peer. Cached listeners reject new connections while the host,
-address or inventory freshness is unverified; they resume on the same port after
-recovery. Endpoints are checked before and after each new upstream dial. Release,
-expiry and verified identity/state changes still revoke the tunnels. Two verified observations of an absent or
-stopped VM or a changed known endpoint move the lease to `needs_attention`.
-Operator `resolve` remains cleanup-only. Installed F1 recovery is documented
-above; actual Tart and HTPC original-overlay revalidation passed.
-Preserve/export needed workspace before authorized cleanup. Never repair drift
-by rewriting stored addresses or disabling SSH pins. F2 adds durable diagnostics;
-do not infer a historical cause from a later running VM or a new diagnostic test.
+VMs use `admin/admin` without random account-password rotation. A new clone can
+convert a known inherited password while preserving keychain items; an unknown
+password fails readiness. Build a new golden rather than securing an older
+credential policy in place. Physical-host keychains are unchanged.
 
-Installed `f60efe3` preserves/rekeys the login default and prepares an additional
-owner-only keychain named for each image/lease,
-an Aqua LaunchAgent (`ai.virfield.guest-keychain`) and a VM-only SSH command bridge
-(`/etc/ssh/sshd_config.d/001-virfield-keychain.conf`). Guest state is private under
-`~/.virfield-keychain`. Worker preparation first requires the inherited Finder
-desktop to settle before rotating account/autologin credentials, matching image
-qualification. This read-only preflight leaves credentials untouched on failure.
-Its bounded private `leases/<id>/desktop.log` retains the wait deadline, command
-budget, observation duration, partial output and original error, without creating
-worker credentials or overwriting the golden's diagnostics.
-Credential mutation failures retain bounded private stdout/stderr even after a
-deadline, plus a fixed failure class and secret-free timestamped phases in
-`leases/<id>/provision.log`. No command is automatically replayed after a timeout.
-Aqua unlock is performed by the owned GUI agent. `RunAtLoad` can remain registered
-with zero runs and a speculative pending spawn after login. Qualification and
-post-reboot verification demand this agent without `-k`, leaving any running
-startup intact. The worker SSH bridge waits for Aqua registration and current
-scope/boot startup proof before executing the original command, then unlocks in
-its own Security audit session. This wait is bounded and does not consume the
-original command's stdin. Image bootstrap SSH is exempt so it can prepare the GUI.
-Only a completed automatic startup in the same scope, boot and Aqua audit session
-can be reused; explicit nonce-bearing native requests always run again.
-The inherited login keychain's items are retained and its password is rotated to
-match the VM. It remains the default and first in the search list across boots:
-loginwindow unlocks it during automatic login, before early OS clients start.
-A custom scoped default can leave Spotlight password dialogs queued before the
-owned Aqua agent starts, even if that agent subsequently unlocks it.
-Native SecKeychainUnlock/ChangePassword authenticates each old-password candidate
-with user interaction disabled in that same caller. A wrong password returns
-`errSecAuthFailed`; only that error permits a fallback. The GUI `security` CLI
-[locks the keychain internally before password change](https://github.com/apple-oss-distributions/SecurityTool/blob/main/keychain_set_settings.c)
-and is not used for this authentication. Secrets are read from the private
-identity file, not command arguments.
-Wrong password candidates never lock the original login keychain; a lock can leave an
-OS client's password dialog open even after a successful unlock. Successful rekey
-is followed by native WhenUnlocked add/read/delete with the new password. A
-desktop overlay cannot select another password, and failed I/O after successful
-authentication fails preparation without trying another secret. Full readiness
-separately requires an available Aqua window snapshot with no visible Keyboard
-Setup Assistant or SecurityAgent window. An already queued OS password dialog is
-not dismissed by native I/O success; preserve diagnostics and fail readiness.
-An inconsistent cached login keychain can report unlocked while correct-password
-authentication and native I/O both return `errSecAuthFailed`. Only after the
-password authenticates against a temporary owner-only copy of the on-disk
-keychain may the preparer perform one native lock/unlock to refresh the original
-cache, then rekey it. Password change on the copy proves the secret even if its
-unlock was a no-op. The copy is removed in a `finally` block, original items are
-retained, and a refresh failure never selects another password. Separate native
-I/O and unobstructed desktop checks still apply afterwards.
-It also requires the current, logged-in console to be unlocked; Finder and an
-Aqua audit session can remain alive behind the lock screen. Automation disables
-both general and per-host screensaver idle time. Account/autologin preparation
-clears and verifies `autoLoginUserScreenLocked`; this flag otherwise restores an
-earlier idle lock after reboot even when system/display sleep are disabled.
-The read-only inherited desktop preflight requires an unlocked console before
-credential rotation. It never types a password into an existing lock screen.
-The fixed QEMU USB and Apple PS/2 ANSI keyboard mappings preserve other devices.
-Only the virtual Keyboard Setup Assistant may be closed; SecurityAgent is never
-killed or answered by this agent.
+Preparation preserves the login default, creates an additional private keychain
+and an Aqua agent, and installs a VM-only SSH command bridge. Native add/read/data
+comparison/delete must work in both GUI and separate SSH audit sessions. The
+console must be logged in, unlocked and unobstructed; worker readiness also reads
+an authenticated Screen Sharing RFB greeting. Ordinary SSH/SCP commands need no
+manual keychain unlock.
 
-Tart clones and factory recipes request `1920x1080px` (72 PPI), independent of the host Retina scale. Point units, including an omitted unit, can leave Monterey at 3840×2160 without a 1920×1080 mode. The actual 1920×1080 desktop is selected and verified inside Aqua before native keychain acceptance. Shared physical nodes are not
-modified by this VM preparation policy.
-
-Console, automatic startup and fresh native-result observations share one
-command bound; observing a later phase does not restart that budget. Initial
-`ensure` retains five minutes. Post-reboot `verify` allows ten minutes because
-SSH can precede the cold HDD Aqua login/agent by minutes; the caller's original
-operation/lease deadline still caps it. Cold agents have produced valid proof
-just after both an earlier 120-second guard and a five-minute verification bound.
-Native scope/boot/nonce and I/O checks remain mandatory.
-Time already spent in the worker SSH GUI gate is deducted from the native command
-budget, and an exhausted budget fails before another mutation phase. An SSH
-banner alone does not prove that the post-reboot GUI startup has completed.
-Before worker readiness, a separate bounded probe reads a complete RFB greeting
-from guest localhost:5900 through authenticated, pinned guest SSH. This starts and
-verifies Screen Sharing itself; launchd owning a LISTEN socket is insufficient.
-It does not change firewall policy or weaken authentication.
-The worker Aqua agent also reads the real greeting before publishing native
-readiness on each login/reboot; image qualification skips this worker service.
-
-The current [Broker macos27 reacceptance record](VERIFICATION.md#broker-macos27-reacceptance)
-separates three failed older probes from the later installed candidate, whose
-Broker path has not been reaccepted. A ready catalog entry or another profile's
-successful test does not establish this path's readiness.
-
-If `guest_keychain_failed` occurs, preserve the operation/lease ID and inspect the
-owner-only guest `~/.virfield-keychain/agent.log` and host provisioning diagnostics.
-The SSH preparer now captures bounded GUI/SSH results and agent/display logs into
-private `state_dir/leases/LEASE_ID/keychain.log` (or `images/IMAGE_ID/keychain.log`)
-before closing its provisioning connection. It omits the identity/password file
-and keychain contents. A failed GUI installation can make the new SSH bridge
-unavailable, so collect this host log before releasing the owned fixture: cleanup
-removes its private directory. Public API errors/events never contain these logs.
-`desktop-command.log` additionally records whether the fixed desktop probe was
-waiting for an SSH channel, exec acknowledgement or command exit, with its budget
-and original transport/context errors. It never records command text or stdin.
-Native attempts record only candidate mode, substage and status. The agent's
-private exit receipt includes scope, boot, mode, nonce, exit code and phase; the
-installer fails promptly only for its exact request instead of waiting five
-minutes after the agent has exited. A stale boot/nonce receipt cannot abort a new
-verification.
-Do not mark ready on a CLI unlock exit code: native application-style key storage
-must work in both contexts. Do not replace a keychain on an active user's lease or
-reset application databases; prepare a new disposable lease after deployment.
-The lease wait ended and signed candidates were installed through the existing
-launchd service. Keep source, installed-package and already-connected-client
-acceptance separate; [Verification](VERIFICATION.md) records their exact scope.
+For `guest_keychain_failed`, preserve host `state_dir/leases/LEASE_ID/keychain.log`
+or `images/IMAGE_ID/keychain.log` before release. Inspect the private guest
+`~/.virfield-keychain/agent.log` if accessible. `desktop.log` and
+`desktop-command.log` distinguish console waiting, SSH channel/exec delay and
+command timeout. Public errors omit those logs and keychain contents. Diagnose
+the failed substage; do not reset keychains, delete login items or weaken readiness.

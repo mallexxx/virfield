@@ -1,35 +1,14 @@
 # Virfield
 
-Virfield is a Go control plane for local Tart macOS VMs and SSH-controlled
-physical macOS/Linux nodes. Linux nodes can also host disposable macOS lab VMs
-through rootless Podman/QEMU/OpenCore. It owns images, leases, capacity, pinned
-SSH, desktop tunnels, durable jobs and confirmed cleanup. Execution Broker owns
-queues, commands, runs, approvals and workload artifacts.
-
-The maintained checkout is this repository. Current release hardening is
-published on `codex/retire-lume-release-hardening`; `main` has not been promoted
-to that candidate. The earlier `virfield-v3` worktree/branch is obsolete. Virfield switched to Tart on
-2026-10-08; the runtime/factory/wrapper/build/install Lume code is removed. The separate old LaunchDaemon was disabled and booted out on 2026-10-14, with rollback files preserved. Current release gates are tracked
-in [Verification](docs/VERIFICATION.md); old Lume runbooks are archived, not
-installation instructions for the current product.
-
-| Document | Authority |
-|---|---|
-| [Operations](docs/OPERATIONS.md) | Installation, configuration, services, client registration and recovery |
-| [Agent guide](docs/AGENT-GUIDE.md) | MCP tool arguments, pinned SSH, retries and workflows; embedded help |
-| [Image pipeline](docs/IMAGE-PIPELINE.md) | Tart/node image contracts, qualification and recovery |
-| [Verification](docs/VERIFICATION.md) | Actual acceptance evidence, current defects and release gates |
-| [Architecture](docs/ARCHITECTURE.md) | Current modules and lifecycle invariants |
-| [Remote debugging](docs/REMOTE-DEBUG.md) | Existing generated VS Code workflow and its acceptance limits |
-| [3.0 plan](docs/VIRFIELD-3-PLAN.md) | Delivery state and remaining target architecture |
-| [Platform boundaries](docs/COMPOSITIONAL-PLATFORM.md) | Current product responsibilities and future components |
+Virfield manages macOS VM images, disposable VM leases and physical macOS/Linux
+nodes. It tracks capacity, pins SSH identities, opens desktop tunnels and confirms
+cleanup. Run commands and collect artifacts over SSH; workload queues belong to
+the client or execution service.
 
 ## Build
 
-Go's minimum patch and dependencies are pinned in `go.mod`. The console is
-embedded HTML/CSS/JavaScript and needs no frontend build. On macOS the native
-Apple sign-in browser is also built. Runtime state, credentials, VM disks,
-archives and installed binaries belong outside the checkout.
+Use the Go version in `go.mod`. Local macOS VMs require Apple Silicon and Tart;
+image builds also require Packer. The console needs no frontend build.
 
 ```sh
 make check
@@ -37,26 +16,25 @@ make build
 ./bin/virfield -help
 ```
 
-Release checks also include the pinned Staticcheck, module integrity,
-`govulncheck`, Gitleaks and a clean archive/extraction test. A green unit suite
-does not establish live workload or disaster-recovery acceptance.
+On macOS, set `SIGN_IDENTITY` to your code-signing identity when building binaries
+that need persistent Full Disk Access. Without it, builds keep ad-hoc signatures.
+Store configuration, credentials, VM disks and installed binaries outside Git.
 
-## Supported deployment and release scope
+## Install and use
 
-The accepted runtime paths are local Tart and the R1–R3 SSH/node slices. Orchard
-has an adapter but is not accepted for deployment. The broader 3.0 API, grants,
-node-agent, browser desktop and VS Code extension remain roadmap work.
-[Published v2.0.0](https://github.com/mallexxx/virfield/releases/tag/v2.0.0)
-is a historical Lume release, not an archive of the current Tart implementation.
-Use the current source and Operations until a new release passes its gates.
-The [Broker macos27 reacceptance record](docs/VERIFICATION.md#broker-macos27-reacceptance)
-records the current cross-project boundary and the evidence required to close it.
+Follow [Operations](docs/OPERATIONS.md) to initialize a deployment, configure
+storage and start the service. Then build a golden image, acquire a lease, wait
+for readiness and generate pinned SSH configuration. Export results before
+releasing the lease.
 
-The operator requires the standard VM account `admin/admin`; automatic random
-account-password rotation was removed in `0f8bc20` and later. Installed full
-native/reboot/workload cycles passed for both Monterey inventories, the new
-macOS27 golden and HTPC Sonoma/Sequoia. Pinned SSH key isolation, native GUI/new
-SSH key-storage checks and preserved old golden identities remain required.
-The [maintained plan](docs/VIRFIELD-3-PLAN.md) tracks all five delivered follow-ups,
-current acceptance and the remaining 3.0 architecture. The earlier guest-kernel
-stall remains unexplained; later successful cycles are not a causal fix.
+For an MCP client, start with `virfield_help`, then `virfield_status`. The embedded
+help covers the same workflows as the repository documentation.
+
+| Guide | Use it to |
+| --- | --- |
+| [Agent guide](docs/AGENT-GUIDE.md) | Call MCP tools, connect over SSH and handle errors |
+| [Image pipeline](docs/IMAGE-PIPELINE.md) | Select versions, build images, transfer or publish them |
+| [Operations](docs/OPERATIONS.md) | Install, configure, upgrade, diagnose and restore |
+| [Environment checks](docs/ENVIRONMENT.md) | Check requirements and qualify a workload |
+| [Remote debugging](docs/REMOTE-DEBUG.md) | Generate a SwiftPM or DuckDuckGo debugging workspace |
+| [Development](docs/ARCHITECTURE.md) | Find modules, preserve lifecycle rules and build a release |

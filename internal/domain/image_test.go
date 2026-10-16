@@ -86,7 +86,7 @@ func TestTartUITestProfileValidates(t *testing.T) {
 }
 
 func TestNodeSourceProfile(t *testing.T) {
-	p := ImageProfile{Node: &NodeSource{Golden: "sonoma-14.8.9-23J631-20261008"}, MacOS: "14.8.9", Build: "23J631", DisableSIP: true}
+	p := ImageProfile{Node: &NodeSource{Golden: "sonoma-bootstrap"}, MacOS: "14.8.9", Build: "23J631", DisableSIP: true}
 	if err := p.Validate(); err != nil {
 		t.Fatal(err)
 	}

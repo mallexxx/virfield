@@ -78,7 +78,7 @@ func TestCloneLocationsReferenceConfiguredStorage(t *testing.T) {
 
 func TestTartRuntimeDefinesDurableStorageAndReserve(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
-	body := `{"listen":"127.0.0.1:7780","state_dir":"/tmp/a","token_file":"/tmp/t","max_vms":2,"runtime":{"provider":"tart","tart":{"binary":"/opt/homebrew/bin/tart","host_id":"macbook","containers":[{"id":"local","path":"/Users/admin/.tart","kind":"local"},{"id":"samsung","path":"/Volumes/Samsung/tart","kind":"external","volume_uuid":"123e4567-e89b-12d3-a456-426614174000"}]}},"templates":[]}`
+	body := `{"listen":"127.0.0.1:7780","state_dir":"/tmp/a","token_file":"/tmp/t","max_vms":2,"runtime":{"provider":"tart","tart":{"binary":"/opt/homebrew/bin/tart","host_id":"primary","containers":[{"id":"local","path":"/Users/operator/.tart","kind":"local"},{"id":"external","path":"/Volumes/VMStorage/tart","kind":"external","volume_uuid":"123e4567-e89b-12d3-a456-426614174000"}]}},"templates":[]}`
 	if err := os.WriteFile(path, []byte(body), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestTartRuntimeDefinesDurableStorageAndReserve(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Runtime.Tart.MemoryReserveBytes != 4<<30 || cfg.Runtime.Tart.DiskReserveBytes != 20<<30 || cfg.StoragePaths["samsung"] != "/Volumes/Samsung/tart" {
+	if cfg.Runtime.Tart.MemoryReserveBytes != 4<<30 || cfg.Runtime.Tart.DiskReserveBytes != 20<<30 || cfg.StoragePaths["external"] != "/Volumes/VMStorage/tart" {
 		t.Fatalf("runtime defaults not applied: %#v", cfg.Runtime.Tart)
 	}
 }
@@ -110,7 +110,7 @@ func TestOrchardHostLimitsRequireExplicitReserve(t *testing.T) {
 
 func TestTartImageToolsRequireAbsolutePaths(t *testing.T) {
 	dir := t.TempDir()
-	base := `{"listen":"127.0.0.1:7780","state_dir":"/tmp/a","token_file":"/tmp/t","max_vms":2,"runtime":{"provider":"tart","tart":{"binary":"/opt/homebrew/bin/tart","host_id":"macbook","containers":[{"id":"samsung","path":"/Volumes/S/tart","kind":"external"}],"image":%s}},"templates":[]}`
+	base := `{"listen":"127.0.0.1:7780","state_dir":"/tmp/a","token_file":"/tmp/t","max_vms":2,"runtime":{"provider":"tart","tart":{"binary":"/opt/homebrew/bin/tart","host_id":"primary","containers":[{"id":"external","path":"/Volumes/S/tart","kind":"external"}],"image":%s}},"templates":[]}`
 	for name, image := range map[string]string{
 		"valid":            `{"packer":"/opt/homebrew/bin/packer","xcode_archives":"/Users/a/cache/xcode"}`,
 		"relative packer":  `{"packer":"packer","xcode_archives":"/Users/a/cache/xcode"}`,
@@ -135,19 +135,19 @@ func TestTartImageToolsRequireAbsolutePaths(t *testing.T) {
 
 func TestRuntimeNodesValidate(t *testing.T) {
 	dir := t.TempDir()
-	base := `{"listen":"127.0.0.1:7780","state_dir":"/tmp/a","token_file":"/tmp/t","max_vms":2,"runtime":{"provider":"tart","tart":{"binary":"/opt/homebrew/bin/tart","host_id":"macbook","containers":[{"id":"samsung","path":"/Volumes/S/tart","kind":"external"}]},"nodes":[%s]},"templates":[]}`
+	base := `{"listen":"127.0.0.1:7780","state_dir":"/tmp/a","token_file":"/tmp/t","max_vms":2,"runtime":{"provider":"tart","tart":{"binary":"/opt/homebrew/bin/tart","host_id":"primary","containers":[{"id":"external","path":"/Volumes/S/tart","kind":"external"}]},"nodes":[%s]},"templates":[]}`
 	key := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOjnNwacnnaogoL+pe0tgXiGBNpMpHmcc7WSGhoYjssV"
 	digest := "08d1bcaac74ad44d548b7ce683b3dded083512d2a0d26416f9a620b763f8ea3d"
 	vms := `,"vms":{"image":"docker.io/dockurr/macos@sha256:` + digest + `","goldens_dir":"/run/media/system/Data/virfield/goldens","port_base":22100,"max":2,"cpu":4,"memory_gb":8,"disk_size":"100G"}`
-	valid := `{"id":"htpc","name":"HTPC","address":"192.168.1.86","user":"bazzite","host_key":"` + key + `","os":"linux","arch":"amd64","keep_awake_file":"/tmp/rsync-active","wake_on_lan":{"mac":"B0:6E:BF:60:6D:64","broadcast":"192.168.1.255:9"}}`
+	valid := `{"id":"linux-node","name":"Linux node","address":"192.0.2.20","user":"operator","host_key":"` + key + `","os":"linux","arch":"amd64","keep_awake_file":"/tmp/rsync-active","wake_on_lan":{"mac":"02:00:00:00:00:01","broadcast":"192.0.2.255:9"}}`
 	for name, node := range map[string]string{
 		"valid":            valid,
 		"bad host key":     strings.Replace(valid, key, "ssh-ed25519 nope", 1),
 		"bad os":           strings.Replace(valid, `"os":"linux"`, `"os":"windows"`, 1),
-		"bad mac":          strings.Replace(valid, "B0:6E:BF:60:6D:64", "zz", 1),
-		"container id":     strings.Replace(valid, `"id":"htpc"`, `"id":"samsung"`, 1),
-		"primary host id":  strings.Replace(valid, `"id":"htpc"`, `"id":"macbook"`, 1),
-		"user@address":     strings.Replace(valid, `"address":"192.168.1.86"`, `"address":"x@192.168.1.86"`, 1),
+		"bad mac":          strings.Replace(valid, "02:00:00:00:00:01", "zz", 1),
+		"container id":     strings.Replace(valid, `"id":"linux-node"`, `"id":"external"`, 1),
+		"primary host id":  strings.Replace(valid, `"id":"linux-node"`, `"id":"primary"`, 1),
+		"user@address":     strings.Replace(valid, `"address":"192.0.2.20"`, `"address":"x@192.0.2.20"`, 1),
 		"duplicate ids":    valid + "," + valid,
 		"relative hold":    strings.Replace(valid, `"/tmp/rsync-active"`, `"tmp/x"`, 1),
 		"bad extra key":    strings.Replace(valid, `"os":"linux"`, `"host_keys":["ssh-ed25519 nope"],"os":"linux"`, 1),
@@ -166,7 +166,7 @@ func TestRuntimeNodesValidate(t *testing.T) {
 		}
 		cfg, err := Load(path)
 		if name == "valid" {
-			if err != nil || len(cfg.Runtime.Nodes) != 1 || cfg.Runtime.Nodes[0].WakeOnLAN.MAC != "B0:6E:BF:60:6D:64" {
+			if err != nil || len(cfg.Runtime.Nodes) != 1 || cfg.Runtime.Nodes[0].WakeOnLAN.MAC != "02:00:00:00:00:01" {
 				t.Fatal(cfg.Runtime, err)
 			}
 			continue

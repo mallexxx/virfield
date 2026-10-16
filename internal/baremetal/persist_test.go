@@ -11,13 +11,13 @@ import (
 // the asleep node stays admissible and its leases stay in inventory.
 func TestLastProbeSurvivesRestartWhileNodeSleeps(t *testing.T) {
 	dir := t.TempDir()
-	htpc := Node{ID: "htpc", Address: "127.0.0.1", User: "bazzite", HostKeys: []string{testHostKey}, OS: "linux", Arch: "amd64", WakeMAC: "B0:6E:BF:60:6D:64", WakeBroadcast: "127.0.0.1:9"}
-	r, local := testRuntime(t, htpc)
+	node := Node{ID: "linux-node", Address: "127.0.0.1", User: "operator", HostKeys: []string{testHostKey}, OS: "linux", Arch: "amd64", WakeMAC: "02:00:00:00:00:01", WakeBroadcast: "127.0.0.1:9"}
+	r, local := testRuntime(t, node)
 	if err := r.Persist(dir); err != nil {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	l := domain.Lease{VMName: "vf-0123456789abcdef", Location: "htpc"}
+	l := domain.Lease{VMName: "vf-0123456789abcdef", Location: "linux-node"}
 	if err := r.Clone(ctx, domain.Template{}, l); err != nil {
 		t.Fatal(err)
 	}
@@ -25,11 +25,11 @@ func TestLastProbeSurvivesRestartWhileNodeSleeps(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	restarted := New([]Node{htpc}, local.dial)
+	restarted := New([]Node{node}, local.dial)
 	if err := restarted.Persist(dir); err != nil {
 		t.Fatal(err)
 	}
-	local.setOffline("htpc", true)
+	local.setOffline("linux-node", true)
 	o, err := restarted.Observe(ctx)
 	if err != nil || o.Hosts[0].UnavailableReason != "asleep" || o.StorageContainers[0].Availability != "available" {
 		t.Fatalf("restarted asleep node = %#v %#v %v", o.Hosts, o.StorageContainers, err)
@@ -58,7 +58,7 @@ func TestRememberedProbeIsReprobedAfterRestart(t *testing.T) {
 	if err := restarted.Persist(dir); err != nil {
 		t.Fatal(err)
 	}
-	local.setOffline("mbp-2014", true)
+	local.setOffline("mac-node", true)
 	o, _ := restarted.Observe(ctx)
 	if o.Hosts[0].UnavailableReason != "offline" || o.StorageContainers[0].Availability != "unavailable" || len(o.VMs) != 0 {
 		t.Fatalf("stale probe served as fresh: %#v %#v", o.Hosts, o.VMs)

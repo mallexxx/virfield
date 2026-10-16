@@ -8,7 +8,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-const instructions = "Start with virfield_help, then virfield_status. Read verification before claiming OS/Xcode support. Image and lease mutations are asynchronous: poll virfield_job and check vm_lease readiness. Reuse the same idempotency key on retries. Capacity is reported per host and globally; unavailable hosts and storage remain visible with a reason. Virfield has no execution queue. Execute over pinned SSH, export artifacts, then release only with user authorization. For needs_attention or unknown outcomes, inspect the documented recovery procedure; never bypass the journal."
+const instructions = "Start with virfield_help, then virfield_status. Read verification for environment requirements before selecting OS/Xcode. Image and lease mutations are asynchronous: poll virfield_job and check vm_lease readiness. Reuse the same idempotency key on retries. Capacity is reported per host and globally; unavailable hosts and storage remain visible with a reason. Virfield has no execution queue. Execute over pinned SSH, export artifacts, then release only with user authorization. For needs_attention or unknown outcomes, inspect the documented recovery procedure; never bypass the journal."
 
 type helpArgs struct {
 	Topic string `json:"topic,omitempty" jsonschema:"Documentation topic: workflows (default), images, operations, or verification"`
@@ -18,7 +18,7 @@ var helpDocuments = []struct{ topic, file, description string }{
 	{"workflows", "AGENT-GUIDE.md", "Complete agent workflows, tool arguments, SSH, artifact export and error handling"},
 	{"images", "IMAGE-PIPELINE.md", "Version selection, guest security, image dependencies and operator recovery"},
 	{"operations", "OPERATIONS.md", "Installation, Codex/Claude registration, services, configuration and backups"},
-	{"verification", "VERIFICATION.md", "Acceptance evidence, tested combinations and remaining release blockers"},
+	{"verification", "ENVIRONMENT.md", "Environment requirements and instructions for checking a deployment and workload"},
 }
 
 func addHelp(s *mcp.Server) {
@@ -32,7 +32,7 @@ func addHelp(s *mcp.Server) {
 			return &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{{URI: uri, MIMEType: "text/markdown", Text: string(content)}}}, nil
 		})
 	}
-	mcp.AddTool(s, &mcp.Tool{Name: "virfield_help", Description: "Read the complete embedded agent runbook BEFORE using Virfield: workflows (default), images, operations or verification. Includes arguments, examples, pinned SSH execution, cleanup, recovery and tested scope. No source checkout or Obsidian needed. Read-only; available without contacting the daemon.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true}}, func(_ context.Context, _ *mcp.CallToolRequest, a helpArgs) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(s, &mcp.Tool{Name: "virfield_help", Description: "Read the complete embedded agent runbook BEFORE using Virfield: workflows (default), images, operations or verification. Includes arguments, examples, pinned SSH execution, cleanup, recovery and environment checks. No source checkout needed. Read-only; available without contacting the daemon.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true}}, func(_ context.Context, _ *mcp.CallToolRequest, a helpArgs) (*mcp.CallToolResult, any, error) {
 		if a.Topic == "" {
 			a.Topic = "workflows"
 		}

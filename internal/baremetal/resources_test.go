@@ -27,7 +27,7 @@ func TestNodeVMStorageRootRoutesWorkspacesAndBlocksChangingActiveRoots(t *testin
 	if o.StorageContainers[0].Path != root {
 		t.Fatal("Storage inventory lost configured root", o.StorageContainers)
 	}
-	l := domain.Lease{ID: "lease-storage-test", VMName: "vf-storage-test", Location: "htpc", ImageID: "image-ready"}
+	l := domain.Lease{ID: "lease-storage-test", VMName: "vf-storage-test", Location: "linux-node", ImageID: "image-ready"}
 	if err := r.Clone(context.Background(), domain.Template{Name: "secured"}, l); err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +35,7 @@ func TestNodeVMStorageRootRoutesWorkspacesAndBlocksChangingActiveRoots(t *testin
 	if err != nil || info.Mode().Perm() != 0700 {
 		t.Fatal("VM workspace not private in configured root", err)
 	}
-	if _, err := os.Stat(filepath.Join(local.homes["htpc"], "virfield/leases", l.VMName)); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(local.homes["linux-node"], "virfield/leases", l.VMName)); !os.IsNotExist(err) {
 		t.Fatal("VM workspace created in old home", err)
 	}
 	if _, err := r.Observe(context.Background()); err != nil {
@@ -77,13 +77,13 @@ func writeQCOWHeader(t *testing.T, path string, size uint64) {
 func TestFreshNodeQuotaCheckRefusesChangedSourceAndCacheBeforeClone(t *testing.T) {
 	r, local, goldens := vmRuntime(t, "secured")
 	writeQCOWHeader(t, filepath.Join(goldens, "secured.qcow2"), 200<<30)
-	l := domain.Lease{ID: "lease-0123456789abcdef", VMName: "vf-0123456789abcdef", Location: "htpc", ImageID: "image-0123", Resources: domain.Resources{CPU: 4, MemoryBytes: 8 << 30, DiskBytes: 100 << 30}}
+	l := domain.Lease{ID: "lease-0123456789abcdef", VMName: "vf-0123456789abcdef", Location: "linux-node", ImageID: "image-0123", Resources: domain.Resources{CPU: 4, MemoryBytes: 8 << 30, DiskBytes: 100 << 30}}
 	err := r.Clone(context.Background(), domain.Template{Name: "secured"}, l)
 	var failure *domain.Error
 	if !errors.As(err, &failure) || failure.Code != "resource_unknown" {
 		t.Fatal("Changed source admitted", err)
 	}
-	if _, err := os.Stat(filepath.Join(local.homes["htpc"], "virfield/leases", l.VMName)); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(local.homes["linux-node"], "virfield/leases", l.VMName)); !os.IsNotExist(err) {
 		t.Fatal("Refused clone touched node workspace", err)
 	}
 	o, err := r.Observe(context.Background())
@@ -111,7 +111,7 @@ func TestFreshNodeQuotaCheckRefusesChangedSourceAndCacheBeforeClone(t *testing.T
 	if failure.Admission == nil || !strings.Contains(failure.Message, "image_cache") || !strings.Contains(failure.Message, "214748364800 bytes") || !strings.Contains(failure.Message, "GiB") {
 		t.Fatal("Fresh runtime refusal lost quota arithmetic", failure)
 	}
-	if _, err := os.Stat(filepath.Join(local.homes["htpc"], "virfield/images", l.VMName)); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(local.homes["linux-node"], "virfield/images", l.VMName)); !os.IsNotExist(err) {
 		t.Fatal("Refused build touched node workspace", err)
 	}
 }

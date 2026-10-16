@@ -68,7 +68,7 @@ func (f *fakeRuntime) Observe(context.Context) (domain.Observation, error) {
 	if f.state == "" {
 		return domain.Observation{}, nil
 	}
-	return domain.Observation{VMs: []domain.VM{{Name: "ventura-golden", Location: "samsung", State: f.state, IP: f.ip}}}, nil
+	return domain.Observation{VMs: []domain.VM{{Name: "ventura-golden", Location: "external", State: f.state, IP: f.ip}}}, nil
 }
 
 func (f *fakeRuntime) Start(context.Context, domain.Lease) error {
@@ -112,7 +112,7 @@ func testBuilder(t *testing.T) (*Builder, *fakeRunner, *fakeRuntime, domain.Leas
 			Packer:        "/opt/homebrew/bin/packer",
 			TartBinary:    "/opt/tart/bin/tart",
 			XcodeArchives: archives,
-			Homes:         map[string]string{"samsung": "/Volumes/S/tart"},
+			Homes:         map[string]string{"external": "/Volumes/S/tart"},
 			Credentials:   []tart.RegistryCredential{{Host: "ghcr.io", Username: "operator", Token: "secret"}},
 			Runtime:       runtime,
 		},
@@ -120,7 +120,7 @@ func testBuilder(t *testing.T) (*Builder, *fakeRunner, *fakeRuntime, domain.Leas
 		stateTimeout: 200 * time.Millisecond,
 		statePoll:    time.Millisecond,
 	}
-	l := domain.Lease{ID: "image-test", Purpose: "image", VMName: "ventura-golden", Location: "samsung", GuestUser: "admin"}
+	l := domain.Lease{ID: "image-test", Purpose: "image", VMName: "ventura-golden", Location: "external", GuestUser: "admin"}
 	return b, runner, runtime, l, p
 }
 

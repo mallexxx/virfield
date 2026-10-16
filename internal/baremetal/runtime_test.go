@@ -84,7 +84,7 @@ func testRuntime(t *testing.T, nodes ...Node) (*Runtime, *localNodes) {
 }
 
 func mbp() Node {
-	return Node{ID: "mbp-2014", Address: "127.0.0.1", User: "admin", HostKeys: []string{testHostKey}, OS: "macOS", Arch: "amd64"}
+	return Node{ID: "mac-node", Address: "127.0.0.1", User: "admin", HostKeys: []string{testHostKey}, OS: "macOS", Arch: "amd64"}
 }
 
 func vmNamed(o domain.Observation, name string) (domain.VM, bool) {
@@ -117,7 +117,7 @@ func TestProbeReportsUITestingReadiness(t *testing.T) {
 }
 
 func TestNormalizeVolume(t *testing.T) {
-	for in, want := range map[string]string{"Big Sur": "Big-Sur", "Macintosh HD - Data": "Macintosh-HD-Data", "bazzite": "bazzite", " Monterey ": "Monterey"} {
+	for in, want := range map[string]string{"Big Sur": "Big-Sur", "Macintosh HD - Data": "Macintosh-HD-Data", "operator": "operator", " Monterey ": "Monterey"} {
 		if got := normalizeVolume(in); got != want {
 			t.Fatalf("%q -> %q, want %q", in, got, want)
 		}
@@ -134,11 +134,11 @@ func TestLeaseLifecycleOnAReachableNode(t *testing.T) {
 	if len(o.Hosts) != 1 || o.Hosts[0].Availability != "available" || o.Hosts[0].Capacity.MaxVMs != 1 || o.StorageContainers[0].Availability != "available" {
 		t.Fatalf("host = %#v", o.Hosts)
 	}
-	if len(o.VMs) != 1 || o.VMs[0].State != "stopped" || !domain.ValidName(o.VMs[0].Name) || o.VMs[0].Location != "mbp-2014" {
+	if len(o.VMs) != 1 || o.VMs[0].State != "stopped" || !domain.ValidName(o.VMs[0].Name) || o.VMs[0].Location != "mac-node" {
 		t.Fatalf("pseudo-golden = %#v", o.VMs)
 	}
 
-	l := domain.Lease{ID: "lease-0123456789abcdef", VMName: "vf-0123456789abcdef", Location: "mbp-2014", SSHPublicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC9D6mucoloj9cxdHV3tI03FWab3N3RsSl8Va/gXFvyQ"}
+	l := domain.Lease{ID: "lease-0123456789abcdef", VMName: "vf-0123456789abcdef", Location: "mac-node", SSHPublicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC9D6mucoloj9cxdHV3tI03FWab3N3RsSl8Va/gXFvyQ"}
 	if err := r.Clone(ctx, domain.Template{}, l); err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +158,7 @@ func TestLeaseLifecycleOnAReachableNode(t *testing.T) {
 	if err != nil || connection.User != "admin" || connection.Port != 22 || connection.HostKey != testHostKey {
 		t.Fatal(connection, err)
 	}
-	keys := filepath.Join(local.homes["mbp-2014"], ".ssh", "authorized_keys")
+	keys := filepath.Join(local.homes["mac-node"], ".ssh", "authorized_keys")
 	if b, _ := os.ReadFile(keys); !strings.Contains(string(b), "virfield-lease-"+l.VMName) {
 		t.Fatal("lease key not authorized")
 	}
@@ -179,7 +179,7 @@ func TestLeaseLifecycleOnAReachableNode(t *testing.T) {
 
 func TestOfflineNodeIsUnavailableNotAnInventoryFailure(t *testing.T) {
 	r, local := testRuntime(t, mbp())
-	local.setOffline("mbp-2014", true)
+	local.setOffline("mac-node", true)
 	o, err := r.Observe(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -187,7 +187,7 @@ func TestOfflineNodeIsUnavailableNotAnInventoryFailure(t *testing.T) {
 	if o.Hosts[0].Availability != "unavailable" || o.Hosts[0].UnavailableReason != "offline" || o.StorageContainers[0].Availability != "unavailable" || len(o.VMs) != 0 {
 		t.Fatalf("offline node = %#v %#v %#v", o.Hosts, o.StorageContainers, o.VMs)
 	}
-	l := domain.Lease{VMName: "vf-0123456789abcdef", Location: "mbp-2014"}
+	l := domain.Lease{VMName: "vf-0123456789abcdef", Location: "mac-node"}
 	var failure *domain.Error
 	if err := r.Start(context.Background(), l); !errors.As(err, &failure) || failure.Code != "backend_unavailable" {
 		t.Fatal(err)
@@ -200,13 +200,13 @@ func TestAsleepNodeIsAdmittedAndWokenForItsLease(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer listener.Close()
-	htpc := Node{ID: "htpc", Address: "127.0.0.1", User: "bazzite", HostKeys: []string{testHostKey}, OS: "linux", Arch: "amd64", WakeMAC: "B0:6E:BF:60:6D:64", WakeBroadcast: listener.LocalAddr().String()}
-	r, local := testRuntime(t, htpc)
+	node := Node{ID: "linux-node", Address: "127.0.0.1", User: "operator", HostKeys: []string{testHostKey}, OS: "linux", Arch: "amd64", WakeMAC: "02:00:00:00:00:01", WakeBroadcast: listener.LocalAddr().String()}
+	r, local := testRuntime(t, node)
 	ctx := context.Background()
 	if _, err := r.Observe(ctx); err != nil {
 		t.Fatal(err)
 	}
-	local.setOffline("htpc", true)
+	local.setOffline("linux-node", true)
 	o, _ := r.Observe(ctx)
 	if o.Hosts[0].UnavailableReason != "asleep" || o.StorageContainers[0].Availability != "available" || len(o.VMs) != 1 || o.VMs[0].State != "stopped" {
 		t.Fatalf("asleep node = %#v %#v %#v", o.Hosts, o.StorageContainers, o.VMs)
@@ -215,11 +215,11 @@ func TestAsleepNodeIsAdmittedAndWokenForItsLease(t *testing.T) {
 	go func() {
 		buffer := make([]byte, 200)
 		if n, _, err := listener.ReadFrom(buffer); err == nil && n == 102 {
-			local.setOffline("htpc", false)
+			local.setOffline("linux-node", false)
 		}
 	}()
-	local.setOffline("htpc", true)
-	l := domain.Lease{VMName: "vf-0123456789abcdef", Location: "htpc"}
+	local.setOffline("linux-node", true)
+	l := domain.Lease{VMName: "vf-0123456789abcdef", Location: "linux-node"}
 	// The controller clones before it starts: clone must wake the node.
 	if err := r.Clone(ctx, domain.Template{}, l); err != nil {
 		t.Fatal("clone did not wake the node", err)
@@ -239,7 +239,7 @@ func TestAsleepNodeIsAdmittedAndWokenForItsLease(t *testing.T) {
 func TestOfflineNodeIsReprobedOnlyAfterBackoff(t *testing.T) {
 	r, local := testRuntime(t, mbp())
 	r.offlineBackoff = time.Hour
-	local.setOffline("mbp-2014", true)
+	local.setOffline("mac-node", true)
 	ctx := context.Background()
 	if _, err := r.Observe(ctx); err != nil {
 		t.Fatal(err)
@@ -250,7 +250,7 @@ func TestOfflineNodeIsReprobedOnlyAfterBackoff(t *testing.T) {
 		t.Fatal("offline node re-probed inside its backoff", local.dials, dials, o.Hosts, err)
 	}
 	r.offlineBackoff = 0
-	local.setOffline("mbp-2014", false)
+	local.setOffline("mac-node", false)
 	o, _ = r.Observe(ctx)
 	if o.Hosts[0].Availability != "available" {
 		t.Fatal("node not re-probed after its backoff")
@@ -271,7 +271,7 @@ func TestOnlineNodeIsProbedOncePerIntervalUnlessChanged(t *testing.T) {
 	if err != nil || local.dials != dials || o.Hosts[0].Availability != "available" || len(o.VMs) != 1 {
 		t.Fatal("online node re-probed inside its interval", local.dials, dials, o.Hosts, err)
 	}
-	l := domain.Lease{VMName: "vf-0123456789abcdef", Location: "mbp-2014"}
+	l := domain.Lease{VMName: "vf-0123456789abcdef", Location: "mac-node"}
 	if err := r.Clone(ctx, domain.Template{}, l); err != nil {
 		t.Fatal(err)
 	}

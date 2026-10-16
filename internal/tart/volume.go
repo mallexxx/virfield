@@ -3,9 +3,7 @@ package tart
 import (
 	"context"
 	"errors"
-	"os"
 	"sync"
-	"syscall"
 )
 
 // UUID lookup uses Disk Arbitration through diskutil, which can take tens of
@@ -14,7 +12,7 @@ import (
 // XNU assigns a unique fsid to a mount (vfs_getnewfsid); the device and mount
 // point also participate so an unmounted/replaced volume cannot reuse a hit.
 type volumeMount struct {
-	fsid   syscall.Fsid
+	fsid   [2]int32
 	point  string
 	device string
 }
@@ -78,37 +76,4 @@ func (p *volumeProbe) read(ctx context.Context, path string) (volume, error) {
 		return volume{}, err
 	}
 	return volume{Identity: identity.uuid, Total: fresh.total, Free: fresh.free}, nil
-}
-
-func statVolume(path string) (mountedVolume, error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		return mountedVolume{}, err
-	}
-	if !info.IsDir() {
-		return mountedVolume{}, errors.New("tart storage path is not a directory")
-	}
-	var fs syscall.Statfs_t
-	if err := syscall.Statfs(path, &fs); err != nil {
-		return mountedVolume{}, err
-	}
-	text := func(buf []int8) string {
-		value := make([]byte, 0, len(buf))
-		for _, c := range buf {
-			if c == 0 {
-				break
-			}
-			value = append(value, byte(c))
-		}
-		return string(value)
-	}
-	mount := volumeMount{fsid: fs.Fsid, point: text(fs.Mntonname[:]), device: text(fs.Mntfromname[:])}
-	if mount.point == "" || mount.point[0] != '/' || mount.device == "" || fs.Bsize == 0 {
-		return mountedVolume{}, errors.New("invalid volume mount information")
-	}
-	maxBlocks := uint64(1<<63-1) / uint64(fs.Bsize)
-	if fs.Blocks > maxBlocks || fs.Bavail > maxBlocks {
-		return mountedVolume{}, errors.New("volume size exceeds supported range")
-	}
-	return mountedVolume{mount: mount, total: int64(fs.Blocks * uint64(fs.Bsize)), free: int64(fs.Bavail * uint64(fs.Bsize))}, nil
 }

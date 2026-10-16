@@ -9,11 +9,11 @@ import (
 )
 
 func TestPacketRepeatsTheMACSixteenTimes(t *testing.T) {
-	packet, err := Packet("B0:6E:BF:60:6D:64")
+	packet, err := Packet("02:00:00:00:00:01")
 	if err != nil {
 		t.Fatal(err)
 	}
-	mac, _ := net.ParseMAC("B0:6E:BF:60:6D:64")
+	mac, _ := net.ParseMAC("02:00:00:00:00:01")
 	want := append(bytes.Repeat([]byte{0xff}, 6), bytes.Repeat(mac, 16)...)
 	if !bytes.Equal(packet, want) {
 		t.Fatal("unexpected magic packet")
@@ -31,7 +31,7 @@ func TestSendDeliversThePacket(t *testing.T) {
 	defer listener.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	if err := Send(ctx, "B0:6E:BF:60:6D:64", listener.LocalAddr().String()); err != nil {
+	if err := Send(ctx, "02:00:00:00:00:01", listener.LocalAddr().String()); err != nil {
 		t.Fatal(err)
 	}
 	buffer := make([]byte, 200)

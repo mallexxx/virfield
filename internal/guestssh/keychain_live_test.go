@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -56,8 +57,7 @@ func TestLiveDisposableGUIKeychain(t *testing.T) {
 	if response.StatusCode != http.StatusOK || json.NewDecoder(response.Body).Decode(&l) != nil || l.ID != id || l.Purpose == "image" || !strings.HasPrefix(l.Template, "release-check-") || !strings.HasPrefix(l.VMName, "vf-") {
 		t.Fatal("Refusing to change a production lease or golden")
 	}
-	// An old daemon can clear IP after transient observation drift. The operator
-	// may supply the fixture's observed IP; the stored host pin still must match.
+	// An explicit fixture address must still authenticate against its stored pin.
 	ip := l.IP
 	if observed := os.Getenv("VIRFIELD_LIVE_KEYCHAIN_IP"); observed != "" {
 		ip = observed
@@ -107,7 +107,10 @@ func TestLiveIsolatedPublicBaseGUIKeychain(t *testing.T) {
 	if os.Getenv("VIRFIELD_LIVE_KEYCHAIN") != "I_APPROVE_DISPOSABLE_VM_KEYCHAIN_FIX" {
 		t.Skip("requires disposable VM approval")
 	}
-	root := "/private/tmp/virfield-keychain-macos27-standalone-20261014"
+	root := os.Getenv("VIRFIELD_LIVE_FIXTURE_DIR")
+	if !filepath.IsAbs(root) || filepath.Clean(root) == "/" {
+		t.Fatal("VIRFIELD_LIVE_FIXTURE_DIR must name a private isolated fixture directory")
+	}
 	var journal struct{ IP, Home, VM, Upstream string }
 	b, err := os.ReadFile(root + "/journal.json")
 	if err != nil || json.Unmarshal(b, &journal) != nil || journal.Home != root+"/tart" || journal.VM != "release-check-keychain-macos27" || journal.Upstream != "ghcr.io/cirruslabs/macos-golden-gate-xcode@sha256:324ea5656dee8ab9b0a0df70fda2cfed8912051ad0eca3b1b883bf6ddac88fab" {
@@ -137,15 +140,12 @@ func TestLiveIsolatedPublicBaseGUIKeychain(t *testing.T) {
 		if err := SaveCredentials(m.CredentialPath(l), c); err != nil {
 			t.Fatal(err)
 		}
-		// Reproduce the old image preparer's password/autologin rotation while
-		// leaving the inherited login keychain password and contents unchanged.
-		// Historical regression fixture only; the production preparer no longer
-		// generates or installs random account passwords.
-		const historicalRotation = `IFS= read -r user
+		// Create an account/keychain password mismatch to exercise item-preserving migration.
+		const passwordMismatch = `IFS= read -r user
 IFS= read -r old
 IFS= read -r new
 /usr/sbin/sysadminctl -newPassword "$new" -oldPassword "$old"`
-		if _, err := g.RunMutation(ctx, "/bin/bash -c '"+strings.ReplaceAll(historicalRotation, "'", "'\"'\"'")+"'", "admin\nadmin\n"+c.Password+"\n"); err != nil {
+		if _, err := g.RunMutation(ctx, "/bin/bash -c '"+strings.ReplaceAll(passwordMismatch, "'", "'\"'\"'")+"'", "admin\nadmin\n"+c.Password+"\n"); err != nil {
 			t.Fatal(err)
 		}
 		script := "set -eu\nIFS= read -r user\nIFS= read -r new\nIFS= read -r kcpassword\n" + autologinScript
@@ -153,7 +153,7 @@ IFS= read -r new
 			t.Fatal(err)
 		}
 		_, _ = g.Run(ctx, "sudo -n /sbin/shutdown -r now", "")
-		t.Log("Old preparer reproduced: private account/autologin rotated, inherited login keychain preserved; reboot dispatched")
+		t.Log("Fixture account/keychain password mismatch created; reboot dispatched")
 		return
 	}
 	if os.Getenv("VIRFIELD_LIVE_KEYCHAIN_BASELINE") == "1" {
@@ -218,7 +218,10 @@ func TestLiveIsolatedFactoryLeaseReadiness(t *testing.T) {
 	if os.Getenv("VIRFIELD_LIVE_KEYCHAIN") != "I_APPROVE_DISPOSABLE_VM_KEYCHAIN_FIX" {
 		t.Skip("requires disposable VM approval")
 	}
-	root := "/private/tmp/virfield-keychain-macos27-standalone-20261014"
+	root := os.Getenv("VIRFIELD_LIVE_FIXTURE_DIR")
+	if !filepath.IsAbs(root) || filepath.Clean(root) == "/" {
+		t.Fatal("VIRFIELD_LIVE_FIXTURE_DIR must name a private isolated fixture directory")
+	}
 	var factory struct {
 		Lease domain.Lease
 		Phase string
@@ -228,9 +231,6 @@ func TestLiveIsolatedFactoryLeaseReadiness(t *testing.T) {
 		t.Fatal("Expected own accepted isolated factory journal", err)
 	}
 	record := root + "/lease-journal.json"
-	if os.Getenv("VIRFIELD_LIVE_KEYCHAIN_ATTEMPT") == "final" {
-		record = root + "/lease-journal-final.json"
-	}
 	if _, err := os.Stat(record); !os.IsNotExist(err) {
 		t.Fatal("Lease outcome already recorded; inspect before replay")
 	}

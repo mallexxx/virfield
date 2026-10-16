@@ -1,93 +1,63 @@
-# Architecture
+# Development
 
-Virfield is one modular Go application. Clients call `/api/v1`; the controller
-and runtime adapters alone perform infrastructure effects. The maintained
-candidate is on `codex/retire-lume-release-hardening`; `main` is not promoted.
-Broker/Runner own execution semantics.
+Virfield is a modular Go application. Clients call `/api/v1`; only the controller
+and runtime adapters perform infrastructure effects. Execution services own
+workload commands, queues and artifacts.
 
-## Modules
+## Find the code
 
-| Module | Current responsibility |
-|---|---|
-| `cmd/virfieldd` | Config, single-owner locks, runtime wiring, API and shutdown |
-| `internal/control` | Lease/image admission, durable phases, reconciliation, expiry and cleanup |
-| `internal/store` | SQLite schema 10, atomic lease/job/event/request/template records, snapshots and retention; pre-migration snapshots protect state from older transfer/revalidation/toolchain-unaware executors |
-| `internal/provider`, `internal/fleet` | Runtime seam and local Tart + SSH-node routing |
-| `internal/tart`, `internal/tartimage` | Tart inventory/lifecycle and pinned Packer image adoption |
-| `internal/baremetal`, `internal/nodeimage`, `internal/wol` | SSH physical nodes, node VM overlays, securing goldens and wake packets |
-| `internal/guestssh`, `internal/qualify` | Account-specific credentials, host pins and guest qualification |
-| `internal/catalog`, `internal/registry` | Version metadata and allowlisted registry metadata |
-| `internal/httpapi`, `internal/web` | Bearer-authenticated API and embedded local console |
-| `internal/client`, `internal/mcpadapter` | API-only CLI/SDK and MCP adapters with embedded documentation |
-| `internal/appleauth`, `apple-browser` | Scoped native Apple website authentication |
-| `internal/orchard` | Unaccepted Orchard candidate adapter |
+| Module | Responsibility |
+| --- | --- |
+| `cmd/virfieldd` | Configuration, single-owner locks, API and shutdown |
+| `internal/control` | Admission, durable phases, reconciliation, expiry and cleanup |
+| `internal/store` | SQLite records, atomic transitions, snapshots and retention |
+| `internal/provider`, `internal/fleet` | Runtime contracts and routing |
+| `internal/tart`, `internal/baremetal` | Local Tart and SSH physical/node-VM effects |
+| `internal/tartimage`, `internal/nodeimage` | Image construction and qualification |
+| `internal/guestssh`, `internal/guestkeychain`, `internal/qualify` | Guest identity, policy and readiness |
+| `internal/httpapi` | Authenticated API and embedded console |
+| `internal/client`, `internal/mcpadapter` | API clients, CLI helpers and MCP |
+| `internal/appleauth`, `apple-browser` | Scoped native Apple website sign-in |
+| `internal/orchard` | Experimental Orchard adapter |
 
-The Lume backend, image factory, wrapper and build/install files are removed.
-Legacy profile fields are read only for journal compatibility; Tart rejects old
-IPSW recipes before reserving a build. The retired host service is independent
-of the candidate and tracked in [Verification](VERIFICATION.md).
+## Preserve lifecycle rules
 
-## Capacity and recovery
+Persist the reservation, request key and phase before effects. Keep network work
+outside admission locks. Capacity includes observed targets and unreleased
+reservations without double-counting; image builds share worker CPU/RAM/disk
+budgets. Unknown inventory blocks admission. Unknown dispatched outcomes require
+inspection rather than blind replay.
 
-Acceptance commits reservations before returning. Capacity includes active
-observed targets and unreleased durable reservations without double-counting.
-Local Tart slots and secondary node slots are separate. Primary image builds and
-portable exports reserve CPU/RAM/disk before dispatch, in the same budget as
-workers; stopped ready goldens are excluded from active reservations. An unreachable node
-remains visible; WoL-capable nodes may retain cached image inventory for waking.
-A cached image is not proof of a currently reachable guest.
+Readiness requires a verified runtime/image identity, host pin, caller-key
+isolation and native guest checks. Temporary unverified inventory preserves the
+last verified ready endpoint and existing streams while pausing new connections.
+Confirmed drift revokes access; revalidation checks the original VM without
+preparing it or rotating keys. Expiry revokes access even during backend failure.
+Cleanup frees capacity only after fresh absence is confirmed.
 
-Unknown/stale primary inventory blocks admission. Unknown mutation outcomes keep
-reservations and require operator inspection; a dispatch is never blindly
-replayed. Stop and deletion are distinct effects. Capacity is freed only after
-fresh absence is confirmed. Expiry revokes access even during backend failure.
+Keep credentials and diagnostic payloads private. Use bounded contexts, safe
+error codes and atomic state transitions. Add regression coverage for failure
+behavior, concurrency and provider routing. Runtime state must never enter Git.
 
-Local Tart/node VM readiness requires running state, address, per-lease credential
-isolation and authentication against a pinned host key. Physical host leases add
-one caller key to the configured account and reserve its workspace. They do not
-reset the host or kill workloads under the shared account. A physical host has one exclusive reservation independent of its VM slots.
-Shared sleep holds are reference-counted; foreign holds are retained. VM cleanup
-requires confirmed container removal before deleting overlays or releasing holds.
+## Check and package
 
-The approved VM account policy is standard `admin/admin`, without automatic
-random account-password rotation. Standard-account candidates (`0f8bc20` and
-later) implement this policy. Old golden credentials remain
-unchanged; a new disposable clone can convert its known old account once. Distinct SSH keys and host
-pins remain required; a standard console password is not a tenant-isolation
-boundary. Existing keychain items, workspaces and goldens must be preserved.
+```sh
+make check
+make build
+go run honnef.co/go/tools/cmd/staticcheck@v0.7.0 ./...
+go mod verify
+go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
+go run github.com/zricethezav/gitleaks/v8@v8.30.1 git --redact --log-opts=--all
+```
 
-Transient unverified inventory preserves the last verified ready endpoint and
-existing streams, while new tunnels pause. Confirmed `vm_drift` instead moves a
-lease to `needs_attention`. Journaled `lease_revalidate`/`vm_revalidate` can recover
-a verified Tart/node VM in place only after original caller proof, fresh immutable
-runtime identity and native readiness checks; it does not clone, rotate keys,
-change workspace or extend expiry. Legacy records without a verified baseline
-and physical-host leases fail safely. Operator resolution remains cleanup-only.
+Build releases on macOS from a clean committed tree:
 
-Bounded typed drift, backend and separate tunnel listener/stream diagnostic events
-survive cleanup/restart under normal retention. Structured resource admission
-reports full-growth CPU/RAM/storage/cache arithmetic and rechecks before dispatch;
-a changed budget waits with the original job/key/deadline. Verified local Tart
-golden transfer copies to a new storage/name, preserves sparse allocation and
-private provenance, verifies hashes and registers atomically. See
-[Operations](OPERATIONS.md) and the [five follow-ups](VIRFIELD-3-PLAN.md#operator-feedback-backlog)
-for contracts and [Verification](VERIFICATION.md) for exact installed live scope.
+```sh
+python3 tools/release.py vX.Y.Z --output /absolute/new/release-directory
+```
 
-## API boundary
-
-REST scoped principals support `lease:own` and `image:build`; ownership checks
-protect lease access. HTTP MCP currently uses the operator principal. These are
-not v3 tenant grants. Loopback-only API deployment uses an explicit Host allowlist;
-remote use requires an authenticated TLS proxy and accepted routing.
-
-Clients never access SQLite or runtime storage. Do not add arbitrary host shell
-or generic workload execution through this API. `/api/v1`, schema versions and
-recipe identifiers are protocol contracts, not product marketing versions.
-
-## Development rules
-
-Use bounded contexts, safe error codes, atomic persist-before-effect transitions,
-strict SSH host checking and private credential files. Never hold admission locks
-across network effects. Run formatting, vet, race tests and release checks; test
-failure behavior and provider routing. [Operations](OPERATIONS.md) owns commands;
-[the 3.0 plan](VIRFIELD-3-PLAN.md) owns future architecture.
+Choose a real version. Packaging includes committed source, macOS/arm64 binaries,
+dependency notices, `release.json` and `SHA256SUMS`; it refuses conflicting tags
+or existing outputs. Verify checksums, extract into a clean directory and run
+checks there before distribution. Configure signing for your deployment separately.
+See [Operations](OPERATIONS.md#upgrade-and-restore) for installation and rollback.
