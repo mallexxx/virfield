@@ -8,7 +8,68 @@ The working branch is `codex/retire-lume-release-hardening`; `main` is not promo
 The [implementation plan](VIRFIELD-3-PLAN.md) owns delivery order and all five new
 operator feedback items.
 
-## Latest installed checkpoint — a45655f (2026-10-16)
+## Latest installed checkpoint — 256d18f (2026-10-16)
+
+Source `256d18fa67f5ab9e1b21191701a98f99faafae6e` is pushed and installed as
+`0.0.0-legacy-ios-native`. Archive SHA-256 is
+`eb06d121db54c4a5559d7985001748976e35e423d9db682840be017f18190a01`.
+The operator explicitly approved installation, schema 8→10, subsequent checked
+acceptance patches, and scoped Broker/OAuth recovery. Private schema-8 and older
+schema-7 snapshots pass integrity checks. All nine baseline image manifests,
+configuration, VM/node credentials and signing/FDA identity are preserved.
+Exact installed HTTP/fresh stdio version, 20 tools, all four packaged
+runbooks/resources/status and anonymous rejection passed. The first installer
+postcheck incorrectly compared historical released image rows with active HTTP
+inventory; a read-only continuation verified the active subset and completed the
+receipt without repeating installation or editing runtime state.
+Receipts: private upgrade `20261016-093648-256d18f/installed.json` and
+`virfield-native-installed-mcp-20261016.log`.
+
+**F1 live recovery: PASS.** Worker
+`lease-9b1f43fc331e50f2d83a0a67481f7a3a` underwent a real external stop/start,
+confirmed drift, original-caller proof and idempotent revalidation. Its exact VM,
+hardware identity, caller/host keys, workspace checksum and original expiry were
+preserved. A new boot, native GUI/SSH WhenUnlocked I/O, 1920×1080, Xcode/Swift,
+RFB, release and listener revocation passed; all nine images remained unchanged.
+Receipt: `virfield-revalidation-live-20261016/journal.json`. Never replay it.
+
+**F3 live arithmetic/refusal: PASS.** During the owned image build, actual
+CPU/RAM/full virtual disk reservations, safety reserve and signed headroom were
+checked. HTTP, CLI and MCP refused a second 140-GB request with the structured
+calculation and created no VM/job. The build's observed 120-GB disk correctly
+replaced its initial 120-GiB estimate. Fresh-node recheck/wait-resume and the
+remaining failure matrix are separate checks.
+Receipt: `virfield-admission-live-20261016/journal.json`.
+
+The reviewed Darwin process-group fix is deployed in the production Broker's
+new runner bootstrap (SHA-256
+`6f7e48479f61fcbef29c289408860dfe635b2d71bdd437f8b4cb63787a3c92a4`);
+the original archive is preserved. After independently confirming the old VM was
+gone, the encrypted `codex-default` record was backed up, its uncertain cache
+revoked and its abandoned owner reset using the supported operator command.
+Original Story `run-de5f0928d21f97428502519aab3438d1` now has cleanup `done`.
+Fresh human OAuth enrollment and a new full Story remain required. No uncertain
+token was reused, database fence bypassed or Human answer submitted automatically.
+Receipt: `virfield-broker-recovery-20261016/report.json`.
+
+F5 actual factory qualification/worker acceptance and the graceful
+restart-during-build/drain check are in progress. A real subprocess regression
+exposed the missing cancellation of an unfinished image operation after shutdown
+grace. The checked source fix cancels that context after ten minutes, retains the
+job's original deadline, and gives Packer/VM cleanup five additional minutes before
+the database/host lock close. The real-process regression failed before the fix;
+it and the existing confirmed-result drain tests pass with race detection after
+the fix. Full local CI, pinned Staticcheck 0.7.0 and Govulncheck 1.6.0 (zero
+reachable vulnerabilities) pass. This fix is not installed by 256d18f.
+Receipts: `virfield-shutdown-drain-red-20261016.log`,
+`virfield-shutdown-drain-green-20261016.log`,
+`virfield-shutdown-full-check-20261016.log`.
+The actual owning MCP remains
+a separate manual reconnect gate; fresh stdio acceptance does not attest it.
+The older source-only/pending-install statements below describe their dated
+checkpoints and are superseded by this section for the installed candidate.
+
+## Previous installed checkpoint — a45655f (2026-10-16)
 
 Source `a45655ff78d5b124ed938ef6ea244ba84a819d72` is installed and pushed,
 version `0.0.0-local-golden-sparse`, daemon PID 81129. Archive SHA-256

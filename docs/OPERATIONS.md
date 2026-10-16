@@ -308,6 +308,14 @@ mutations, replace the configured binaries and gracefully restart only the exact
 Verify health, runtime inventory, preserved leases and installed hashes after
 restart. New signatures may need privacy grants before external storage works.
 Do not claim the upgrade complete from a successful file copy alone.
+Shutdown stops HTTP admission before draining mutations. The shutdown-hardening
+candidate keeps an image stage alive for a ten-minute grace, then cancels its
+Packer/SSH context and allows up to five further minutes for interrupt handling,
+VM stop and journal persistence. A confirmed stage result may continue at the
+next stage after restart; an unknown dispatched mutation stays fenced for
+inspection. An interrupted build is never silently repeated. The older 256d18f
+daemon lacks the final image-context cancellation; consult the current installed
+checkpoint before relying on the bounded cancellation behavior.
 Existing stdio MCP processes retain their old version, tool metadata and embedded
 runbooks even after their executable is replaced. Reconnect each owning client
 after the upgrade, preserving unrelated clients and active work. A daemon restart

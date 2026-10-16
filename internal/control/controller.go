@@ -56,6 +56,7 @@ type Controller struct {
 	active           map[string]bool
 	readyDrift       map[string]int
 	wg               sync.WaitGroup
+	shutdownGrace    time.Duration
 	log              *slog.Logger
 }
 
@@ -704,7 +705,7 @@ func (c *Controller) Run(ctx context.Context) error {
 	defer ticker.Stop()
 	retention := time.NewTicker(24 * time.Hour)
 	defer retention.Stop()
-	defer c.drain(10*time.Minute + 5*time.Second)
+	defer c.drain(c.mutationGrace() + 5*time.Minute + 5*time.Second)
 	defer c.closeTunnels()
 	for {
 		if err := c.Tick(ctx); err != nil && !errors.Is(err, context.Canceled) {

@@ -179,9 +179,9 @@ func (c *Controller) advanceImageBuild(ctx context.Context, l domain.Lease, j do
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
-		// Shutdown stops admission and drains workers. Keep this stage alive long
-		// enough to persist a confirmed result when it finishes during the drain.
-		opCtx, cancel := context.WithDeadline(context.WithoutCancel(ctx), j.Deadline)
+		// Preserve a stage that finishes during the drain, then cancel unfinished
+		// subprocesses before the daemon releases its journal and host lock.
+		opCtx, cancel := c.imageContext(ctx, j.Deadline)
 		defer cancel()
 		progress := func(message string) error {
 			c.mu.Lock()
