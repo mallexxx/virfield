@@ -1,0 +1,97 @@
+{
+  "date": "2026-10-16",
+  "branch": "codex/retire-lume-release-hardening",
+  "installed_revision": "8bfff9f59cab918877d060437a1ad190905a5040",
+  "code_revision": "832e302460a399746a27a72c7ac72de5bb6ba2ec",
+  "installed_version": "0.0.0-acceptance-runbooks",
+  "archive_sha256": "02ce205ea26cff9097b4869b81a92ea07c285c7c8e5a18b805f03ed1f586273f",
+  "schema": 10,
+  "baseline_images_preserved": 9,
+  "actual_mcp_tool_count": 20,
+  "actual_mcp_runbook_sha256": {
+    "workflows": "ad2f9124fbcde4441116705e35a8bcd8b8c1adafa006ee803e77a1b419a9ebd0",
+    "images": "3cf8659227f11e8bb5b9e1ca818c529b0179f72c47a7fb014e759e85241f6f9c",
+    "operations": "0de84942ebba438b1d8a1077cf8cffa358278a0855aef6a1b747cd8601db0685",
+    "verification": "c4e25e62346b7b16e77f09ad73b5b49e4b8637a7c0cf6f74826ffc5016a43bf4"
+  },
+  "gates": {
+    "actual_owning_mcp": {
+      "passed": true,
+      "private_receipt": "virfield-owning-mcp-acceptance-20261016/independent-review.json",
+      "receipt_sha256": "01aeb7b6e0345a430692fb0642b4bcd36b4277999b6be7d074bb2909f035ef30"
+    },
+    "complete_signed_package_rollback_forward": {
+      "passed": true,
+      "private_receipt": "virfield-package-rollback-live-20261016/report.json",
+      "receipt_sha256": "a8efa1833f828a0747287c9875522657479dfe621429b5a94dc376d187a7873d"
+    },
+    "node_image_cache_one_byte_refusal": {
+      "passed": true,
+      "private_receipt": "virfield-node-cache-cap-live-20261016/report.json",
+      "receipt_sha256": "a5252c7eb7b9cceb77dcbc888cfcac806e60bb2ce96f0c602f7ec689fb55593d"
+    },
+    "full_offhost_disk_config_nvram_restore": {
+      "passed": true,
+      "private_receipt": "virfield-vm-disk-dr-live-20261016/continuation.json",
+      "receipt_sha256": "aafe9b2b7948eac3f06a6f900b18ff1112792384e356d5adde97e2fc68be863d"
+    },
+    "kernel_stackshot_diagnostic_only": {
+      "passed": true,
+      "private_receipt": "virfield-node-stackshot-diagnostic-20261016/independent-artifact-review.json",
+      "receipt_sha256": "5d610868daeb5d95592fc9d8c2d754c72664dfdc8592f78a161a48feb35cc3eb"
+    },
+    "speech_log_final_soak": {
+      "passed": true,
+      "private_receipt": "virfield-htpc-speech-final-soak-20261016.json",
+      "receipt_sha256": "624a4aae16778d666817625812212ea9fb960fd80a26fb6d32e1a55543d50f5b"
+    }
+  },
+  "production_story": {
+    "run_id": "run-12f093299e237f03a7bb9b70327efcc5",
+    "source_run_id": "run-db064b95f8b530b3477a2804e3a6eb3c",
+    "accepted": true,
+    "state": "succeeded",
+    "uses_actual_saved_owner_plan": true,
+    "requires_actual_reviewer_tool_output": true,
+    "cleanup": "done",
+    "independent_review": "passed",
+    "prism_story_complete": true,
+    "independent_four_tests_passed": true,
+    "all_artifact_hashes_verified": true,
+    "exact_two_new_files": true,
+    "probe_absent": true,
+    "worker_released": true,
+    "credential_unrevoked_and_unowned": true,
+    "actual_reviewer_probe": {
+      "confirmed": true,
+      "reviewer_session": true,
+      "readonly_process": true,
+      "observed_errno": "1",
+      "exit_code": 0
+    },
+    "private_receipt": "virfield-broker-codex-reviewed-probe-20261016/independent-review.json",
+    "receipt_sha256": "3636bfebc51aa6cffc352a88de3838bf01c8afcd96f79161dcea54f2e5cf42fb"
+  },
+  "limits": {
+    "historical_kernel_stall_trigger": "unproven; targeted 2002-stackshot diagnostic did not reproduce it",
+    "apple_authenticated_download": "not accepted",
+    "vscode_editor_ui_and_duckduckgo_debug": "not accepted; actual installed generic LLDB-DAP passed",
+    "broader_v3_roadmap": "not accepted"
+  },
+  "public_release_promoted": false,
+  "broker_policy_correction": {
+    "source_commit": "6c70647a35056b4aeca891c416c6e4e09ea63c8f",
+    "broker_source_pushed": false,
+    "source_patch": "broker-reviewer-readonly.patch",
+    "workflow_version": "sha256:b09f2be2db9d96ea8b50165ff8534d1e8b28a4fc27ea4678b4f0cb2acf7d7db6",
+    "bootstrap_sha256": "463f47ce73bc76e02082faa8b34f3619a135012ee1f077bff5aa536cd7843d62",
+    "deployed": true,
+    "runner_callee_codex_binaries_unchanged": true,
+    "regression_red_green": true,
+    "audit_binary_sha256": "342a3733acd685cbb9505b99814fab08e62a46da91e84e210ed8dd75ea5419f5",
+    "audit_rejects_model_claims_and_wrong_roles": true,
+    "audit_binary_reachable_vulnerabilities": 0
+  },
+  "acceptance_scope": "Deployed Tart/HTPC VM paths, actual owning MCP and production Broker Story; untested paths/limits below remain unaccepted",
+  "baseline_ids_and_manifests_exact_final": true
+}

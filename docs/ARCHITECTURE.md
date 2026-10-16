@@ -11,7 +11,7 @@ Broker/Runner own execution semantics.
 |---|---|
 | `cmd/virfieldd` | Config, single-owner locks, runtime wiring, API and shutdown |
 | `internal/control` | Lease/image admission, durable phases, reconciliation, expiry and cleanup |
-| `internal/store` | SQLite schema 8, atomic lease/job/event/request/template records, snapshots and retention; pre-migration snapshot protects older transfer-unaware executors |
+| `internal/store` | SQLite schema 10, atomic lease/job/event/request/template records, snapshots and retention; pre-migration snapshots protect state from older transfer/revalidation/toolchain-unaware executors |
 | `internal/provider`, `internal/fleet` | Runtime seam and local Tart + SSH-node routing |
 | `internal/tart`, `internal/tartimage` | Tart inventory/lifecycle and pinned Packer image adoption |
 | `internal/baremetal`, `internal/nodeimage`, `internal/wol` | SSH physical nodes, node VM overlays, securing goldens and wake packets |
@@ -57,10 +57,21 @@ pins remain required; a standard console password is not a tenant-isolation
 boundary. Existing keychain items, workspaces and goldens must be preserved.
 
 Transient unverified inventory preserves the last verified ready endpoint and
-existing streams. Confirmed `vm_drift` instead moves a lease to `needs_attention`;
-the existing operator resolve only queues cleanup. Recovery-in-place and durable
-drift/tunnel-close evidence are [planned work](VIRFIELD-3-PLAN.md#operator-feedback-backlog),
-along with complete resource refusal arithmetic and verified local golden transfer.
+existing streams, while new tunnels pause. Confirmed `vm_drift` instead moves a
+lease to `needs_attention`. Journaled `lease_revalidate`/`vm_revalidate` can recover
+a verified Tart/node VM in place only after original caller proof, fresh immutable
+runtime identity and native readiness checks; it does not clone, rotate keys,
+change workspace or extend expiry. Legacy records without a verified baseline
+and physical-host leases fail safely. Operator resolution remains cleanup-only.
+
+Bounded typed drift, backend and separate tunnel listener/stream diagnostic events
+survive cleanup/restart under normal retention. Structured resource admission
+reports full-growth CPU/RAM/storage/cache arithmetic and rechecks before dispatch;
+a changed budget waits with the original job/key/deadline. Verified local Tart
+golden transfer copies to a new storage/name, preserves sparse allocation and
+private provenance, verifies hashes and registers atomically. See
+[Operations](OPERATIONS.md) and the [five follow-ups](VIRFIELD-3-PLAN.md#operator-feedback-backlog)
+for contracts and [Verification](VERIFICATION.md) for exact installed live scope.
 
 ## API boundary
 

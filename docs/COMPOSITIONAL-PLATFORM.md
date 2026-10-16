@@ -1,6 +1,6 @@
 # Compositional platform boundaries
 
-Current inventory reconciled 2026-10-15. This document defines responsibility;
+Current inventory reconciled 2026-10-16. This document defines responsibility;
 [Verification](VERIFICATION.md) owns release evidence and
 [the 3.0 plan](VIRFIELD-3-PLAN.md) owns future delivery. The
 [earlier architecture discussion](history/COMPOSITIONAL-PLATFORM-before-2026-10-14.md)
@@ -24,15 +24,17 @@ A successful lease does not mean a workload succeeded. Workload results and
 API, artifact store or workflow engine. Physical hosts are shared-account lab
 resources, not disposable/multi-tenant VM substitutes.
 
-The operator's VM account decision is standard `admin/admin`; removing automatic
-random password rotation is removed in standard-account candidates (`0f8bc20`
-and later), with the remaining per-profile installed acceptance still open.
+The operator's VM account decision is standard `admin/admin`; automatic random
+account-password rotation was removed in `0f8bc20` and later. Full installed
+native/reboot/workload cycles passed for both Monterey inventories, new macOS27
+and HTPC Sonoma/Sequoia; exact client/production scope is in Verification.
 SSH key isolation and native GUI/new SSH acceptance remain part of Virfield.
 Recovery of a confirmed drifted lease without deletion, durable drift/tunnel
 diagnostics, complete resource refusal arithmetic, verified local golden transfer
-and an optional legacy iOS profile are [planned delivery](VIRFIELD-3-PLAN.md#operator-feedback-backlog).
-They must not be advertised as existing client operations. The profile provisions
-and verifies tools; Broker/Runner still own the actual application builds.
+and the optional legacy iOS profile are implemented with installed live receipts
+in the [maintained plan](VIRFIELD-3-PLAN.md#operator-feedback-backlog). Revalidation
+and transfer are explicit journaled client operations; the profile provisions
+and verifies tools. Broker/Runner still own actual application builds.
 
 ## Target components
 

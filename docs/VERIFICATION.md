@@ -1,6 +1,7 @@
 # Verification
 
-Current record, reconciled 2026-10-16. The release candidate is **not accepted**.
+Current record, reconciled 2026-10-16. **Acceptance of the deployed Tart/HTPC VM,
+actual owning MCP and production Broker Story paths passed within the scope below.**
 Local Tart, SSH physical nodes and rootless Podman macOS lab VMs are implemented;
 acceptance belongs to the exact versions and paths below. Source, installed
 package, running MCP processes and published release are distinct artifacts.
@@ -54,20 +55,60 @@ it does not establish a causal fix for the earlier failed1,200-second reboot.
 No CPU flags, NVRAM or golden were changed. Generic LLDB-DAP acceptance did not
 drive VS Code editor UI or debug the DuckDuckGo application.
 
-**Production Codex Story remains open.** Fresh human OAuth is complete. Run
-`run-7493e54fe8576568720f0f40a35f58cc` received actual Telegram approval and completed
-specify/design/breakdown/implementer/verifier/reviewer. The reviewer really
-observed EPERM on its write attempt; its diagnostic handler subsequently had a
-quoting-induced NameError. All four unit tests passed, but deterministic quality
-replay created two Python bytecode files, then the clean-tree assertion failed.
-Saved `untracked.tar.gz` contains exactly those two files. The worker was released,
-cleanup is done and the credential identity is unrevoked/unowned; no push occurred.
-Independent replay on the exported commit reproduced dirty ordinary execution
-and clean four-test success with `python3 -B`. Receipt:
-`virfield-broker-codex-debug-listener-20261016/independent-review/report.json`.
-A corrected production fixture now uses `-B` for every Python execution and a
-multiline numeric-errno reviewer probe; its fresh terminal quality, artifacts,
-credential settlement and worker release must all pass before Story acceptance.
+**Production Codex Story: PASS, independently reviewed.** Run
+`run-12f093299e237f03a7bb9b70327efcc5` succeeded, cleanup is done and Prism completion
+was recorded after the independent probe review. Supported `execution_retry`
+retained the exact task/revision/Story and the owner's actual Telegram-approved
+plan from `run-db064b95f8b530b3477a2804e3a6eb3c`; planning was not repeated and no
+automatic human answer or duplicate plan approval was manufactured. Fresh human
+OAuth remained valid throughout.
+
+Actual ACP tool output from the current read-only reviewer session confirms one
+executed `os.open` probe returned **EPERM / errno1**, exit0. The first heredoc was
+blocked before Python; the equivalent printf-pipe program used no temporary file
+and reached the real write attempt. The file was not created. Observational
+instrumentation correlates the tool call with the reviewer session and read-only
+process; it records only target/errno/exit metadata. Tests reject model claims,
+wrong-role evidence, a blocked shell before Python and unexpected success, and
+verify unchanged protocol bytes. Model report text alone was not credited.
+
+All four real tests passed in the deterministic quality gate and independently
+from the exported local commit `f7d8b95a60ecce53aff2630ad4a921204216e807`. The final
+Git diff contains exactly the two new standard-library fixture files; the
+checkout is clean, the probe is absent, no untracked archive was needed and no
+push occurred. All exported artifact sizes/SHA-256 verified. The worker was
+released, VM capacity and active jobs are0, all nine baseline images remain and
+the credential identity is unrevoked with no owner.
+
+The failed attempts remain evidence, not hidden successes:
+
+| Attempt | Observed result / correction |
+|---|---|
+| `run-7493e54fe8576568720f0f40a35f58cc` | All six roles completed; ordinary Python test replay wrote two bytecode files, then correctly failed the clean-tree check. Independent replay reproduced it; `python3 -B` keeps all four tests and the tree clean |
+| `run-db064b95f8b530b3477a2804e3a6eb3c` | No bytecode; reviewer probe file actually created. Next implementer preserved it and stopped. Actual-role regression showed authored reviewer ACP `allow` granted edit/execute/other expansion requests despite Codex read-only. Policy changed to `deny`, red/green and full Callee race passed |
+| `run-6881d27eae00b3c0b3f428cf0c7587e6` | Program/quality succeeded but independent acceptance rejected the missing own-role syscall evidence: heredoc failed before Python, while an earlier report's claimed errno was insufficient. Added equivalent no-tempfile fallback, verifier attribution guard and actual ACP tool-output audit |
+
+The checked Broker correction is local commit `6c70647a35056b4aeca891c416c6e4e09ea63c8f` on
+`codex/readonly-story-reviewer`; its
+[reviewed source patch and audit tests](acceptance/broker-reviewer-readonly.patch)
+are retained in this branch. The patch applies to Broker base `4a8319a` with
+`git apply --unidiff-zero`; reverse/apply validation passed. Broker source was not
+pushed to its separate remote.
+Full Callee race passed3.082s; audit race/protocol checks passed2.256s; staged
+Gitleaks passed. The idle config change was guarded by aggregate active-run
+count0 and preserved original config/archives. Only the selected workflow/version
+and bootstrap changed. Runner, Callee and Codex binaries are byte-identical to the
+prior checked package; the added audit proxy observes unchanged protocol bytes.
+Production bootstrap SHA-256:
+`463f47ce73bc76e02082faa8b34f3619a135012ee1f077bff5aa536cd7843d62`;
+workflow digest:
+`sha256:b09f2be2db9d96ea8b50165ff8534d1e8b28a4fc27ea4678b4f0cb2acf7d7db6`.
+
+Private receipts: `virfield-broker-review-probe-20261016/deployment.json`,
+`virfield-broker-codex-reviewed-probe-20261016/independent-review.json`,
+`virfield-broker-codex-reviewed-probe-20261016/journal.json`.
+The [sanitized evidence index](acceptance/2026-10-16.json) records exact installed
+provenance and hashes of completed private receipts, without credentials.
 
 ## Previous installed checkpoint — 466dbb8 (2026-10-16)
 
@@ -816,6 +857,12 @@ not capabilities supplied by the transient-inventory preservation fix.
 
 ### Broker macos27 reacceptance
 
+**Current result: PASS on 2026-10-16**, including actual production Story,
+reviewer os.open/EPERM, independent tests, artifact hashes, credential settlement
+and worker release. See the [latest installed checkpoint](#latest-installed-checkpoint--8bfff9f-2026-10-16).
+The paragraphs below preserve the earlier failed-run history and its then-open
+closure criterion; they do not reopen the completed current gate.
+
 The Broker `macos-codex` profile uses Tart template `macos27`. Three production
 qualification attempts failed `guest_keychain_failed` before bootstrap/provider
 execution; the last Broker-tested candidate was `614daf5`. All three owned leases
@@ -862,14 +909,14 @@ pending download and operator sign-in. The native browser now explicitly targets
 the plist's macOS 13 minimum; Mach-O metadata/build check passed, not a live macOS
 13 host test. Apple login is not required to repeat the synthetic GUI smoke.
 
-## Remaining release acceptance
+## Acceptance status and untested paths
 
-| Required work | Current state / closure criterion |
+| Path | Verified state / limit |
 |---|---|
 | Standard account/native matrix | Passed for both Monterey inventories, new macOS27 golden and HTPC Sonoma/Sequoia; old goldens remain preserved. The earlier kernel-stall trigger is unproven; later passes are not a causal fix |
 | Actual owning MCP | Passed full actual connected20/four exact packaged8 runbooks and VM workflow through release/revocation |
-| Production Codex Story | First fresh run completed all roles/actual denied write but failed deterministic quality because Python replay wrote bytecode; corrected fixture running, terminal quality/artifact/credential/worker cleanup still required |
-| Release engineering | Code/local security/archive/install checks and full signed package rollback/forward passed; final documentation reconciliation/checks/working-branch push remain |
+| Production Codex Story | PASS run12f0932: actual reviewer os.open/errno1/exit0, independent four-test replay, artifact hashes, clean exact two-file commit, saved owner plan, credential settlement and worker release |
+| Release engineering | Code/local security/archive/install checks and full signed package rollback/forward passed; source documentation records later evidence separately from installed8 binaries |
 | Apple authenticated download | Actual sign-in/cookie handoff/exact-job download completion remains untested. Synthetic GUI/Safari/real login-page smoke passed; no macOS13-host live test claimed |
 | Additional operations scenarios | Fresh node post-wake failure injection, broader provider crash/host loss/partition/full-disk matrix, metrics/alerts and signed promotion/revocation remain outside these completed receipts |
 
@@ -881,7 +928,7 @@ v3 grants/Access/node-agent/noVNC and additional providers remain roadmap scope.
 
 ## Not yet accepted
 
-In addition to the current release gates above, no acceptance is claimed for
+The accepted scope above does not cover
 Orchard worker restart/drain or mixed-primary-provider scheduling, remote/container
 TLS through the intended production entrypoint, full apple-browsers UI-suite
 through Broker, physical-host desktop, Vetu/Linux VM coverage or the whole v3

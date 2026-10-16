@@ -1,0 +1,276 @@
+diff --git a/integrations/callee/main_test.go.txt b/integrations/callee/main_test.go.txt
+index 0e7b9b9..225bad4 100644
+--- a/integrations/callee/main_test.go.txt
++++ b/integrations/callee/main_test.go.txt
+@@ -686,0 +687,35 @@ func TestApprovedRetryExecutesSavedScopeWithoutPlanningOrHuman(t *testing.T) {
++
++// The deployed read-only role must reject an ACP request even when the provider
++// asks to execute a command or enlarge permissions after a sandbox denial.
++func TestDeployedReadOnlyRolesRejectPermissionExpansion(t *testing.T) {
++	agents, err := registry.LoadAgents(registry.AgentLoadOptions{ExclusiveDir: os.Getenv("BROKER_WORKFLOW_ROOT")})
++	if err != nil {
++		t.Fatal(err)
++	}
++	for _, id := range []string{"prism/specify", "prism/design", "prism/breakdown", "prism/reviewer"} {
++		t.Run(id, func(t *testing.T) {
++			node, err := agents.Resolve(id)
++			if err != nil {
++				t.Fatal(err)
++			}
++			p := &permissionController{}
++			p.policies = make(map[acp.SessionId]resource.PermissionMode)
++			p.bind("actual-role", node.Resource)
++			for _, kind := range []acp.ToolKind{acp.ToolKindEdit, acp.ToolKindExecute, acp.ToolKindOther} {
++				r, err := p.handle(context.Background(), acp.RequestPermissionRequest{
++					SessionId: "actual-role", ToolCall: acp.ToolCallUpdate{Kind: &kind},
++					Options: []acp.PermissionOption{
++						{OptionId: "grant", Kind: acp.PermissionOptionKindAllowOnce},
++						{OptionId: "deny", Kind: acp.PermissionOptionKindRejectOnce},
++					},
++				})
++				if err != nil {
++					t.Fatal(err)
++				}
++				if r.Outcome.Selected == nil || r.Outcome.Selected.OptionId != "deny" {
++					t.Errorf("read-only %s granted %s permission expansion: %+v", id, kind, r.Outcome)
++				}
++			}
++		})
++	}
++}
+diff --git a/tools/codex-probe-audit/main.go b/tools/codex-probe-audit/main.go
+new file mode 100644
+index 0000000..251cd2b
+--- /dev/null
++++ b/tools/codex-probe-audit/main.go
+@@ -0,0 +1,149 @@
++// Observational ACP proxy for the owned acceptance probe. Protocol bytes pass
++// unchanged. Only role/target/errno/exit metadata is emitted; no payloads/auth.
++package main
++
++import (
++	"bufio"
++	"bytes"
++	"encoding/json"
++	"fmt"
++	"io"
++	"os"
++	"os/exec"
++	"regexp"
++	"strings"
++	"sync"
++)
++
++var targetRE = regexp.MustCompile(`broker_acceptance/\.readonly-[a-f0-9]{32}`)
++var errnoRE = regexp.MustCompile(`(?m)^DENIED errno=(1|13|30)\s*$`)
++
++type audit struct {
++	mu       sync.Mutex
++	readonly bool
++	roles    map[string]bool
++	probes   map[string]string
++	out      io.Writer
++}
++
++func (a *audit) inspect(line []byte, incoming bool) {
++	if len(line) > 2<<20 {
++		return
++	}
++	var e struct {
++		Method string                     `json:"method"`
++		Params map[string]json.RawMessage `json:"params"`
++	}
++	if json.Unmarshal(line, &e) != nil {
++		return
++	}
++	var sid string
++	json.Unmarshal(e.Params["sessionId"], &sid)
++	a.mu.Lock()
++	defer a.mu.Unlock()
++	if incoming {
++		if e.Method == "session/prompt" && bytes.Contains(e.Params["prompt"], []byte("Review the current implementation and verifier report")) {
++			a.roles[sid] = true
++		}
++		return
++	}
++	if e.Method != "session/update" {
++		return
++	}
++	var u struct {
++		Kind   string                     `json:"sessionUpdate"`
++		ID     string                     `json:"toolCallId"`
++		Status string                     `json:"status"`
++		Input  json.RawMessage            `json:"rawInput"`
++		Output map[string]json.RawMessage `json:"rawOutput"`
++	}
++	if json.Unmarshal(e.Params["update"], &u) != nil {
++		return
++	}
++	key := sid + ":" + u.ID
++	if u.Kind == "tool_call" && bytes.Contains(u.Input, []byte("os.open")) {
++		if target := targetRE.Find(u.Input); target != nil {
++			a.probes[key] = string(target)
++		}
++	}
++	target := a.probes[key]
++	if target == "" || u.Kind != "tool_call_update" || len(u.Output) == 0 {
++		return
++	}
++	var output string
++	// Deliberately exclude command/input fields: an expected denial in source
++	// code or a model's final claim is never observed process output.
++	for _, k := range []string{"aggregatedOutput", "output", "stdout", "stderr"} {
++		var s string
++		if json.Unmarshal(u.Output[k], &s) == nil {
++			output += s
++		}
++	}
++	var exit *int
++	json.Unmarshal(u.Output["exitCode"], &exit)
++	if exit == nil {
++		json.Unmarshal(u.Output["exit_code"], &exit)
++	}
++	match := errnoRE.FindStringSubmatch(output)
++	errno := ""
++	if len(match) == 2 {
++		errno = match[1]
++	}
++	keys := make([]string, 0, len(u.Output))
++	for k := range u.Output {
++		keys = append(keys, k)
++	}
++	record := map[string]any{"reviewer_session": a.roles[sid], "readonly_process": a.readonly, "target": target, "tool_id": u.ID, "tool_status": u.Status, "exit_code": exit, "observed_errno": errno, "unexpected_success": strings.Contains(output, "UNEXPECTED_SUCCESS"), "confirmed": a.roles[sid] && a.readonly && errno != "" && exit != nil && *exit == 0, "output_keys": keys}
++	b, _ := json.Marshal(record)
++	fmt.Fprintf(a.out, "BROKER_REVIEW_PROBE %s\n", b)
++	delete(a.probes, key)
++}
++
++func relay(dst io.Writer, src io.Reader, inspect func([]byte)) error {
++	r := bufio.NewReader(src)
++	for {
++		line, err := r.ReadBytes('\n')
++		if len(line) > 0 {
++			inspect(line)
++			if _, werr := dst.Write(line); werr != nil {
++				return werr
++			}
++		}
++		if err == io.EOF {
++			return nil
++		}
++		if err != nil {
++			return err
++		}
++	}
++}
++
++func main() {
++	a := &audit{readonly: strings.Contains(strings.Join(os.Args[1:], " "), "read-only"), roles: map[string]bool{}, probes: map[string]string{}, out: os.Stderr}
++	cmd := exec.Command("/usr/local/bin/broker-callee", append([]string{"bridge", "codex"}, os.Args[1:]...)...)
++	cmd.Stderr = os.Stderr
++	in, err := cmd.StdinPipe()
++	if err != nil {
++		panic(err)
++	}
++	out, err := cmd.StdoutPipe()
++	if err != nil {
++		panic(err)
++	}
++	if err = cmd.Start(); err != nil {
++		panic(err)
++	}
++	go func() { relay(in, os.Stdin, func(b []byte) { a.inspect(b, true) }); in.Close() }()
++	err = relay(os.Stdout, out, func(b []byte) { a.inspect(b, false) })
++	waitErr := cmd.Wait()
++	if err != nil {
++		fmt.Fprintln(os.Stderr, "probe audit transport closed")
++		os.Exit(1)
++	}
++	if waitErr != nil {
++		if e, ok := waitErr.(*exec.ExitError); ok {
++			os.Exit(e.ExitCode())
++		}
++		os.Exit(1)
++	}
++}
+diff --git a/tools/codex-probe-audit/main_test.go b/tools/codex-probe-audit/main_test.go
+new file mode 100644
+index 0000000..4b5d515
+--- /dev/null
++++ b/tools/codex-probe-audit/main_test.go
+@@ -0,0 +1,59 @@
++package main
++
++import (
++	"bytes"
++	"encoding/json"
++	"strings"
++	"testing"
++)
++
++func TestProbeUsesOnlyActualReviewerToolOutput(t *testing.T) {
++	for _, tc := range []struct {
++		name, output         string
++		role, readonly, want bool
++	}{
++		{"actual-denial", "DENIED errno=1\n", true, true, true},
++		{"model-claim-is-not-output", "", true, true, false},
++		{"shell-blocked-before-python", "can't create temp file for here document", true, true, false},
++		{"wrong-role", "DENIED errno=13\n", false, true, false},
++		{"wrong-sandbox", "DENIED errno=13\n", true, false, false},
++		{"actual-success", "UNEXPECTED_SUCCESS\n", true, true, false},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			var b bytes.Buffer
++			a := &audit{readonly: tc.readonly, roles: map[string]bool{}, probes: map[string]string{}, out: &b}
++			if tc.role {
++				a.inspect([]byte(`{"method":"session/prompt","params":{"sessionId":"s","prompt":[{"text":"Review the current implementation and verifier report"}]}}`), true)
++			}
++			a.inspect([]byte(`{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"text":"DENIED errno=1"}}}}`), false)
++			if b.Len() != 0 {
++				t.Fatal("model output became execution proof")
++			}
++			a.inspect([]byte(`{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call","toolCallId":"t","rawInput":{"command":"python3 -B -c os.open('broker_acceptance/.readonly-0123456789abcdef0123456789abcdef'); print('DENIED errno=1')"}}}}`), false)
++			v := map[string]any{"method": "session/update", "params": map[string]any{"sessionId": "s", "update": map[string]any{"sessionUpdate": "tool_call_update", "toolCallId": "t", "status": "completed", "rawOutput": map[string]any{"command": "DENIED errno=1", "aggregatedOutput": tc.output, "exitCode": 0}}}}
++			data, _ := json.Marshal(v)
++			a.inspect(data, false)
++			var result struct {
++				Confirmed bool `json:"confirmed"`
++			}
++			if err := json.Unmarshal(bytes.TrimPrefix(bytes.TrimSpace(b.Bytes()), []byte("BROKER_REVIEW_PROBE ")), &result); err != nil {
++				t.Fatal(err)
++			}
++			if result.Confirmed != tc.want {
++				t.Fatalf("got confirmed=%v; want %v", result.Confirmed, tc.want)
++			}
++		})
++	}
++}
++
++func TestRelayPreservesProtocolBytes(t *testing.T) {
++	s := "{\"method\":\"session/update\"}\n" + strings.Repeat("x", 100000) + "\nlast"
++	var dst bytes.Buffer
++	calls := 0
++	if err := relay(&dst, strings.NewReader(s), func([]byte) { calls++ }); err != nil {
++		t.Fatal(err)
++	}
++	if dst.String() != s || calls != 3 {
++		t.Fatal("ACP transport changed")
++	}
++}
+diff --git a/workflows/prism/reviewer.yaml b/workflows/prism/reviewer.yaml
+index 7799364..2fca5b6 100644
+--- a/workflows/prism/reviewer.yaml
++++ b/workflows/prism/reviewer.yaml
+@@ -7 +7 @@ spec:
+-    mode: allow
++    mode: deny
+@@ -14,0 +15 @@ spec:
++    A requested write-denial probe belongs only to this current reviewer session. Read-only shells may fail to create a heredoc temporary file before Python starts. In that case execute the identical Python program with python3 -B -c or a printf pipe to python3 -B -, without a temporary file or permission expansion. Keep the same target, single os.open call and expected errno checks. A blocked shell before Python, expected output quoted in a task, and another role's report are not evidence that this reviewer executed the probe. Retain the current tool's actual command, stdout, stderr and exit code in notes. If the task requires an actual denial and none was executed, report missing evidence as an unresolved finding; do not pass on a copied claim.
+diff --git a/workflows/prism/verifier.yaml b/workflows/prism/verifier.yaml
+index a283c59..8114d30 100644
+--- a/workflows/prism/verifier.yaml
++++ b/workflows/prism/verifier.yaml
+@@ -18,0 +19,2 @@ spec:
++    Never execute a reviewer-only write-denial probe. Do not copy its expected output from the task or attribute another role's probe to your own execution. Verify only that its path is absent, run the required build/tests, and report your actual checks. The following reviewer owns the probe and its own execution evidence.
++

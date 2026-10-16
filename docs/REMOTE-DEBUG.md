@@ -7,9 +7,11 @@ workspace.
 The 2026-10-07 timing baseline below belongs to the retired Lume lease.
 On 2026-10-16 an actual Monterey12.7.6/Xcode13.4.1 Tart lease passed generated
 build/sync/prepare, LLDB-DAP breakpoint/stack/evaluation, output and exit checks.
-The installed helper exposed a listener-startup race; the corrected CLI passed
-the same real path but still awaits idle installation. No VS Code editor UI was
-driven. Exact receipts and remaining scope are in [Verification](VERIFICATION.md).
+The original helper exposed a listener-startup race. The correction is installed
+in `8bfff9f`; actual installed generated build/sync/prepare and full LLDB-DAP
+breakpoint/stack/evaluate41/output42/exit0 passed. No VS Code editor UI or real
+DuckDuckGo application debug was driven. Exact receipts and remaining scope are
+in [Verification](VERIFICATION.md).
 Do not treat the old timings as a Tart release result.
 
 ## Data path
@@ -80,6 +82,6 @@ blocks golden verification instead of publishing a slow debugging image.
 
 The actual Tart protocol checks used the operator-required
 standard `admin/admin`, pinned key-only SSH and verified native key storage;
-automatic random password rotation was removed in `0f8bc20`, with the remaining
+automatic random password rotation was removed in `0f8bc20`, with exact
 per-profile installed acceptance tracked in the
 [maintained plan](VIRFIELD-3-PLAN.md).

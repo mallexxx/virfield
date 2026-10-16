@@ -52,10 +52,11 @@ Use the current source and Operations until a new release passes its gates.
 The [Broker macos27 reacceptance record](docs/VERIFICATION.md#broker-macos27-reacceptance)
 records the current cross-project boundary and the evidence required to close it.
 
-The operator requires the standard VM account `admin/admin`; removing automatic
-random password rotation is removed in standard-account candidates (`0f8bc20` and
-later). Samsung Monterey has two complete installed cycles; the remaining
-provider/client matrix is open. SSH key isolation and native GUI/SSH key-storage checks remain
-required. The [maintained plan](docs/VIRFIELD-3-PLAN.md) records this first priority,
-the open macOS 27/Sonoma failures and all five requested follow-ups. Historical
-passes do not establish acceptance of the remaining standard-password matrix.
+The operator requires the standard VM account `admin/admin`; automatic random
+account-password rotation was removed in `0f8bc20` and later. Installed full
+native/reboot/workload cycles passed for both Monterey inventories, the new
+macOS27 golden and HTPC Sonoma/Sequoia. Pinned SSH key isolation, native GUI/new
+SSH key-storage checks and preserved old golden identities remain required.
+The [maintained plan](docs/VIRFIELD-3-PLAN.md) tracks all five delivered follow-ups,
+current acceptance and the remaining 3.0 architecture. The earlier guest-kernel
+stall remains unexplained; later successful cycles are not a causal fix.

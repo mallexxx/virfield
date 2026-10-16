@@ -273,8 +273,12 @@ UTF-8 locale required by CocoaPods under noninteractive SSH:
 
 No global shell startup files or system Ruby are changed.
 
-Source/unit/host deployment checks do not accept a built image. Installation and
-live Monterey factory/worker acceptance remain open; see Verification.
+The installed `legacy-ios-v1` profile passed a fresh Monterey Packer factory
+build/qualification and worker with actual armv7 compile/link before/after native
+reboot, pinned SSH/isolation, hashed artifacts and official cleanup. Only its
+extra temporary golden was deleted; all nine baseline images remain. See
+[Verification](VERIFICATION.md) for exact versions and receipts. This does not
+claim on-device armv7 execution.
 
 Primary compatibility/pin sources: [Apple Xcode 13.4.1](https://developer.apple.com/documentation/xcode-release-notes/xcode-13_4_1-release-notes),
 [Apple Xcode 14 armv7 removal](https://developer.apple.com/documentation/Xcode-Release-Notes/xcode-14-release-notes),
