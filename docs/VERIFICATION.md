@@ -8,7 +8,68 @@ The working branch is `codex/retire-lume-release-hardening`; `main` is not promo
 The [implementation plan](VIRFIELD-3-PLAN.md) owns delivery order and all five new
 operator feedback items.
 
-## Latest installed checkpoint — 466dbb8 (2026-10-16)
+## Latest installed checkpoint — 8bfff9f (2026-10-16)
+
+Installed source `8bfff9f59cab918877d060437a1ad190905a5040`, version
+`0.0.0-acceptance-runbooks`, includes the checked code correction `832e302` and
+runbook reconciliation. Archive SHA-256:
+`02ce205ea26cff9097b4869b81a92ea07c285c7c8e5a18b805f03ed1f586273f`.
+The signed idle upgrade preserved schema 10, configuration, credentials, signing/
+FDA identity, migration snapshots and all nine baseline images. Exact archive and
+installed fresh stdio discovery, 20 tools and all four runbooks passed. Code
+`832e302` passed complete local CI/race, Staticcheck, zero reachable vulnerabilities,
+Linux cross-build and Gitleaks. The docs-only `8bfff9f` passed documentation/link,
+MCP race and staged secret checks. Receipt: private upgrade
+`20261016-131246-8bfff9f/installed.json`.
+
+The following results supersede older pending/install/client statements in the
+dated checkpoints below. A final documentation-only revision records these
+results; it does not change the tested installed binaries or pretend their
+embedded runbooks were rebuilt.
+
+| Gate | Verified result | Private receipt under `/private/tmp` |
+|---|---|---|
+| Actual owning MCP | **PASS** after user Restart: actual connected 20-tool catalog and all four runbooks byte-equal to packaged8; actual MCP acquire/same-key replay/job/lease/SSH and desktop tunnels; pinned native GUI/new SSH, real reboot/new UUID, Xcode13.4.1/Swift compile-run, RFB and hashed exported artifact; actual MCP release/job/released state and both listeners revoked | `virfield-owning-mcp-acceptance-20261016/journal.json` |
+| Installed remote debugging | **PASS** actual installed CLI-generated build/sync/prepare and LLDB-DAP breakpoint/stack, evaluate41, output42, exit0; exact-child loopback LISTEN wait avoids consuming the debugger connection | `virfield-remote-debug-installed-fixture-20261016/acceptance/report.json` |
+| Full signed package rollback | **PASS** all CLI/daemon/MCP/Browser rollback466 then forward to exact8, exact20/four runbooks and real native/Swift/artifact/release on each side; forward installed LLDB-DAP; config/keys/schema10/nine images unchanged and original installed hashes restored | `virfield-package-rollback-live-20261016/report.json` |
+| F3 node cache | **PASS** observed68,987,289,600 + requested107,374,182,400 exceeds limit176,361,471,999 by exactly1byte; real409/resource_exhausted before job/clone; original config byte-exact restored, no image pruning | `virfield-node-cache-cap-live-20261016/report.json` |
+| Full off-host VM-disk DR | **PASS** stopped owned120GB-logical disk/config/NVRAM copied to HTPC, flushed and all three SHA-256 equal source/off-host/restore before boot; restored same VM identity/hardware, caller/host keys, native readiness, original expiry and workspace hash; both owned saved copies removed and temporary physical caller key revoked | `virfield-vm-disk-dr-live-20261016/journal.json`, `continuation.json`, `backup-durability.json` |
+| Original F3 fixture cleanup | **PASS** original job/key/deadline/TTL wait/resume receipt retained; DR completed, owned worker officially released and only stopped own external quota fixture removed; nine baseline images unchanged | `virfield-resource-recheck-live-20261016/continuation-cleanup.json` |
+| Sequoia targeted kernel-path diagnostic | **PASS diagnostic**,20 actual kernel stackshot reports containing2,002 stackshots while64 Cocoa process exits ran, then one actual guest reboot/new UUID/native/artifact/release. Historical trigger remains **unproven** | `virfield-node-stackshot-diagnostic-20261016/journal.json`, `independent-artifact-review.json` |
+| Speech-log soak | **PASS** final06:38UTC metadata check: deleted huge log and backup absent, all four new logs0bytes, fixed config hash unchanged, Podman healthy and tmpfs has3.357GB free | `virfield-htpc-speech-final-soak-20261016.json` |
+
+The full DR initially placed its held original in a dot directory inside
+`TART_HOME/vms`. Tart enumerated it and correctly fenced the unsafe inventory row.
+The private harness was corrected by moving that same stopped directory, with
+unchanged inode/device, outside the enumerated inventory. After fresh observation,
+the original known-rejected revalidation request used the same body/key and passed.
+No runtime name validation was weakened and the original mutation driver was not
+replayed. See [backup operations](OPERATIONS.md#quotas-and-backups).
+
+The targeted stackshot artifact SHA-256 is
+`b611b995e2dd478019b23532e98fc3f3e3f1bc1ddbd98b2fb6fc3365ec0e32a6`.
+Independent header review verified actual `Data Source: Stackshots` and all2,002
+samples. This adds a bounded non-reproduction on the matching Sequoia kernel;
+it does not establish a causal fix for the earlier failed1,200-second reboot.
+No CPU flags, NVRAM or golden were changed. Generic LLDB-DAP acceptance did not
+drive VS Code editor UI or debug the DuckDuckGo application.
+
+**Production Codex Story remains open.** Fresh human OAuth is complete. Run
+`run-7493e54fe8576568720f0f40a35f58cc` received actual Telegram approval and completed
+specify/design/breakdown/implementer/verifier/reviewer. The reviewer really
+observed EPERM on its write attempt; its diagnostic handler subsequently had a
+quoting-induced NameError. All four unit tests passed, but deterministic quality
+replay created two Python bytecode files, then the clean-tree assertion failed.
+Saved `untracked.tar.gz` contains exactly those two files. The worker was released,
+cleanup is done and the credential identity is unrevoked/unowned; no push occurred.
+Independent replay on the exported commit reproduced dirty ordinary execution
+and clean four-test success with `python3 -B`. Receipt:
+`virfield-broker-codex-debug-listener-20261016/independent-review/report.json`.
+A corrected production fixture now uses `-B` for every Python execution and a
+multiline numeric-errno reviewer probe; its fresh terminal quality, artifacts,
+credential settlement and worker release must all pass before Story acceptance.
+
+## Previous installed checkpoint — 466dbb8 (2026-10-16)
 
 Source `466dbb817450fc28f4a39cffaba9aa4812d7b5e3` is pushed and installed as
 `0.0.0-desktop-drain`, archive SHA-256
@@ -803,28 +864,20 @@ the plist's macOS 13 minimum; Mach-O metadata/build check passed, not a live mac
 
 ## Remaining release acceptance
 
-| Required work | State / closure criterion |
+| Required work | Current state / closure criterion |
 |---|---|
-| Standard VM password implementation | Installed; Samsung and new macOS 27 cycles passed; finish HTPC/iPad acceptance; test/preserve `admin/admin`, retained keychain data and independent SSH isolation; define compatible handling of previously rotated images |
-| Current native VM matrix | New macOS 27 candidate 2/2 and cache factory passed; global route awaits approval. Old golden remains preserved/unrepaired. Finish HTPC/iPad standard-policy cycles and diagnose Sonoma reboot; Sequoia old-policy 2/2 is dated evidence |
-| iPad repeat | Restore adequate full-growth-plus-reserve storage or accept verified-golden transfer first; no reserve weakening or foreign deletion |
-| Owning clients and Broker entrypoint | Current actual MCP version/runbooks/workflows; Broker macos27 criteria above; fresh stdio/HTTP alone insufficient |
-| Apple authenticated download | Real exact-job sign-in/cookie handoff/download completion untested; synthetic GUI smoke already passed |
-| Release engineering | Local checks/security/archive/install provenance for exact new source; complete package/client upgrade/rollback, not only controller binary drill |
-| Failure/debug/operations | Tart VS Code debug; restart during build/provider crash matrix, host loss/partition/full disk/drain/soak, live node resource/cache boundaries, metrics/alerts, signed promotion/revocation and VM-disk DR |
+| Standard account/native matrix | Passed for both Monterey inventories, new macOS27 golden and HTPC Sonoma/Sequoia; old goldens remain preserved. The earlier kernel-stall trigger is unproven; later passes are not a causal fix |
+| Actual owning MCP | Passed full actual connected20/four exact packaged8 runbooks and VM workflow through release/revocation |
+| Production Codex Story | First fresh run completed all roles/actual denied write but failed deterministic quality because Python replay wrote bytecode; corrected fixture running, terminal quality/artifact/credential/worker cleanup still required |
+| Release engineering | Code/local security/archive/install checks and full signed package rollback/forward passed; final documentation reconciliation/checks/working-branch push remain |
+| Apple authenticated download | Actual sign-in/cookie handoff/exact-job download completion remains untested. Synthetic GUI/Safari/real login-page smoke passed; no macOS13-host live test claimed |
+| Additional operations scenarios | Fresh node post-wake failure injection, broader provider crash/host loss/partition/full-disk matrix, metrics/alerts and signed promotion/revocation remain outside these completed receipts |
 
-Existing HTPC golden chmod is an **optional hardening proposal**, not a functional
-prerequisite. New conversions commit owner-only files; the two old qcow2/OpenCore
-pairs remain 0444 under a 0755 directory. The operator asked why, did not approve
-that change, and no chmod was performed. It does not fix keychain authentication
-or reboot and must not be presented as the reason functional acceptance is open.
-
-All five requested follow-ups are in [the maintained plan](VIRFIELD-3-PLAN.md):
-non-destructive drift recovery, durable drift/tunnel causes, resource arithmetic,
-verified local golden transfer and an optional legacy iOS toolchain profile.
-They are not yet implemented. Orchard live pool/isolation/factory/access, broader
-v3 grants/Access/node-agent/extension/noVNC and additional providers remain roadmap
-scope, not silently enabled features of this candidate.
+F1 recovery, F2 durable diagnostics, F3 admission arithmetic/Tart wait-resume/node
+cache refusal, F4 sparse local transfer and F5 legacy iOS factory/worker each have
+installed live receipts above. Existing HTPC golden chmod remains an optional
+unapproved hardening proposal; no chmod was performed. Orchard live pool, wider
+v3 grants/Access/node-agent/noVNC and additional providers remain roadmap scope.
 
 ## Not yet accepted
 

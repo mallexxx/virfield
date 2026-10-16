@@ -317,7 +317,7 @@ inspection. An interrupted build is never silently repeated. The older 256d18f
 daemon lacks the final image-context cancellation. The installed e80c194 passed
 a real external-process cancellation and persistence drill; consult the current
 installed checkpoint for its exact scope.
-The next checked patch shares that cancellation context with long SSH
+Installed since `466dbb8`, that cancellation context also covers long SSH
 preparation, local golden copy and registry export. Their original deadlines and
 unknown-outcome fences remain intact. Its fixed desktop preflight uses the full
 existing two-minute readiness deadline for cold JXA/CoreGraphics loading; other
@@ -485,8 +485,10 @@ desktop URLs or stream contents are recorded. Unknown causes stay unknown.
 Each lease retains the latest 32 records of each of four diagnostic kinds
 (at most 128), independently of VM cleanup; normal 30-day history retention still
 applies. Event IDs/cursors remain monotonic and may have gaps after truncation;
-save `next_cursor` and inspect the retained window. This source change is not yet
-installed or live accepted; consult Verification for deployment scope.
+save `next_cursor` and inspect the retained window. This is installed; real
+backend failure/recovery, listener/stream separation and
+byte-exact diagnostic persistence after release/restart passed. Consult
+[Verification](VERIFICATION.md) for the tested versions and receipts.
 
 ## Quotas and backups
 
@@ -519,9 +521,11 @@ the CLI/MCP message. Console's Prepare form shows the selected estimate.
 These are advisory snapshots; `inventory_verified` must be true, and admission
 and mutation dispatch recheck the same calculation under the controller lock.
 A changed budget waits with the original lease/reservation/deadline and persists
-its first refusal without repeated polling events. Limits are unchanged. This
-source change is not yet installed/live accepted; see Verification. Visible free
-space alone is insufficient to diagnose an older refusal. Do not reduce reserve
+its first refusal without repeated polling events. Limits are unchanged.
+Installed/live checks cover HTTP/CLI/MCP refusal, actual
+Tart dispatch wait/resume with unchanged job/key/deadline/TTL and a one-byte-short
+node image-cache refusal before job creation. See [Verification](VERIFICATION.md).
+Visible free space alone is insufficient to diagnose an older refusal. Do not reduce reserve
 or assume copy-on-write physical allocation is the maximum VM growth.
 Node QEMU disks use `cache=writeback` with threaded I/O so concurrent cold boots
 can share the host page cache on HDD storage. Guest cache flushes remain enabled;
@@ -532,8 +536,10 @@ publication. Existing staging files are not overwritten; exact-name image
 deletion also removes that image's interrupted conversion file.
 Quotas and the private HDD root are installed; two concurrent reservations and
 two Sonoma native GUI/SSH reboot cycles passed on the dated candidate in
-[Verification](VERIFICATION.md). The complete current node workflow matrix
-remains open; consult that record for the latest reproduced failure and evidence.
+[Verification](VERIFICATION.md). Fresh `466dbb8` Sequoia 2/2 concurrent and
+Sonoma 2/2 sequential full cycles
+passed. A separate earlier kernel stall remains unexplained; later passes do
+not establish a causal fix. Consult that record for exact scope.
 
 Backup snapshots SQLite, config, the owner-token hash and image credentials into
 an owner-only directory; five complete snapshots are retained. VM disks are not
@@ -544,6 +550,17 @@ operator token and start exactly one manager. The 2026-10-14 offline drill and
 2026-10-15 live controller-state restore passed, including a rotated token, exact
 MCP and two native Monterey reboot/lease cycles before return to original state.
 This does not back up or restore VM disks.
+
+For an authorized full VM-disk disaster-recovery drill, stop the exact owned VM,
+record disk/config/NVRAM hashes, copy to independent storage, flush the copy and
+verify all hashes before disturbing the source. Preserve a held original outside
+`TART_HOME/vms`, even if its name starts with a dot: Tart enumerates dot directories
+there too. An unsafe directory name correctly fences inventory; do not weaken
+name validation to accommodate a backup. Keep the original intact until restored
+identity, hardware, pinned SSH, native readiness and workspace data verify. The
+2026-10-16 full off-host drill passed, followed by only its authorized fixture
+cleanup and physical caller-key revocation; see [Verification](VERIFICATION.md).
+
 Journal retention removes completed released history after 30 days; unfinished
 jobs and active leases retain their request keys. Retired idempotency keys may
 become new requests after pruning. Migration snapshots are retained separately.

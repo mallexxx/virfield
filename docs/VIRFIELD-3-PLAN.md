@@ -4,7 +4,7 @@ Reconciled 2026-10-16 against source, installed receipts and live API. This is t
 maintained checklist. [Verification](VERIFICATION.md) owns test evidence and
 release acceptance; [Operations](OPERATIONS.md) owns deployed commands.
 The candidate branch is `codex/retire-lume-release-hardening`; `main` has not been
-promoted. `466dbb8` / `0.0.0-desktop-drain` is installed and pushed with schema 10;
+promoted. `8bfff9f` / `0.0.0-acceptance-runbooks` is installed and pushed with schema 10;
 nine baseline images are preserved. The corrected transfer and both full iPad
 Monterey cycles passed. The earlier ASIF zero-size cache
 correction passed a fresh factory/two clone live proof. Documentation
@@ -16,7 +16,9 @@ The candidate is **not release accepted**.
 - Keep the standard VM account **`admin` / `admin`**. The operator explicitly
   rejected automatic random account-password rotation on 2026-10-15. Removing it
   is implemented and installed in `0f8bc20`; Samsung Monterey passed two full
-  cycles, while the remaining provider/client matrix is open. New identities use the configured account name as the password.
+  cycles. Full standard-policy native cycles are now recorded for both Monterey
+  inventories, macOS 27, HTPC Sonoma and Sequoia. New identities use the
+  configured account name as the password.
   An already-standard account is authenticated without password change. Legacy
   image credentials/goldens stay intact; only a new disposable clone converts
   its known inherited account password once, then verifies authentication and
@@ -40,12 +42,12 @@ The candidate is **not release accepted**.
 
 | Order | Work | Current state | Completion evidence |
 |---|---|---|---|
-| 1 | Remove automatic account-password rotation | Installed; Samsung 2/2 passed; remaining matrix open | Tests and installed image/lease/reboot cycles retain `admin/admin`; SSH isolation and native GUI/new SSH key storage still pass; old-image handling preserves data |
-| 2 | Resolve current macOS 27 keychain and HTPC reboot failures | Earlier new macOS27 cycles passed; current Sequoia reboot failed, read-only registers/instructions establish a guest-kernel trap/debugger stall, trigger unproven; shutdownStall exported, owned fixture officially released after recovery | Bounded diagnosis, targeted correction and fresh full cycles on the exact installed candidate; no repeated unchanged VM/reboot attempts treated as a fix |
-| 3 | Package and accept the corrected guest policy | 466dbb8 installed; Samsung/new macOS27/factory and transferred Monterey cycles passed; corrected cold-probe policy passed fresh concurrent Sequoia 2/2 and sequential Sonoma 2/2, all released | Clean exact-source local CI/security/archive checks; idle-pool install with private backup; Tart macOS 27 and both Monterey inventories plus HTPC Sonoma/Sequoia native GUI/new SSH, actual reboot/new UUID, 1920×1080, workload/artifact/RFB/release/revocation |
-| 4 | Close client and production entrypoint acceptance | Owning MCP manual reconnect open; default Broker script-only passed; reviewed Darwin runner fix deployed; old failed Story cleanup done; fresh human OAuth completed, new full Story pending | Actual connected clients serve current version/all four runbooks and complete their workflows; production Broker qualification/Story, independent tests, explicit denied-write and artifacts/settlement/cleanup |
-| 5 | Implement the five operator feedback items below | 466dbb8 installed after private schema8→10 backup; nine baseline images/config/keys preserved; F1 Tart and original HTPC overlay recovery passed; F2 backend/tunnel diagnostics and restart persistence passed; F3 arithmetic/refusal and real Tart dispatch wait/resume passed, node cache live cap open; F4 live accepted; F5 full factory/worker passed and extra test golden cleaned | Each item's tests, live evidence and updated runbooks |
-| 6 | Complete remaining hardening/debug/DR gates | Real Tart LLDB-DAP workflow passed; debugserver listener race corrected/tested/pushed in 832e302, idle installation pending. Explicitly approved full VM-disk DR is running; complete package/client rollback remains open | Agreed scope below accepted separately; no promotion based solely on unit tests or another OS/version |
+| 1 | Remove automatic account-password rotation | Installed; both Monterey inventories, new macOS 27 and HTPC Sonoma/Sequoia full cycles passed | Tests and installed image/lease/reboot cycles retain `admin/admin`; SSH isolation and native GUI/new SSH key storage still pass; old-image handling preserves data |
+| 2 | Resolve current macOS 27 keychain and HTPC reboot failures | New macOS27 golden cycles passed. Earlier Sequoia reboot failed with a symbolicated guest-kernel snapshot/debugger stall; trigger unproven. Later4/4 matrix and targeted2,002-stackshot/reboot diagnostic passed; failed fixture recovered/exported/released without CPU/NVRAM changes | Bounded diagnosis, targeted correction and fresh full cycles on the exact installed candidate; no repeated unchanged VM/reboot attempts treated as a fix |
+| 3 | Package and accept the corrected guest policy | 8bfff9f installed; Samsung/new macOS27/factory and transferred Monterey cycles passed; corrected cold-probe policy passed fresh concurrent Sequoia 2/2 and sequential Sonoma 2/2, all released | Clean exact-source local CI/security/archive checks; idle-pool install with private backup; Tart macOS 27 and both Monterey inventories plus HTPC Sonoma/Sequoia native GUI/new SSH, actual reboot/new UUID, 1920×1080, workload/artifact/RFB/release/revocation |
+| 4 | Close client and production entrypoint acceptance | Actual owning MCP20/four exact runbooks/full VM native-reboot-Swift-artifact/release passed; default Broker script-only passed; fresh OAuth complete; first full Codex Story reached all six roles but quality replay created Python bytecode and failed the clean-tree assertion; corrected -B fixture running | Actual connected clients serve current version/all four runbooks and complete their workflows; production Broker qualification/Story, independent tests, explicit denied-write and artifacts/settlement/cleanup |
+| 5 | Implement the five operator feedback items below | 8bfff9f installed with schema10; nine baseline images/config/keys preserved; F1 recovery, F2 durable diagnostics, F3 arithmetic/refusal/Tart dispatch wait-resume/node one-byte cache cap, F4 sparse transfer and F5 factory/worker all have live receipts | Each item's tests, live evidence and updated runbooks |
+| 6 | Complete remaining hardening/debug/DR gates | Debugserver listener correction installed; actual installed generated LLDB-DAP passed. Full off-host disk/config/NVRAM restore and cleanup passed. Complete signed package rollback466/forward8 passed with native/Swift/artifact/release on each side | Agreed scope below accepted separately; no promotion based solely on unit tests or another OS/version |
 
 The full current-candidate acceptance, verification and branch push precede general
 follow-up delivery. A narrowly needed dependency, such as verified storage
@@ -64,8 +66,8 @@ acceptance. The latest instruction requires documenting all five items now.
 | Samsung Monterey | Two complete `0f8bc20` standard-password/native/reboot/Xcode 13.4.1/Swift/workspace/artifact/release cycles passed |
 | iPad Monterey | `a45655f` verified local transfer plus two full standard-account/native/reboot/Xcode 13.4.1/Swift/workspace/artifact/RFB/release cycles passed; unchanged source and original eight manifests verified; macOS 12.7.6 |
 | Factory/private GHCR | Complete fresh public-base factory → private portable push → pull → clone workload → cleanup passed on `2f23ae6`; preserve receipt, repeat only for relevant pipeline changes; no managed golden uploaded |
-| Restore/rollback | Live controller-state restore and signed controller-binary rollback/forward passed; explicitly approved full VM-disk DR is running with the original preserved until off-host verification; complete package/client rollback remains outside earlier receipts |
-| Actual owning MCP | Old adapter PID 66295 historically loaded a different executable inode despite correct configured path; actual connected help still serves obsolete password/recovery instructions, exact466dbb8 fresh stdio20 passed; no adapters killed, manual reconnect remains open |
+| Restore/rollback | Controller-state restore, full off-host disk/config/NVRAM restore, authorized cleanup and full signed CLI/daemon/MCP/Browser package rollback466/forward8 passed |
+| Actual owning MCP | User Restart replaced the stale connection. Actual connected20/four exact packaged8 runbooks, acquire/replay/job/lease/tunnels, native/reboot/Swift/artifact and release/revocation passed |
 | Existing HTPC file modes | Optional owner-only permission proposal unapproved; files unchanged; not required for VM functionality and not a keychain/reboot fix |
 
 The new `0f8bc20` existing macOS 27 clone still fails login copy-auth and was
@@ -77,7 +79,11 @@ The new exact UI-test golden passed two full worker cycles and production
 Broker/Prism script-only XCTest both by explicit per-run `image_id` and, after
 the operator-approved idle route switch, through default `macos27`. The old
 golden and all eight image manifests remain preserved. Full Codex
-Story/denied-write remains open. `a1a6bd9` and `cab85c5` are pushed under explicit
+Story remains open: the first fresh run completed all roles and observed real
+reviewer EPERM, but deterministic test replay created bytecode and failed the
+clean-tree assertion. Both worker and credentials settled normally. The corrected
+fixture uses `python3 -B` for every execution; its fresh production run is tracked
+in Verification. `a1a6bd9` and `cab85c5` are pushed under explicit
 session-wide working-branch authorization.
 The new HTPC Sequoia attempt failed because an unrelated speech-dispatcher log
 filled `/run/user/1000`, preventing Podman metadata writes despite free HDD space.
@@ -95,7 +101,8 @@ F4 transfer on installed `3d667d2` expanded physical disk allocation from 44.8 G
 to 106.4 GB; its owned copy was removed with a durable image-delete job.
 The installed `a45655f` correction preserves sparse allocation (44.79 GB), full
 hashes, source and identity; two complete native/reboot/workload cycles passed.
-Owning MCP and full Story acceptance remain open; see Verification receipts.
+Actual owning MCP acceptance passed; full Story remains open until its corrected
+fixture passes deterministic quality and confirmed cleanup. See Verification.
 
 Older successful Tart/macOS 27/HTPC matrices remain dated evidence, not proof that
 these newer failures are fixed. Exact receipts and diagnostic boundaries are in
@@ -161,8 +168,10 @@ are included. `a2aab20` passed full local CI, affected race/security, archive an
 fresh stdio MCP/runbook checks and is pushed. Installed since256d18f;
 HTTP/CLI/MCP structured refusal during a real build passed. On466dbb8,
 real external Tart CPU/full-disk load forced pre-clone wait; the original
-job/key/deadline/TTL resumed unchanged after load removal. Node-cache live
-cap and fresh node post-wake failure checks remain separate gates.
+job/key/deadline/TTL resumed unchanged after load removal. A real node-cache
+limit exactly one byte below observed cache plus requested full image refused
+before job/clone; original configuration and all nine images were preserved.
+Fresh node post-wake failure injection is a separate unaccepted scenario.
 
 Return and display the admission snapshot per host/storage: observed free,
 already reserved growth, requested full potential size, safety reserve, remaining
