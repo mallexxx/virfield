@@ -484,17 +484,28 @@ test -x "$program"
 /usr/bin/pkill -x "$(/usr/bin/basename "$program")" 2>/dev/null || true
 debugserver=/Applications/Xcode.app/Contents/SharedFrameworks/LLDB.framework/Versions/A/Resources/debugserver
 test -x "$debugserver"
+test -x /usr/sbin/lsof
 /usr/bin/nohup "$debugserver" "127.0.0.1:$port" "$program" >"/tmp/virfield-debugserver-$port.log" 2>&1 </dev/null &
-for attempt in {1..50}; do
-  /usr/bin/pgrep -x debugserver >/dev/null && exit 0
-  /bin/sleep 0.1
-done
-exit 70
+debugserver_pid=$!
+` + remoteDebugWaitScript() + `
 REMOTE
 /usr/bin/ssh -S "$socket" -O exit -F "$ssh_config" virfield >/dev/null 2>&1 || true
 /bin/rm -f -- "$socket"
 /usr/bin/ssh -fNT -M -S "$socket" -F "$ssh_config" -L "127.0.0.1:$port:127.0.0.1:$port" virfield
 `
+}
+
+func remoteDebugWaitScript() string {
+	// debugserver launches and attaches to the program before binding its port.
+	// A TCP probe would consume its single debugger connection, so inspect only
+	// the exact child's loopback listener before exposing the SSH forward.
+	return `for attempt in {1..100}; do
+  kill -0 "$debugserver_pid" 2>/dev/null || break
+  /usr/sbin/lsof -nP -a -p "$debugserver_pid" -iTCP@127.0.0.1:"$port" -sTCP:LISTEN >/dev/null 2>&1 && exit 0
+  /bin/sleep 0.1
+done
+/bin/cat "/tmp/virfield-debugserver-$port.log" >&2 2>/dev/null || true
+exit 70`
 }
 
 func lldbQuote(value string) string {

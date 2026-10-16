@@ -4,8 +4,9 @@ Reconciled 2026-10-16 against source, installed receipts and live API. This is t
 maintained checklist. [Verification](VERIFICATION.md) owns test evidence and
 release acceptance; [Operations](OPERATIONS.md) owns deployed commands.
 The candidate branch is `codex/retire-lume-release-hardening`; `main` has not been
-promoted. `a45655f` / `0.0.0-local-golden-sparse` is installed and pushed; the
-corrected transfer and both full iPad Monterey cycles passed. The earlier ASIF zero-size cache
+promoted. `466dbb8` / `0.0.0-desktop-drain` is installed and pushed with schema 10;
+nine baseline images are preserved. The corrected transfer and both full iPad
+Monterey cycles passed. The earlier ASIF zero-size cache
 correction passed a fresh factory/two clone live proof. Documentation
 commits do not install binaries or update an already-running MCP process.
 The candidate is **not release accepted**.
@@ -40,11 +41,11 @@ The candidate is **not release accepted**.
 | Order | Work | Current state | Completion evidence |
 |---|---|---|---|
 | 1 | Remove automatic account-password rotation | Installed; Samsung 2/2 passed; remaining matrix open | Tests and installed image/lease/reboot cycles retain `admin/admin`; SSH isolation and native GUI/new SSH key storage still pass; old-image handling preserves data |
-| 2 | Resolve current macOS 27 keychain and HTPC reboot failures | Earlier new macOS27 cycles passed; current Sequoia reboot failed, read-only registers/instructions establish a guest-kernel trap/debugger stall, trigger unproven; original overlay retained for panic inspection | Bounded diagnosis, targeted correction and fresh full cycles on the exact installed candidate; no repeated unchanged VM/reboot attempts treated as a fix |
-| 3 | Package and accept the corrected guest policy | e80c194 installed; dated Samsung/new macOS27/factory, HTPC and transferred Monterey cycles passed; new cold concurrent HTPC desktop preflight exposed a premature60s probe cap, checked correction awaits idle installation | Clean exact-source local CI/security/archive checks; idle-pool install with private backup; Tart macOS 27 and both Monterey inventories plus HTPC Sonoma/Sequoia native GUI/new SSH, actual reboot/new UUID, 1920×1080, workload/artifact/RFB/release/revocation |
+| 2 | Resolve current macOS 27 keychain and HTPC reboot failures | Earlier new macOS27 cycles passed; current Sequoia reboot failed, read-only registers/instructions establish a guest-kernel trap/debugger stall, trigger unproven; shutdownStall exported, owned fixture officially released after recovery | Bounded diagnosis, targeted correction and fresh full cycles on the exact installed candidate; no repeated unchanged VM/reboot attempts treated as a fix |
+| 3 | Package and accept the corrected guest policy | 466dbb8 installed; dated Samsung/new macOS27/factory, HTPC and transferred Monterey cycles passed; cold concurrent HTPC probe-cap correction installed, fresh matrix pending | Clean exact-source local CI/security/archive checks; idle-pool install with private backup; Tart macOS 27 and both Monterey inventories plus HTPC Sonoma/Sequoia native GUI/new SSH, actual reboot/new UUID, 1920×1080, workload/artifact/RFB/release/revocation |
 | 4 | Close client and production entrypoint acceptance | Owning MCP manual reconnect open; default Broker script-only passed; reviewed Darwin runner fix deployed; lost OAuth cache revoked/reset with explicit consent, old failed Story cleanup now done; fresh human login/new full Story pending | Actual connected clients serve current version/all four runbooks and complete their workflows; production Broker qualification/Story, independent tests, explicit denied-write and artifacts/settlement/cleanup |
-| 5 | Implement the five operator feedback items below | e80c194 installed after private schema8→10 backup; nine baseline images/config/keys preserved; F1 Tart and original HTPC overlay recovery passed; F2 backend/tunnel diagnostics and restart persistence passed; F3 live arithmetic/refusal passed, dispatch/cache matrix open; F4 live accepted; F5 full factory/worker passed; cold concurrent HTPC correction/live repeat pending | Each item's tests, live evidence and updated runbooks |
-| 6 | Complete remaining hardening/debug/DR gates | Partial dated evidence only | Agreed scope below accepted separately; no promotion based solely on unit tests or another OS/version |
+| 5 | Implement the five operator feedback items below | 466dbb8 installed after private schema8→10 backup; nine baseline images/config/keys preserved; F1 Tart and original HTPC overlay recovery passed; F2 backend/tunnel diagnostics and restart persistence passed; F3 arithmetic/refusal and real Tart dispatch wait/resume passed, node/cache matrix open; F4 live accepted; F5 full factory/worker passed, extra test golden cleaned; HTPC repeat pending | Each item's tests, live evidence and updated runbooks |
+| 6 | Complete remaining hardening/debug/DR gates | Real Tart LLDB-DAP workflow passed; debugserver listener race corrected/tested in source, idle installation pending. Full VM-disk DR prepared, explicit scope confirmation pending after automatic approval rejection; complete package/client rollback remains open | Agreed scope below accepted separately; no promotion based solely on unit tests or another OS/version |
 
 The full current-candidate acceptance, verification and branch push precede general
 follow-up delivery. A narrowly needed dependency, such as verified storage
@@ -55,16 +56,16 @@ acceptance. The latest instruction requires documenting all five items now.
 
 | Area | Verified state as of 2026-10-16 |
 |---|---|
-| Service/install | `a45655f` installed; approved Background → Standard migration retained; signing identity/config/keys/eight baseline image manifests preserved plus one accepted transferred image; schema 8 and compatible schema 7 backup verified; exact installed HTTP/fresh stdio checks passed |
+| Service/install | `466dbb8` installed/pushed; approved Background → Standard migration retained; signing identity/config/keys/nine baseline manifests preserved; schema 10 with private schema8/7 migration snapshots verified; exact installed HTTP/fresh stdio20/four-runbook checks passed |
 | Native Apple browser | Installed layout, Safari URL handoff and real Apple sign-in page passed using a synthetic link; no account login or authenticated download completion tested; Mach-O minimum 13 verified, no live macOS 13 host test |
-| HTPC Sequoia | Two fresh complete `a1a6bd9` standard-account/native GUI/new SSH/reboot/display/workload/artifact/RFB/release/revocation cycles passed after the approved runroot cleanup |
+| HTPC Sequoia | Dated `a1a6bd9` 2/2 full cycles passed; latest e80c194 concurrent preflight failed at premature60s cap, corrected in installed466dbb8. Single retained VM passed F1 but actual guest reboot stalled in kernel; recovery/evidence export/owned release completed, original trigger remains open |
 | HTPC Sonoma | Fresh `a1a6bd9` standard-policy full native/reboot/workload/artifact/RFB/cross-key/release/revocation passed 2/2; all workers released. The historical 1,200-second reboot stall cause remains unproven |
 | macOS 27 | Two standalone `f60efe3` attempts failed native login-keychain authentication with `-25293`; isolated native API fixtures passed in the same guest; original-copy candidate authentication failed; no established historical password/corruption cause; owned fixtures released |
 | Samsung Monterey | Two complete `0f8bc20` standard-password/native/reboot/Xcode 13.4.1/Swift/workspace/artifact/release cycles passed |
 | iPad Monterey | `a45655f` verified local transfer plus two full standard-account/native/reboot/Xcode 13.4.1/Swift/workspace/artifact/RFB/release cycles passed; unchanged source and original eight manifests verified; macOS 12.7.6 |
 | Factory/private GHCR | Complete fresh public-base factory → private portable push → pull → clone workload → cleanup passed on `2f23ae6`; preserve receipt, repeat only for relevant pipeline changes; no managed golden uploaded |
-| Restore/rollback | Live controller-state restore and signed controller-binary rollback/forward passed; VM disks and complete package/client rollback remain outside those receipts |
-| Actual owning MCP | Old adapter PID 66295 loaded a different executable inode despite correct configured path; exact `a45655f` HTTP/fresh stdio passed; user cannot Restart now, no adapters killed; connected-client acceptance remains open |
+| Restore/rollback | Live controller-state restore and signed controller-binary rollback/forward passed; full VM-disk DR prepared but blocked on explicit confirmation after automatic review rejection; complete package/client rollback remains outside those receipts |
+| Actual owning MCP | Old adapter PID 66295 historically loaded a different executable inode despite correct configured path; actual connected help still serves obsolete password/recovery instructions, exact466dbb8 fresh stdio20 passed; no adapters killed, manual reconnect remains open |
 | Existing HTPC file modes | Optional owner-only permission proposal unapproved; files unchanged; not required for VM functionality and not a keychain/reboot fix |
 
 The new `0f8bc20` existing macOS 27 clone still fails login copy-auth and was
@@ -124,8 +125,10 @@ under the original deadline, replacements, missing credentials, unchanged files,
 expiry/callback races and same-endpoint tunnel revocation. Schema 9 protects the
 new job kind from older executors and snapshots schema 8 privately before upgrade.
 Legacy leases lacking a verified runtime baseline and physical hosts fail safely.
-Final source/security/archive checks, idle installation and live checksum-preserving
-drift/recovery remain open. Installed a45655f still has cleanup-only `resolve`.
+Installed since256d18f. Actual Tart and HTPC original-overlay stop/start,
+checksum/key/workspace/expiry preservation, caller-proof/idempotent revalidation,
+native GUI/SSH and subsequent official cleanup passed. F1 recovery does not
+establish that the separate guest-initiated Sequoia reboot failure is fixed.
 
 ### F2 — retain drift and tunnel-close diagnostics
 
@@ -135,8 +138,9 @@ pause/resume and explicit close/release/expiry/endpoint change/shutdown/upstream
 I/O; known errno/context causes and original error fingerprints are safe to
 export. Tests cover restart, cleanup persistence, privacy and normal EOF versus
 actual upstream reset. `89344ef` passed full local CI, final affected race/security,
-archive and fresh stdio/runbook checks and is pushed. Installation and live
-acceptance remain; exact schema-migration approval and an idle pool are required for installation.
+archive and fresh stdio/runbook checks and is pushed. Installed since256d18f;
+actual inventory failure/tunnel pause/resume/established-stream retention,
+release and daemon-restart persistence passed on e80c194.
 The historical Monterey drift's exact cause is still unknown.
 
 Persist bounded expected/observed identity, IP, SSH port, state, observation time
@@ -154,8 +158,11 @@ and fresh node rechecks, exposes structured estimates/refusals to status/CLI/MCP
 and shows the selected estimate in Console. Overlay/golden device observations,
 one-byte boundaries, cache, fallback, overflow and same-lease wait/resume tests
 are included. `a2aab20` passed full local CI, affected race/security, archive and
-fresh stdio MCP/runbook checks and is pushed. Idle installation and live
-acceptance remain separate gates; exact schema-migration approval and an idle pool are required for installation.
+fresh stdio MCP/runbook checks and is pushed. Installed since256d18f;
+HTTP/CLI/MCP structured refusal during a real build passed. On466dbb8,
+real external Tart CPU/full-disk load forced pre-clone wait; the original
+job/key/deadline/TTL resumed unchanged after load removal. Node-cache live
+cap and fresh node post-wake failure checks remain separate gates.
 
 Return and display the admission snapshot per host/storage: observed free,
 already reserved growth, requested full potential size, safety reserve, remaining
@@ -208,10 +215,12 @@ root-owned permissions, completion-marker ordering and bounded setup logging are
 corrected. The fresh worker exposed/fixed noninteractive UTF-8 locale handling.
 Current staged verifier/pinned tools passed actual armv7 builds before/after native
 reboot, GUI/SSH/account/workspace/keys/RFB/export/isolation/release checks on stable
-a45655f. Both workers were released and nine goldens preserved. Factory/image
-registration is still unaccepted; no immutable marker was rewritten. Final corrected
-source/security/archive checks, approved installation and actual factory/worker
-acceptance remain open. This does
+a45655f. Both workers were released and nine goldens preserved. On e80c194,
+an actual fresh Packer factory installed/qualified the immutable profile and
+registered image_ready; its worker passed real armv7/native/reboot/workload/
+artifact/isolation/release. The extra temporary factory golden was then deleted
+through the supported image-delete contract; all nine baseline goldens remain.
+No immutable marker was rewritten. This does
 not claim on-device armv7 execution or reuse historical iVim/Notepad evidence.
 
 ## Remaining 3.0 architecture

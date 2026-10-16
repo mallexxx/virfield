@@ -8,7 +8,65 @@ The working branch is `codex/retire-lume-release-hardening`; `main` is not promo
 The [implementation plan](VIRFIELD-3-PLAN.md) owns delivery order and all five new
 operator feedback items.
 
-## Latest installed checkpoint — e80c194 (2026-10-16)
+## Latest installed checkpoint — 466dbb8 (2026-10-16)
+
+Source `466dbb817450fc28f4a39cffaba9aa4812d7b5e3` is pushed and installed as
+`0.0.0-desktop-drain`, archive SHA-256
+`171e23cfeeb17a37f1749b4e77ae0d7229b2faabee30ab17235b32f9c44c8f30`.
+The idle signed upgrade preserved schema 10, configuration, credentials,
+migration snapshots and all nine baseline image manifests. Exact installed fresh
+stdio version, all 20 tools and all four runbooks/resources/status passed.
+Local CI/race, Staticcheck, zero reachable vulnerabilities, Linux cross-build and
+Gitleaks staged/history (247 commits) passed. The short desktop-probe cap and
+long-operation shutdown contexts described below are now installed.
+Receipt: private upgrade `20261016-111207-466dbb8/installed.json` and
+`virfield-desktop-drain-installed-mcp-20261016/report.json`.
+
+**F3 real dispatch wait/resume: PASS.** After admission, the daemon was paused
+while the original job was still queued. An owned external Tart VM consumed
+12 CPUs and its full 120-GB disk potential. The fresh pre-clone check reported
+CPU headroom -4 and disk headroom -46,620,811,264 bytes, emitted one resource-wait
+event and dispatched no clone. Removing only that load resumed the same job,
+caller key, deadline and original TTL; native GUI/SSH readiness passed on
+`lease-272db900210e774cf8acb544de8026f7`. That worker and the stopped external
+fixture are retained for the documented continuation. Node-cache live cap and
+fresh node post-wake failure checks remain separate gates.
+Receipt: `virfield-resource-recheck-live-20261016/journal.json`.
+
+**Actual Tart remote-debug path passed; preparation race corrected in source.**
+The original installed helper returned when `debugserver` existed, before its
+loopback port listened; LLDB's first handshake then failed. Logs confirm successful
+task authorization and later listener readiness. Connecting to that same original
+process after read-only listener confirmation passed the real checkpoint/stack,
+evaluation of `value == 41`, output `remote-debug-result=42` and exit 0, without
+restarting or changing the process. The correction waits for the exact child's
+loopback LISTEN socket using `lsof`; a TCP readiness probe would consume its first
+debugger connection. A real delayed-listener regression failed before and passed
+after. A new generated workspace using the corrected CLI passed actual host
+build/sync/prepare and the complete LLDB-DAP workflow on the retained worker.
+The corrected CLI is not yet installed; no VS Code editor UI was driven.
+Receipts: `virfield-debugserver-ready-red-20261016.log`,
+`virfield-debugserver-ready-green-20261016.log`,
+`virfield-remote-debug-fixture-20261016/acceptance/dap-transcript.json`,
+`virfield-remote-debug-ready-fixture-20261016/acceptance/report.json`.
+
+The F5 factory/worker completed successfully on e80c194. Its extra temporary
+golden was subsequently deleted through the image-delete contract; all nine
+baseline images are unchanged. The failed HTPC reboot below remains **failed**:
+same-container recovery returned with unchanged keys, a new boot UUID and an
+exported macOS shutdownStall/stackshot report, then the owned VM was officially
+released. Neither recovery nor later successful probes establish the original
+trigger. No CPU flags, NVRAM or golden were changed.
+Receipts: `virfield-f5-fixture-cleanup-20261016/report.json` and
+`virfield-node-desktop-diagnostic-20261016/failed-reboot-cleanup.json`.
+
+Full disk/config/NVRAM off-host DR is prepared but not executed: automatic approval
+review rejected the stop/move/restore/copy-deletion scenario, and explicit scoped
+operator confirmation is pending. The new human OAuth portal also requires owner
+login; the earlier portal expired without completing enrollment. Full production
+Story and the actual owning MCP reconnect remain open.
+
+## Previous installed checkpoint — e80c194 (2026-10-16)
 
 Source `e80c194fe5d30a33e9a0062371fd42f3fd6255b4` is pushed and installed as
 `0.0.0-drain-cancel`, archive SHA-256
