@@ -15,6 +15,8 @@ import tarfile
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
+# Go ignores underscore-prefixed trees, including dependency notice source files.
+NOTICES_DIRECTORY = "_THIRD_PARTY_NOTICES"
 
 
 def run(*args, **kwargs):
@@ -78,7 +80,7 @@ def build(version, destination):
                         '-o', str(package / 'bin') + '/', './cmd/...'],
                        cwd=package, env=environment, check=True)
         subprocess.run(['sh', 'deploy/build-apple-browser.sh'], cwd=package, check=True)
-        notices = package / 'THIRD_PARTY_NOTICES'
+        notices = package / NOTICES_DIRECTORY
         notices.mkdir()
         modules = {}
         packages = run('go', 'list', '-deps', '-json', './cmd/...', env=environment, text=True)

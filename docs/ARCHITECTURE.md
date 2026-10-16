@@ -50,14 +50,15 @@ go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
 go run github.com/zricethezav/gitleaks/v8@v8.30.1 git --redact --log-opts=--all
 ```
 
-Build releases on macOS from a clean committed tree:
+Build releases on macOS with Python 3.12 or newer, from a clean committed tree:
 
 ```sh
 python3 tools/release.py vX.Y.Z --output /absolute/new/release-directory
 ```
 
 Choose a real version. Packaging includes committed source, macOS/arm64 binaries,
-dependency notices, `release.json` and `SHA256SUMS`; it refuses conflicting tags
+dependency notices in `_THIRD_PARTY_NOTICES`, `release.json` and `SHA256SUMS`;
+it refuses conflicting tags
 or existing outputs. Verify checksums, extract into a clean directory and run
 checks there before distribution. Configure signing for your deployment separately.
 See [Operations](OPERATIONS.md#upgrade-and-restore) for installation and rollback.

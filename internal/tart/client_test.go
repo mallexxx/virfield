@@ -230,18 +230,6 @@ func TestRegistryCredentialOnlyAppliesToMatchingRemote(t *testing.T) {
 	}
 }
 
-func TestMountPointResolvesTheVolumeOfANestedDirectory(t *testing.T) {
-	root, err := mountPoint("/")
-	if err != nil || root != "/" {
-		t.Fatal(root, err)
-	}
-	nested := t.TempDir()
-	mount, err := mountPoint(nested)
-	if err != nil || mount == "" || mount[0] != '/' || mount == nested {
-		t.Fatalf("mount point of %s = %q, %v", nested, mount, err)
-	}
-}
-
 // tart run exits at once when the VM is still held (for example by a
 // just-finished Packer build); that must not be reported as a start.
 func TestStartDetachedReportsImmediateExit(t *testing.T) {

@@ -24,3 +24,15 @@ func TestStatVolumeUsesActualDirectoryAndAllocatableBytes(t *testing.T) {
 		t.Fatal("absent directory accepted", err)
 	}
 }
+
+func TestMountPointResolvesTheVolumeOfANestedDirectory(t *testing.T) {
+	root, err := mountPoint("/")
+	if err != nil || root != "/" {
+		t.Fatal(root, err)
+	}
+	nested := t.TempDir()
+	mount, err := mountPoint(nested)
+	if err != nil || mount == "" || mount[0] != '/' || mount == nested {
+		t.Fatalf("mount point of %s = %q, %v", nested, mount, err)
+	}
+}
