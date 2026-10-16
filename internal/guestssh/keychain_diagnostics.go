@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/mallexxx/virfield/internal/qualify"
 )
 
 func (g *Client) reportDesktopCommand(started time.Time, phase string, budget time.Duration, contextError, transportError error) {
@@ -28,7 +30,7 @@ func (g *Client) ReportDesktopFailure(output string) {
 	if err := os.MkdirAll(g.diagnosticDir, 0700); err != nil {
 		return
 	}
-	_ = writePrivateDiagnostic(g.diagnosticDir, "desktop.log", "Guest command timeout: "+commandTimeout.String()+"\n"+output)
+	_ = writePrivateDiagnostic(g.diagnosticDir, "desktop.log", "Guest desktop probe timeout: "+qualify.DesktopTimeout.String()+"\n"+output)
 }
 
 // ReportKeychainFailure retains bounded private diagnostics while the existing

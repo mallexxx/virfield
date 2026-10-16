@@ -326,7 +326,14 @@ func (e *Manager) connectCredentials(ctx context.Context, l domain.Lease, ip str
 var commandTimeout, mutationTimeout = time.Minute, 5 * time.Minute
 
 func (g *Client) Run(ctx context.Context, command, input string) (string, error) {
-	return g.RunReader(ctx, commandTimeout, command, strings.NewReader(input))
+	timeout := commandTimeout
+	if command == qualify.DesktopProbe {
+		// Cold JXA/CoreGraphics loading on an HDD guest can exceed the short
+		// command cap. This fixed read-only probe shares Desktop's existing
+		// overall deadline; neither mutations nor other commands get more time.
+		timeout = qualify.DesktopTimeout
+	}
+	return g.RunReader(ctx, timeout, command, strings.NewReader(input))
 }
 
 // RunMutation runs a script that changes guest credentials or SSH policy.

@@ -21,6 +21,10 @@ function virfieldConsoleState(session) {
 // ai.virfield.console-state end
 function run() { return virfieldConsoleState(ObjC.deepUnwrap($.CGSessionCopyCurrentDictionary())).ready ? "desktop" : "waiting"; }'; else echo waiting; fi`
 
+// DesktopTimeout bounds the whole read-only preflight, including cold framework
+// loading and the settled, unlocked Finder observations.
+const DesktopTimeout = 2 * time.Minute
+
 // WaitDesktop polls until Setup Assistant appears or Finder stays up for settle.
 func WaitDesktop(ctx context.Context, poll, settle time.Duration, observe func(context.Context) (string, error)) (string, error) {
 	var desktopSince time.Time
@@ -53,7 +57,7 @@ func WaitDesktop(ctx context.Context, poll, settle time.Duration, observe func(c
 // Desktop requires a settled, unlocked console Finder within two minutes. Setup
 // Assistant is a failure here: adopted images never automate it.
 func Desktop(ctx context.Context, g Guest) error {
-	wait, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	wait, cancel := context.WithTimeout(ctx, DesktopTimeout)
 	defer cancel()
 	started := time.Now()
 	var trace strings.Builder

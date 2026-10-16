@@ -8,7 +8,103 @@ The working branch is `codex/retire-lume-release-hardening`; `main` is not promo
 The [implementation plan](VIRFIELD-3-PLAN.md) owns delivery order and all five new
 operator feedback items.
 
-## Latest installed checkpoint — 256d18f (2026-10-16)
+## Latest installed checkpoint — e80c194 (2026-10-16)
+
+Source `e80c194fe5d30a33e9a0062371fd42f3fd6255b4` is pushed and installed as
+`0.0.0-drain-cancel`, archive SHA-256
+`245c2f941201f99e8868729219edf50a53570c7fdfc74898a4b5a22867b0c1b0`.
+The idle schema-10 upgrade preserved all nine image manifests, configuration,
+credentials, migration snapshots and signing/FDA identity. Exact installed fresh
+stdio version, 20 tools and all four packaged runbooks/resources passed.
+
+**F2 and installed shutdown cancellation: PASS.** On owned worker
+`lease-b0047f4e185047fbccb61a264243b7c3`, a bounded failure of the actual Tart
+inventory probe retained the ready lease, verified identity, keys, endpoint and
+original expiry. New connections paused, an established stream survived, and
+the same listener resumed after recovery. Drift/tunnel and backend failure/recovery
+diagnostics remained byte-for-byte intact after release and daemon restart.
+
+A controlled external Packer-command fixture exercised the installed daemon's
+ten-minute shutdown grace without creating a golden. At 603.283 seconds the child
+was interrupted, its `image_command_failed` outcome was durably recorded before
+exit, and the new daemon retained that failure without replay. Cleanup used the
+exact image-recovery contract. Temporary wrappers were removed from configuration;
+the original configuration bytes and all nine images are preserved.
+This controlled-command test is distinct from a complete real Packer build.
+Receipt: `virfield-observation-drain-live-20261016/report.json`.
+
+The earlier real Packer build interruption on 256d18f correctly fenced the unknown
+outcome; launchd terminated its descendants after daemon exit. All known PIDs were
+confirmed gone and Packer's log confirmed cancellation/VM cleanup before official
+image deletion. No surviving orphan was observed in that launchd run. The separate
+real-process regression exposed the missing context cancellation before the host
+lock/database closed; the new candidate fixes that ordering.
+Receipt: `virfield-build-restart-live-20261016/report.json`.
+
+After configured Wake-on-LAN restored HTPC reachability, an independent later
+check confirmed the deleted speech log and its backup remain absent, all four
+new logs are zero bytes, the fixed configuration hash is unchanged, tmpfs has
+3,357,130,752 free bytes and `podman info` succeeds. No speech text was read.
+Receipt: `virfield-htpc-after-wake-20261016.json`.
+
+**F5 complete factory/worker: PASS on e80c194.** Factory
+`image-befe5b1452f59090482870ca853563b8`, template
+`release-check-legacy-ios-drain-cancel-20261016`, reached `image_ready` after
+actual construction, immutable toolchain installation and post-reboot qualification.
+Fresh worker `lease-04dd18e3e776558a8aacf2c332e2b937` passed real armv7 builds
+before/after actual reboot, the exact immutable marker, standard account,
+native GUI/SSH, 1920×1080, workspace/key retention, cross-key rejection, artifact
+export and RFB. The worker is released; the nine baseline images remain unchanged.
+The extra acceptance golden is currently retained separately.
+Receipt: `virfield-legacy-ios-factory-drain-cancel-20261016/journal.json`, final
+stage `legacy-ios-factory-live-accepted`. Never replay the driver.
+
+**Cold concurrent HTPC preflight remains open.** Both new Sequoia workers
+`lease-a4641013b653e566a78afaa556ef8441` and
+`lease-d3f476b23c2318dd3e9f7e4521cc0216` failed before credential isolation:
+the fixed desktop probe stalled in `waiting_exit` and hit the generic 60-second
+command cap while its original preflight allowed 120 seconds. Logs and frames
+were exported before their confirmed release. A single retained worker
+`lease-5b9f07e9711768694daf982784f30004` completed preparation; independent
+read-only shell and JXA/CoreGraphics probes took 3.696 and 18.842 seconds and
+returned the expected unlocked console without changing image credentials.
+The evidence establishes the premature inner bound, but does not prove a
+particular kernel/I/O cause for the slower concurrent commands. Keyboard Setup
+Assistant was visible in failure frames; that alone is not its timeout cause.
+
+The single worker also passed original-container/overlay F1 stop/start and
+revalidation with its keys, workspace and expiry preserved. Its additional native
+guest reboot **failed**: after one shutdown dispatch, SSH did not return within
+the original 1,200-second budget. No repeated reboot was dispatched. Read-only
+QEMU samples show CPU0 repeatedly at the XNU page-fault entry with CR2=0 and
+the other CPUs in a debugger-wait loop; all four vCPUs execute guest code while
+I/O counters remain unchanged. The instruction sequences match Apple's
+[trap entry](https://raw.githubusercontent.com/apple-oss-distributions/xnu/main/osfmk/x86_64/idt64.s)
+and [debugger wait](https://raw.githubusercontent.com/apple-oss-distributions/xnu/main/osfmk/i386/mp.c)
+sources. This establishes a guest-kernel stall, not its original triggering cause.
+The actual QEMU command already includes `+invtsc`; the host uses stable TSC.
+The owned original overlay/keys are retained for a separately recorded recovery
+and panic-report inspection; recovery does not count as reboot acceptance.
+Receipts: `virfield-node-desktop-diagnostic-20261016/journal.json`,
+`monitor-stack-readonly.json`, `qemu-readonly.json`, `host-cpu-kernel-readonly.json`.
+
+The checked source correction gives only the fixed read-only desktop probe its
+existing 120-second readiness budget. The original parent deadline and all
+readiness checks remain mandatory; ordinary commands retain their 60-second cap.
+A real SSH regression failed before and passed after the correction, including
+the shorter original-deadline case. The shutdown audit additionally applies the
+same grace/cancellation context to long SSH preparation, local copy and registry
+export; an SSH preparation cancellation regression also failed before/passed
+after. No mutation is retried. Whole local CI/race and pinned Staticcheck pass;
+installation and fresh concurrent HTPC cycles are still required.
+Receipts: `virfield-desktop-budget-red-20261016.log`,
+`virfield-desktop-budget-green-20261016.log`, `virfield-ssh-drain-red-20261016.log`,
+`virfield-all-operations-drain-green-20261016.log`,
+`virfield-desktop-shutdown-full-check-20261016.log`.
+
+Fresh human OAuth/full Story and the actual owning MCP reconnect remain open.
+
+## Previous installed checkpoint — 256d18f (2026-10-16)
 
 Source `256d18fa67f5ab9e1b21191701a98f99faafae6e` is pushed and installed as
 `0.0.0-legacy-ios-native`. Archive SHA-256 is

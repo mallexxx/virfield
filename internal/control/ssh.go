@@ -31,7 +31,7 @@ func (c *Controller) prepareSSH(ctx context.Context, l domain.Lease, j domain.Jo
 		// persisted job already bounds the whole operation; each guest command
 		// also has its own limit. A separate three-minute cap truncated valid
 		// five-minute GUI preparation before it could produce native proof.
-		operation, cancel := context.WithDeadline(context.WithoutCancel(ctx), j.Deadline)
+		operation, cancel := c.operationContext(ctx, j.Deadline)
 		defer cancel()
 		connection, err := c.leasePreparer.Prepare(operation, l)
 		c.mu.Lock()

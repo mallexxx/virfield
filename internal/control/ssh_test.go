@@ -62,10 +62,14 @@ func sshController(t *testing.T) (*Controller, *blockingPreparer, domain.Operati
 
 // sshControllerOn serves guest SSH on port (0 means 22) at the VM IP.
 func sshControllerOn(t *testing.T, port int) (*Controller, *blockingPreparer, domain.Operation) {
+	return sshControllerContext(t, port, context.Background(), 0)
+}
+
+func sshControllerContext(t *testing.T, port int, ctx context.Context, grace time.Duration) (*Controller, *blockingPreparer, domain.Operation) {
 	t.Helper()
 	c, builder := imageController(t)
+	c.shutdownGrace = grace
 	builder.backend.sshPort = port
-	ctx := context.Background()
 	if _, err := c.BuildImage(ctx, "test", "ssh-image-build"); err != nil {
 		t.Fatal(err)
 	}
@@ -96,6 +100,30 @@ func sshControllerOn(t *testing.T, port int) (*Controller, *blockingPreparer, do
 		t.Fatal("SSH worker not started")
 	}
 	return c, p, op
+}
+
+func TestSSHPreparationCancelsAfterShutdownGraceWithoutReplay(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c, p, op := sshControllerContext(t, 0, ctx, 50*time.Millisecond)
+	defer func() { close(p.finish); c.wg.Wait() }()
+	cancel()
+	done := make(chan struct{})
+	go func() { c.wg.Wait(); close(done) }()
+	select {
+	case <-done:
+		t.Fatal("Canceled before the mutation drain grace")
+	case <-time.After(10 * time.Millisecond):
+	}
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("SSH preparation survived the shutdown grace")
+	}
+	job, err := c.Job(context.Background(), op.Job.ID)
+	if err != nil || job.State != "needs_attention" || job.Phase != "ssh_dispatched" || p.calls.Load() != 1 {
+		t.Fatal("Canceled preparation was not retained without replay", job, err)
+	}
 }
 func TestSSHReadinessPreservesRenewal(t *testing.T) {
 	c, p, op := sshController(t)

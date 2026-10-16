@@ -173,7 +173,7 @@ func (c *Controller) advanceImageTransfer(ctx context.Context, l domain.Lease, j
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
-		op, cancel := context.WithDeadline(context.WithoutCancel(ctx), j.Deadline)
+		op, cancel := c.operationContext(ctx, j.Deadline)
 		defer cancel()
 		digest, err := c.imageTransferer.TransferImage(op, j.Transfer.Source, l)
 		c.mu.Lock()

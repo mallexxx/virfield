@@ -157,7 +157,7 @@ func (c *Controller) advanceImageExport(ctx context.Context, l domain.Lease, j d
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
-		opCtx, cancel := context.WithDeadline(context.WithoutCancel(ctx), j.Deadline)
+		opCtx, cancel := c.operationContext(ctx, j.Deadline)
 		defer cancel()
 		digest, err := exporter.ExportStep(opCtx, l, *j.Export, step)
 		c.mu.Lock()
