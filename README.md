@@ -5,6 +5,8 @@ debugging. Describe a task in Codex or Claude Code; the agent gets a machine,
 works over SSH and saves the results. Virfield manages images, access, lease
 deadlines and cleanup.
 
+The built-in web UI shows machines, available capacity and job progress.
+
 ## What you can do
 
 - Build and test a project on the macOS and Xcode versions it needs.
@@ -61,6 +63,19 @@ External storage may need Full Disk Access. Building with
 
 Leave this terminal open. For automatic startup, follow the
 [service setup instructions](docs/OPERATIONS.md#install).
+
+## Monitor in the web UI
+
+1. Open [http://127.0.0.1:7780/](http://127.0.0.1:7780/) on the Mac running the daemon. If you changed `listen` in `config.json`, use that address.
+2. Paste the contents of `$VIRFIELD_HOME/token` into **API token** and click **Connect**.
+
+The views refresh automatically:
+
+- **Fleet:** hosts, VMs, available capacity, storage space and lease expiry times.
+- **Images:** golden image availability.
+- **Activity:** job status, progress and recent events.
+
+The browser remembers your token. Click **Disconnect** to remove the saved token.
 
 ## Connect your MCP client
 
