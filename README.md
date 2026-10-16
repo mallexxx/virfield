@@ -1,40 +1,126 @@
 # Virfield
 
-Virfield manages macOS VM images, disposable VM leases and physical macOS/Linux
-nodes. It tracks capacity, pins SSH identities, opens desktop tunnels and confirms
-cleanup. Run commands and collect artifacts over SSH; workload queues belong to
-the client or execution service.
+Virfield даёт AI-агенту временные macOS-машины для сборок, тестов и отладки.
+Ты описываешь задачу в Codex или Claude Code, агент получает машину, работает
+на ней по SSH и сохраняет результаты. Virfield управляет образами, доступом,
+сроком работы машин и их удалением.
 
-## Build
+## Что можно делать
 
-Use the Go version in `go.mod`. Local macOS VMs require Apple Silicon and Tart;
-image builds also require Packer. The console needs no frontend build.
+- Собирать и тестировать проект на нужной macOS с подходящей версией Xcode.
+- Запускать UI-тесты на подготовленных машинах и открывать их рабочий стол.
+- Создавать образы из разрешённых macOS/Xcode-профилей и переиспользовать их.
+- Импортировать и публиковать Tart-образы в настроенном реестре GitHub (GHCR), переносить их между хранилищами.
+- Получать доступ к подключённым физическим macOS/Linux-узлам.
+- Смотреть свободные ресурсы, продлевать время работы машины и разбирать ошибки запуска.
+
+Команды сборки и тестов агент выполняет через свой терминал по SSH.
+Набор доступных систем зависит от настроенных образов и оборудования.
+
+## Установка
+
+Для локальных macOS VM нужен Mac с Apple Silicon и macOS 13 или новее. Установи Go версии из
+[go.mod](go.mod), Python 3, инструменты разработчика Xcode и
+[Tart](https://tart.run/quick-start/). Для создания образов нужен также
+[Packer](https://developer.hashicorp.com/packer/install).
+
+### 1. Скачать и собрать
 
 ```sh
+git clone https://github.com/mallexxx/virfield.git
+cd virfield
 make check
 make build
-./bin/virfield -help
 ```
 
-On macOS, set `SIGN_IDENTITY` to your code-signing identity when building binaries
-that need persistent Full Disk Access. Without it, builds keep ad-hoc signatures.
-Store configuration, credentials, VM disks and installed binaries outside Git.
+### 2. Создать установку
 
-## Install and use
+Если Virfield уже установлен и запущен, переходи к подключению MCP, используя
+путь к существующей установке. Для новой установки:
 
-Follow [Operations](docs/OPERATIONS.md) to initialize a deployment, configure
-storage and start the service. Then build a golden image, acquire a lease, wait
-for readiness and generate pinned SSH configuration. Export results before
-releasing the lease.
+```sh
+VIRFIELD_HOME="$HOME/Library/Application Support/Virfield"
+./bin/virfield init "$VIRFIELD_HOME" macos-golden macos-golden local
+mkdir "$VIRFIELD_HOME/bin"
+cp bin/virfield bin/virfieldd bin/virfield-mcp "$VIRFIELD_HOME/bin/"
+cp -R bin/VirfieldAppleBrowser.app "$VIRFIELD_HOME/bin/"
+```
 
-For an MCP client, start with `virfield_help`, then `virfield_status`. The embedded
-help covers the same workflows as the repository documentation.
+В `$VIRFIELD_HOME/config.json` настрой хранилище, разрешённые базовые образы
+и пути к Packer и кешу Xcode по [инструкции настройки](docs/OPERATIONS.md#configure-storage-and-credentials).
+`init` создаёт конфигурацию и токен; образ macOS он не скачивает.
+Для внешнего диска может понадобиться Full Disk Access. Подпись через
+`make build SIGN_IDENTITY="YOUR_SIGNING_IDENTITY"` сохраняет это разрешение между сборками.
 
-| Guide | Use it to |
-| --- | --- |
-| [Agent guide](docs/AGENT-GUIDE.md) | Call MCP tools, connect over SSH and handle errors |
-| [Image pipeline](docs/IMAGE-PIPELINE.md) | Select versions, build images, transfer or publish them |
-| [Operations](docs/OPERATIONS.md) | Install, configure, upgrade, diagnose and restore |
-| [Environment checks](docs/ENVIRONMENT.md) | Check requirements and qualify a workload |
-| [Remote debugging](docs/REMOTE-DEBUG.md) | Generate a SwiftPM or DuckDuckGo debugging workspace |
-| [Development](docs/ARCHITECTURE.md) | Find modules, preserve lifecycle rules and build a release |
+### 3. Запустить
+
+```sh
+"$VIRFIELD_HOME/bin/virfield" config-check "$VIRFIELD_HOME/config.json"
+"$VIRFIELD_HOME/bin/virfieldd" -config "$VIRFIELD_HOME/config.json"
+```
+
+Оставь этот терминал открытым. Для автозапуска используй
+[настройку службы](docs/OPERATIONS.md#install).
+
+## Подключить MCP
+
+На том же Mac открой второй терминал и укажи путь к установке и адрес Virfield:
+
+```sh
+VIRFIELD_HOME="$HOME/Library/Application Support/Virfield"
+VIRFIELD_URL="http://127.0.0.1:7780"
+```
+
+Выбери свой клиент.
+
+**Codex:**
+
+```sh
+codex mcp add virfield -- "$VIRFIELD_HOME/bin/virfield-mcp" -url "$VIRFIELD_URL" -token-file "$VIRFIELD_HOME/token"
+codex mcp get virfield
+```
+
+**Claude Code:**
+
+```sh
+claude mcp add --transport stdio --scope user virfield -- "$VIRFIELD_HOME/bin/virfield-mcp" -url "$VIRFIELD_URL" -token-file "$VIRFIELD_HOME/token"
+claude mcp get virfield
+```
+
+Для другого MCP-клиента есть [пример конфигурации stdio](deploy/mcp.json.example).
+Передавай путь к файлу токена, а не его содержимое. Затем переподключи MCP
+в своём клиенте и открой новый чат.
+
+## Что говорить агенту
+
+Проверить подключение:
+
+> Прочитай инструкции Virfield через virfield_help, затем проверь virfield_status.
+> Покажи доступные машины и образы. Если настройка не закончена, объясни, чего не хватает.
+
+Собрать и проверить проект:
+
+> Через Virfield возьми macOS 12.7.6 с Xcode 13.4.1 на два часа.
+> Скопируй туда этот проект, запусти его тесты и сохрани отчёт в моём проекте.
+> После сохранения результатов удали только созданную для этой задачи машину.
+
+Подготовить образ:
+
+> Через Virfield создай новый образ macOS с нужной этому проекту версией Xcode.
+> Сначала проверь доступные версии и место на диске; если подходящего базового образа нет, сообщи.
+
+Посмотреть, что происходит в VM:
+
+> Открой рабочий стол машины Virfield, на которой сейчас идут мои тесты.
+
+В задаче указывай нужные версии, проект, время работы и какие результаты сохранить.
+Удаление временной машины можно разрешить сразу, как в примере выше.
+
+## Подробные инструкции
+
+- [Установка, узлы, резервные копии и восстановление](docs/OPERATIONS.md)
+- [Создание и перенос образов](docs/IMAGE-PIPELINE.md)
+- [Инструменты MCP и работа агента](docs/AGENT-GUIDE.md)
+- [Требования к окружению](docs/ENVIRONMENT.md)
+- [Отладка через VS Code](docs/REMOTE-DEBUG.md)
+- [Разработка и сборка релиза](docs/ARCHITECTURE.md)
