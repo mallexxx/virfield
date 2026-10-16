@@ -526,15 +526,30 @@ else
   # ai.virfield.verify-startup end
 fi
 (( SECONDS < deadline )) || { echo 'GUI verification command budget was exhausted' >&2; exit 65; }
-[[ ! -L "$dir/result" && ! -L "$dir/request" && ! -L "$dir/agent.log" ]] || exit 65
+[[ ! -L "$dir/result" && ! -L "$dir/request" && ! -L "$dir/agent.log" && ! -L "$dir/bootstrap.log" ]] || exit 65
 : > "$dir/agent.log"; chmod 600 "$dir/agent.log"
 rm -f "$dir/result"
 printf '%s\n%s\n%s\n' "$mode" "$nonce" "$boot" > "$dir/request.next"
 chmod 600 "$dir/request.next"
 mv "$dir/request.next" "$dir/request"
 if [[ "$mode" == ensure ]]; then
-  launchctl bootstrap "gui/$uid" "$plist"
-  launchctl kickstart "gui/$uid/$label"
+  # ai.virfield.ensure-agent begin
+  # A GUI agent can become registered between bootout and bootstrap. Recover
+  # only when this exact owned job exists; all native proof checks still apply.
+  bootstrap_status=0
+  launchctl bootstrap "gui/$uid" "$plist" > "$dir/bootstrap.log" 2>&1 || bootstrap_status=$?
+  if (( bootstrap_status == 0 )); then
+    launchctl kickstart "gui/$uid/$label"
+  elif launchctl print "gui/$uid/$label" >/dev/null 2>&1; then
+    printf 'bootstrap_exit=%s recovery=registered-agent\n' "$bootstrap_status" >> "$dir/bootstrap.log"
+    # Demand the rewritten agent and current request instead of losing it to an
+    # inherited RunAtLoad instance that already consumed the previous request.
+    launchctl kickstart -k "gui/$uid/$label"
+  else
+    cat "$dir/bootstrap.log" >&2
+    exit "$bootstrap_status"
+  fi
+  # ai.virfield.ensure-agent end
 else
   # startup is written just before the login agent exits. Restart this owned
   # agent even in that brief overlap, so a verify request cannot be dropped.

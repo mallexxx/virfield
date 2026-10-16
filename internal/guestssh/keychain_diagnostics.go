@@ -53,7 +53,7 @@ const keychainDiagnostics = `set +x
 /bin/date -u
 /usr/bin/stat -f '%Su' /dev/console
 /usr/sbin/sysctl -n kern.bootsessionuuid
-for name in phase failure agent.log display-result login-auth-result login-auth-attempts login-result result startup desktop-result; do
+for name in phase failure agent.log bootstrap.log display-result login-auth-result login-auth-attempts login-result result startup desktop-result; do
   file="$HOME/.virfield-keychain/$name"
   if [ -f "$file" ] && [ ! -L "$file" ]; then
     printf '\n%s\n' "$name"
