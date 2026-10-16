@@ -1,30 +1,30 @@
 # Virfield
 
-Virfield даёт AI-агенту временные macOS-машины для сборок, тестов и отладки.
-Ты описываешь задачу в Codex или Claude Code, агент получает машину, работает
-на ней по SSH и сохраняет результаты. Virfield управляет образами, доступом,
-сроком работы машин и их удалением.
+Virfield gives your AI agent temporary macOS machines for builds, tests and
+debugging. Describe a task in Codex or Claude Code; the agent gets a machine,
+works over SSH and saves the results. Virfield manages images, access, lease
+deadlines and cleanup.
 
-## Что можно делать
+## What you can do
 
-- Собирать и тестировать проект на нужной macOS с подходящей версией Xcode.
-- Запускать UI-тесты на подготовленных машинах и открывать их рабочий стол.
-- Создавать образы из разрешённых macOS/Xcode-профилей и переиспользовать их.
-- Импортировать и публиковать Tart-образы в настроенном реестре GitHub (GHCR), переносить их между хранилищами.
-- Получать доступ к подключённым физическим macOS/Linux-узлам.
-- Смотреть свободные ресурсы, продлевать время работы машины и разбирать ошибки запуска.
+- Build and test a project on the macOS and Xcode versions it needs.
+- Run UI tests on prepared machines and open their desktops.
+- Create reusable images from approved macOS/Xcode profiles.
+- Import and publish Tart images through a configured GitHub registry (GHCR), or transfer them between storage locations.
+- Lease connected physical macOS/Linux hosts.
+- Check available resources, extend a machine's lease and diagnose startup failures.
 
-Команды сборки и тестов агент выполняет через свой терминал по SSH.
-Набор доступных систем зависит от настроенных образов и оборудования.
+The agent runs build and test commands over SSH through its own terminal.
+Available systems depend on your configured images and hardware.
 
-## Установка
+## Install
 
-Для локальных macOS VM нужен Mac с Apple Silicon и macOS 13 или новее. Установи Go версии из
-[go.mod](go.mod), Python 3, инструменты разработчика Xcode и
-[Tart](https://tart.run/quick-start/). Для создания образов нужен также
+Local macOS VMs require an Apple Silicon Mac running macOS 13 or later.
+Install the Go version in [go.mod](go.mod), Python 3, Xcode developer tools and
+[Tart](https://tart.run/quick-start/). Image builds also need
 [Packer](https://developer.hashicorp.com/packer/install).
 
-### 1. Скачать и собрать
+### 1. Clone and build
 
 ```sh
 git clone https://github.com/mallexxx/virfield.git
@@ -33,10 +33,10 @@ make check
 make build
 ```
 
-### 2. Создать установку
+### 2. Create a deployment
 
-Если Virfield уже установлен и запущен, переходи к подключению MCP, используя
-путь к существующей установке. Для новой установки:
+If Virfield is already installed and running, skip to MCP setup and use your
+existing deployment path. For a new installation:
 
 ```sh
 VIRFIELD_HOME="$HOME/Library/Application Support/Virfield"
@@ -46,32 +46,32 @@ cp bin/virfield bin/virfieldd bin/virfield-mcp "$VIRFIELD_HOME/bin/"
 cp -R bin/VirfieldAppleBrowser.app "$VIRFIELD_HOME/bin/"
 ```
 
-В `$VIRFIELD_HOME/config.json` настрой хранилище, разрешённые базовые образы
-и пути к Packer и кешу Xcode по [инструкции настройки](docs/OPERATIONS.md#configure-storage-and-credentials).
-`init` создаёт конфигурацию и токен; образ macOS он не скачивает.
-Для внешнего диска может понадобиться Full Disk Access. Подпись через
-`make build SIGN_IDENTITY="YOUR_SIGNING_IDENTITY"` сохраняет это разрешение между сборками.
+In `$VIRFIELD_HOME/config.json`, configure storage, approved base images,
+Packer and the Xcode cache using the [configuration guide](docs/OPERATIONS.md#configure-storage-and-credentials).
+`init` creates configuration and a token; it does not download a macOS image.
+External storage may need Full Disk Access. Building with
+`make build SIGN_IDENTITY="YOUR_SIGNING_IDENTITY"` keeps that grant across rebuilds.
 
-### 3. Запустить
+### 3. Start Virfield
 
 ```sh
 "$VIRFIELD_HOME/bin/virfield" config-check "$VIRFIELD_HOME/config.json"
 "$VIRFIELD_HOME/bin/virfieldd" -config "$VIRFIELD_HOME/config.json"
 ```
 
-Оставь этот терминал открытым. Для автозапуска используй
-[настройку службы](docs/OPERATIONS.md#install).
+Leave this terminal open. For automatic startup, follow the
+[service setup instructions](docs/OPERATIONS.md#install).
 
-## Подключить MCP
+## Connect your MCP client
 
-На том же Mac открой второй терминал и укажи путь к установке и адрес Virfield:
+Open a second terminal on the same Mac and set your deployment path and daemon URL:
 
 ```sh
 VIRFIELD_HOME="$HOME/Library/Application Support/Virfield"
 VIRFIELD_URL="http://127.0.0.1:7780"
 ```
 
-Выбери свой клиент.
+Choose your client.
 
 **Codex:**
 
@@ -87,40 +87,40 @@ claude mcp add --transport stdio --scope user virfield -- "$VIRFIELD_HOME/bin/vi
 claude mcp get virfield
 ```
 
-Для другого MCP-клиента есть [пример конфигурации stdio](deploy/mcp.json.example).
-Передавай путь к файлу токена, а не его содержимое. Затем переподключи MCP
-в своём клиенте и открой новый чат.
+For another MCP client, use the [stdio configuration example](deploy/mcp.json.example).
+Pass the token file's path, keeping its contents private. Reconnect MCP in your
+client and open a new chat.
 
-## Что говорить агенту
+## What to ask your agent
 
-Проверить подключение:
+Check the connection:
 
-> Прочитай инструкции Virfield через virfield_help, затем проверь virfield_status.
-> Покажи доступные машины и образы. Если настройка не закончена, объясни, чего не хватает.
+> Read Virfield's instructions with virfield_help, then check virfield_status.
+> Show available machines and images. If setup is incomplete, explain what's missing.
 
-Собрать и проверить проект:
+Build and test a project:
 
-> Через Virfield возьми macOS 12.7.6 с Xcode 13.4.1 на два часа.
-> Скопируй туда этот проект, запусти его тесты и сохрани отчёт в моём проекте.
-> После сохранения результатов удали только созданную для этой задачи машину.
+> Use Virfield to get macOS 12.7.6 with Xcode 13.4.1 for two hours.
+> Copy this project there, run its tests and save the report in my project.
+> Once the results are saved, delete only the machine created for this task.
 
-Подготовить образ:
+Prepare an image:
 
-> Через Virfield создай новый образ macOS с нужной этому проекту версией Xcode.
-> Сначала проверь доступные версии и место на диске; если подходящего базового образа нет, сообщи.
+> Use Virfield to create a new macOS image with the Xcode version this project needs.
+> Check available versions and disk space first. If no approved base matches, tell me.
 
-Посмотреть, что происходит в VM:
+See what's happening in a VM:
 
-> Открой рабочий стол машины Virfield, на которой сейчас идут мои тесты.
+> Open the desktop of the Virfield machine running my tests.
 
-В задаче указывай нужные версии, проект, время работы и какие результаты сохранить.
-Удаление временной машины можно разрешить сразу, как в примере выше.
+Include the required versions, project, time budget and outputs to save.
+You can authorize cleanup in the same request, as in the build example above.
 
-## Подробные инструкции
+## Detailed guides
 
-- [Установка, узлы, резервные копии и восстановление](docs/OPERATIONS.md)
-- [Создание и перенос образов](docs/IMAGE-PIPELINE.md)
-- [Инструменты MCP и работа агента](docs/AGENT-GUIDE.md)
-- [Требования к окружению](docs/ENVIRONMENT.md)
-- [Отладка через VS Code](docs/REMOTE-DEBUG.md)
-- [Разработка и сборка релиза](docs/ARCHITECTURE.md)
+- [Installation, nodes, backups and recovery](docs/OPERATIONS.md)
+- [Image creation and transfer](docs/IMAGE-PIPELINE.md)
+- [MCP tools and agent workflows](docs/AGENT-GUIDE.md)
+- [Environment requirements](docs/ENVIRONMENT.md)
+- [VS Code debugging](docs/REMOTE-DEBUG.md)
+- [Development and release packaging](docs/ARCHITECTURE.md)
