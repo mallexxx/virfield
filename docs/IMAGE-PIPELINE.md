@@ -221,16 +221,19 @@ from treating a queued transfer as a normal worker clone. The pre-migration
 schema-7 snapshot is private and integrity checked; old-binary rollback requires
 that snapshot, not opening a schema-8 journal.
 
-## Optional legacy iOS toolchain — source candidate
+## Optional legacy iOS toolchain
 
 `toolchain: "legacy-ios-v1"` is an explicit opt-in on `image_create` / CLI
 `-toolchain legacy-ios-v1`. It requires an approved Tart macOS **12.7.6** base and
 pinned **Xcode 13.4.1 / 13F100** with `developer-v1`. Other OS/toolchain/provider
 combinations are refused before image mutation. Ordinary profiles omit the two
 new manifest fields; their fingerprints and ordinary Packer recipe stay unchanged.
-Existing goldens are never provisioned in place. Source schema 10 prevents an
-older executor from silently ignoring the new toolchain fields. Installation
-must verify its private schema 8-to-10 snapshot; installed daemon remains schema 8.
+Existing goldens are never provisioned in place. Installed schema 10 prevents an
+older executor from silently ignoring the new toolchain fields. The approved
+upgrade verified and retained its private schema 8-to-10 snapshot and the earlier
+schema 7 snapshot. A fresh factory and actual worker passed qualification and
+armv7 builds before/after real reboot on `e80c194`; see
+[Verification](VERIFICATION.md) for scope and receipts.
 
 ```sh
 virfield -token-file "$VIRFIELD_HOME/token" -key legacy-image-001 -location CONTAINER_ID -toolchain legacy-ios-v1 image-create NEW_IMAGE_ID 12.7.6 13.4.1

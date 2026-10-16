@@ -60,11 +60,37 @@ trigger. No CPU flags, NVRAM or golden were changed.
 Receipts: `virfield-f5-fixture-cleanup-20261016/report.json` and
 `virfield-node-desktop-diagnostic-20261016/failed-reboot-cleanup.json`.
 
-Full disk/config/NVRAM off-host DR is prepared but not executed: automatic approval
-review rejected the stop/move/restore/copy-deletion scenario, and explicit scoped
-operator confirmation is pending. The new human OAuth portal also requires owner
-login; the earlier portal expired without completing enrollment. Full production
-Story and the actual owning MCP reconnect remain open.
+**Fresh installed HTPC matrix: PASS 4/4.** On `466dbb8`, two concurrent Sequoia
+15.8.1/24H32 and two sequential Sonoma workers passed native GUI/new SSH key
+storage, standard account, 1920×1080, actual guest reboot/new boot UUID, pinned
+keys, workload/artifact/RFB and release/revocation. Original-overlay F1 stop/start
+also passed with unchanged workspace, keys and expiry. The private driver's first
+90-second SSH wait expired during boot; a separate read-only continuation
+completed within the original 1,200-second deadline without repeating stop/start.
+All four workers were released and nine baseline images are unchanged.
+Receipt: `virfield-node-desktop-drain-acceptance-20261016/journal.json` and
+`F1-native-continuation.json` in that directory.
+
+Exact standalone kernel symbols match the earlier shutdownStall report's UUID.
+The old CPU0 return address resolves to `DebuggerTrapWithState+0x67`, on the
+report's stack-snapshot path. The original faulting instruction/error was not
+captured before recovery; this does not establish a PCID, TSC, EFI or NVRAM cause.
+No corresponding settings were changed and later passing cycles are not a
+targeted fix for that historical stall.
+Receipt: `virfield-node-desktop-drain-acceptance-20261016/kernel-symbols/`.
+
+The operator explicitly approved the full disk/config/NVRAM off-host DR and
+cleanup after the earlier automatic-review rejection. Its one original driver
+is running: the owned Tart VM is stopped, full source hashes are saved and its
+disk/config/NVRAM are being copied to the exclusively leased HTPC. Original VM
+files remain intact until independent off-host verification; never replay that
+driver after an unknown outcome.
+Receipt: `virfield-vm-disk-dr-live-20261016/journal.json`.
+
+Fresh human OAuth enrollment is complete: the portal reported `complete` and
+the vault reports an unrevoked identity with no owner. Earlier expired portals
+are historical. A new full production Story and the actual owning MCP reconnect
+remain open; a completed login is not Story acceptance.
 
 ## Previous installed checkpoint — e80c194 (2026-10-16)
 

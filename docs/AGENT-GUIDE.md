@@ -163,8 +163,8 @@ the bridge; inspect [Verification](VERIFICATION.md) for exact deployment/results
 Readiness also requires an unlocked console and no visible keychain password
 dialog. A running Finder or successful native I/O alone does not prove this.
 
-Installed a45655f has cleanup-only operator `resolve`; it can delete the VM.
-The F1 source candidate adds explicit `vm_revalidate` for an unexpired owned
+Operator `resolve` is cleanup-only and can delete the VM.
+Installed since `256d18f`, F1 adds explicit `vm_revalidate` for an unexpired owned
 `needs_attention`/`vm_drift` VM with its original verified runtime baseline.
 Generate the public proof locally with the original identity directory and the
 same request key shown in the tool table. The private key stays local. Poll the
@@ -175,25 +175,29 @@ unlocked desktop. They never run preparation or generate keys. Failures preserve
 the VM; original expiry still applies. Physical hosts and legacy leases without
 a complete runtime baseline are unsupported. Existing connection files are not
 overwritten: after readiness, use the returned endpoint with the original key
-and host pin. Installation/live acceptance is pending; inspect current metadata.
+and host pin. Actual Tart and HTPC original-overlay recovery passed; inspect
+[Verification](VERIFICATION.md) for the exact installed version and receipts.
 Unverified temporary inventory can recover without replacing a ready lease.
-The source candidate also adds optional `image_create.toolchain="legacy-ios-v1"`
+The installed API also adds optional `image_create.toolchain="legacy-ios-v1"`
 for Tart Monterey12.7.6/Xcode13.4.1, pinned native Ruby/CocoaPods/FFI/Ethon and actual
-armv7 build qualification. It is not installed/live accepted. See
-[Image pipeline](IMAGE-PIPELINE.md#optional-legacy-ios-toolchain--source-candidate).
- The F2 source candidate adds bounded typed diagnostics
+armv7 build qualification. A fresh factory and actual worker passed on `e80c194`;
+ordinary profiles are unchanged. See
+[Image pipeline](IMAGE-PIPELINE.md#optional-legacy-ios-toolchain).
+F2 adds bounded typed diagnostics
 to `virfield_events`: expected/observed endpoints before drift, backend cause
 codes/fingerprints and separate listener/stream reasons. Filter by lease ID;
 retain the cursor, allow ID gaps and inspect the latest 32 records per kind.
 Records survive VM cleanup until normal retention. Payloads, credentials and
 desktop URLs are excluded; an unclassified error fingerprint is not a proven
-root cause. F2 is not yet installed/live accepted. Explicit verified local transfer
+root cause. Actual backend/tunnel recovery and restart persistence passed on
+`e80c194`. Explicit verified local transfer
 is installed/live accepted on a45655f; inspect current tool metadata before use.
-The F3 source candidate adds `resource_admission` to status and `error.admission`
+F3 adds `resource_admission` to status and `error.admission`
 to refusals: CPU/RAM, each storage's observed free, reserved full growth, requested
 full potential, safety reserve and signed headroom, plus configured image-cache
 quotas and explicit unknown inputs. CLI/MCP messages label exact bytes/GB/GiB;
-Console shows the chosen estimate. This source change is not yet installed.
+Console shows the chosen estimate. Installed HTTP/CLI/MCP refusal and real Tart
+pre-clone wait/resume passed; node-cache live acceptance is recorded separately.
 Do not infer a historical refusal's cause from today's visible free space.
 
 Tart workers use a fixed 1920×1080 logical desktop. Workspace sharing is not

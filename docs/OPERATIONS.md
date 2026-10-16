@@ -365,7 +365,8 @@ SSH/desktop tunnels are ephemeral and close on release, expiry, drift or explici
 close. A remote client's localhost is not the daemon host's localhost.
 
 See [remote debugging](REMOTE-DEBUG.md) for generated SwiftPM/LLDB workspaces.
-Tart remote-debug acceptance is still pending.
+An actual Tart SwiftPM-generated LLDB-DAP workflow passed; the listener-startup
+correction and exact installed/editor scope are recorded in Verification.
 
 ## MCP and remote access
 
@@ -421,7 +422,7 @@ journal. A lost response uses the same body and idempotency key.
 The following `resolve` command queues cleanup of a `needs_attention` or
 quarantined lease and can delete its VM. It does **not** revalidate that machine
 and return it to ready. Preserve needed workspace first and obtain deletion
-authorization. Installed a45655f does not have the F1 revalidation below.
+authorization. Read-only F1 revalidation below is installed since `256d18f`.
 
 ```sh
 virfield -token-file "$VIRFIELD_HOME/token" -key inspected-resolution-001 resolve LEASE_ID EXACT_VM_NAME CONFIRM-NO-OPERATION-IN-FLIGHT
@@ -431,7 +432,7 @@ This operator cleanup resolution is absent from MCP. Image recovery uses its sep
 in [Image pipeline](IMAGE-PIPELINE.md#recovery). Destructive cleanup needs explicit
 operator/user authorization and exact-name confirmation.
 
-The F1 source candidate adds read-only recovery for an unexpired owned VM in
+F1 adds read-only recovery for an unexpired owned VM in
 `needs_attention` with `vm_drift`. It requires the original complete runtime
 baseline and verified source-image manifest, a fresh running observation, the
 original pinned host key, existing management credentials and caller-key proof.
@@ -456,16 +457,17 @@ opening a new tunnel; old listeners stay revoked. Failure preserves the VM and
 records a terminal job error; inspect/fix the cause before a new request key.
 Lease/VM identity, workspace, keys and expiry stay unchanged. Connection files
 are not overwritten: use the ready endpoint with the existing key and host pin.
-Final installation/live acceptance is pending; see Verification.
+Actual Tart and HTPC original-overlay recovery passed; see Verification for the
+exact installed package, preserved identities and receipts.
 
-F1 source introduced schema 9 for revalidation; the combined F5 candidate uses
+F1 introduced schema 9 for revalidation; the installed F5 package uses
 schema 10 so an older executor cannot silently skip a pinned toolchain either.
-Upgrade creates and verifies a private snapshot of the currently installed
-schema 8 first (schema 8-to-10); retain the earlier schema 7 snapshot. Rollback
+The approved upgrade created and verified a private snapshot of schema 8
+before migration to 10; the earlier schema 7 snapshot is also retained. Rollback
 requires the snapshot matching that binary; older binaries must reject newer
 state before any job dispatch. No schema 9 candidate has been installed here.
 
-The F2 source candidate adds typed `diagnostic` objects to the existing events
+F2 adds typed `diagnostic` objects to the existing events
 API/CLI/`virfield_events`, filtered by `lease_id`. `lease.drift` atomically retains
 expected/observed identity, address, SSH port, resources, state and observation
 times before clearing the live endpoint. New readiness also saves its verified
@@ -502,7 +504,7 @@ space on both golden and overlay storage; unavailable metrics refuse admission.
 Clone/start/commit recheck after wake. Status exposes separate `node_resources`.
 Existing probe records need a successful new observation before VM admission.
 These are VM reservations; physical-account workloads are not CPU/RAM sandboxed.
-The F3 source candidate adds `status.resource_admission[TEMPLATE]`: `acquire`,
+F3 adds `status.resource_admission[TEMPLATE]`: `acquire`,
 strict `destinations[LOCATION]` and, where applicable, `image_build`. Each snapshot
 reports CPU/RAM and every candidate disk, with observed free bytes, reservations
 for full potential growth, requested full size, safety reserve and signed remaining
@@ -557,8 +559,8 @@ address or inventory freshness is unverified; they resume on the same port after
 recovery. Endpoints are checked before and after each new upstream dial. Release,
 expiry and verified identity/state changes still revoke the tunnels. Two verified observations of an absent or
 stopped VM or a changed known endpoint move the lease to `needs_attention`.
-Installed a45655f has cleanup-only operator resolve. The F1 source recovery
-contract is documented above and still needs installation/live acceptance.
+Operator `resolve` remains cleanup-only. Installed F1 recovery is documented
+above; actual Tart and HTPC original-overlay revalidation passed.
 Preserve/export needed workspace before authorized cleanup. Never repair drift
 by rewriting stored addresses or disabling SSH pins. F2 adds durable diagnostics;
 do not infer a historical cause from a later running VM or a new diagnostic test.
